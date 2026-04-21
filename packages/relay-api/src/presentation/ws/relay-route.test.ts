@@ -5,8 +5,12 @@ import WebSocket from 'ws';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
 import { type JwtVerifiedPayload, type JwtVerifier } from '../../application/ports/jwt-verifier';
+import { type SttPort, type TranscriptEvent } from '../../application/ports/stt-port';
+import { type TranslationPort } from '../../application/ports/translation-port';
 import { type IssueStreamTokenUseCase } from '../../application/use-cases/issue-stream-token-use-case';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
+import { createMockSttProvider } from '../../../tests/support/mock/mock-stt-provider';
+import { createMockTranslationProvider } from '../../../tests/support/mock/mock-translation-provider';
 import { buildApp } from '../http/server';
 import { registerRelayRoute, type RelayRouteDependencies } from './relay-route';
 
@@ -57,11 +61,16 @@ const noopAccessTokenVerifier: AccessTokenVerifier = {
   verify: () => ok(undefined),
 };
 
-const startApp = async (verifier: JwtVerifier): Promise<AppHarness> => {
+const startApp = async (
+  verifier: JwtVerifier,
+  overrides: { sttPort?: SttPort; translationPort?: TranslationPort } = {},
+): Promise<AppHarness> => {
   const app = buildApp({
     issueStreamTokenUseCase: noopUseCase,
     jwtVerifier: verifier,
     accessTokenVerifier: noopAccessTokenVerifier,
+    sttPort: overrides.sttPort ?? createMockSttProvider(),
+    translationPort: overrides.translationPort ?? createMockTranslationProvider(),
   });
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();
@@ -355,6 +364,8 @@ describe('WebSocket /relay route', () => {
       void app.register((instance, _opts, done) => {
         registerRelayRoute(instance, {
           jwtVerifier: okVerifier,
+          sttPort: createMockSttProvider(),
+          translationPort: createMockTranslationProvider(),
           clock: () => new Date().toISOString(),
           heartbeatIntervalSec: 1,
           heartbeatCheckIntervalMs: 50,
@@ -416,6 +427,111 @@ describe('WebSocket /relay route', () => {
         await queue.next(); // consume session.pong
       }
       expect(closed).toBe(false);
+      ws.close();
+    }, 10000);
+  });
+
+  describe('IMPL-421/422 audio.frame → transcript → translation (end-to-end)', () => {
+    it('emits transcript.partial / transcript.final / translation.final via mock providers', async () => {
+      const scriptedTranscripts: TranscriptEvent[] = [
+        {
+          type: 'partial',
+          segmentId: 'seg_01',
+          revision: 1,
+          text: 'hello',
+          language: 'en',
+          startOffsetMs: 0,
+          endOffsetMs: 500,
+        },
+        {
+          type: 'final',
+          segmentId: 'seg_01',
+          text: 'hello world',
+          language: 'en',
+          startOffsetMs: 0,
+          endOffsetMs: 1000,
+          finalizedAt: '2026-04-21T00:00:00.000Z',
+        },
+      ];
+      const sttPort = createMockSttProvider({ transcripts: scriptedTranscripts });
+      const translationPort = createMockTranslationProvider({
+        translations: new Map([['hello world', 'こんにちは世界']]),
+      });
+      harness = await startApp(okVerifier, { sttPort, translationPort });
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'session.start',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sourceLanguage: 'en-US',
+            autoDetectLanguage: false,
+            targetLanguage: 'ja-JP',
+            translationEnabled: true,
+          },
+        }),
+      );
+
+      const partial = await queue.next(5000);
+      expect(partial).toMatchObject({
+        eventType: 'transcript.partial',
+        payload: { segmentId: 'seg_01', revision: 1, text: 'hello' },
+      });
+
+      const final = await queue.next(5000);
+      expect(final).toMatchObject({
+        eventType: 'transcript.final',
+        payload: { segmentId: 'seg_01', text: 'hello world' },
+      });
+
+      const translation = await queue.next(5000);
+      expect(translation).toMatchObject({
+        eventType: 'translation.final',
+        payload: {
+          sourceSegmentId: 'seg_01',
+          text: 'こんにちは世界',
+          targetLanguage: 'ja-JP',
+        },
+      });
+
+      ws.close();
+    }, 15000);
+
+    it('rejects audio.frame before session.start with SESSION_NOT_READY', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_1',
+            audioBase64: 'AAAA=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      const error = await queue.next(5000);
+      expect(error).toMatchObject({
+        eventType: 'session.error',
+        payload: { code: 'SESSION_NOT_READY' },
+      });
       ws.close();
     }, 10000);
   });

@@ -65,6 +65,108 @@ export const buildSessionPong = (params: {
   payload: {},
 });
 
+export type TranscriptPartialPayload = Readonly<{
+  segmentId: string;
+  revision: number;
+  text: string;
+  language: string | null;
+  startOffsetMs: number;
+  endOffsetMs: number;
+}>;
+
+export const buildTranscriptPartial = (params: {
+  sessionId: string;
+  sequence: number;
+  timestamp: string;
+  segmentId: string;
+  revision: number;
+  text: string;
+  language: string | null;
+  startOffsetMs: number;
+  endOffsetMs: number;
+}): ServerEventEnvelope => ({
+  eventType: 'transcript.partial',
+  sessionId: params.sessionId,
+  sequence: params.sequence,
+  timestamp: params.timestamp,
+  payload: {
+    segmentId: params.segmentId,
+    revision: params.revision,
+    text: params.text,
+    language: params.language,
+    startOffsetMs: params.startOffsetMs,
+    endOffsetMs: params.endOffsetMs,
+  } satisfies TranscriptPartialPayload,
+});
+
+export type TranscriptFinalPayload = Readonly<{
+  segmentId: string;
+  text: string;
+  language: string | null;
+  startOffsetMs: number;
+  endOffsetMs: number;
+  finalizedAt: string;
+}>;
+
+export const buildTranscriptFinal = (params: {
+  sessionId: string;
+  sequence: number;
+  timestamp: string;
+  segmentId: string;
+  text: string;
+  language: string | null;
+  startOffsetMs: number;
+  endOffsetMs: number;
+  finalizedAt: string;
+}): ServerEventEnvelope => ({
+  eventType: 'transcript.final',
+  sessionId: params.sessionId,
+  sequence: params.sequence,
+  timestamp: params.timestamp,
+  payload: {
+    segmentId: params.segmentId,
+    text: params.text,
+    language: params.language,
+    startOffsetMs: params.startOffsetMs,
+    endOffsetMs: params.endOffsetMs,
+    finalizedAt: params.finalizedAt,
+  } satisfies TranscriptFinalPayload,
+});
+
+export type TranslationFinalPayload = Readonly<{
+  translationId: string;
+  sourceSegmentId: string;
+  text: string;
+  sourceLanguage: string | null;
+  targetLanguage: string;
+  latencyMs: number;
+}>;
+
+export const buildTranslationFinal = (params: {
+  sessionId: string;
+  sequence: number;
+  timestamp: string;
+  translationId: string;
+  sourceSegmentId: string;
+  text: string;
+  sourceLanguage: string | null;
+  targetLanguage: string;
+  latencyMs: number;
+}): ServerEventEnvelope => ({
+  eventType: 'translation.final',
+  sessionId: params.sessionId,
+  sequence: params.sequence,
+  timestamp: params.timestamp,
+  payload: {
+    translationId: params.translationId,
+    sourceSegmentId: params.sourceSegmentId,
+    text: params.text,
+    sourceLanguage: params.sourceLanguage,
+    targetLanguage: params.targetLanguage,
+    latencyMs: params.latencyMs,
+  } satisfies TranslationFinalPayload,
+});
+
 export type SessionErrorCode =
   | 'VALIDATION_ERROR'
   | 'INVALID_STATE_TRANSITION'

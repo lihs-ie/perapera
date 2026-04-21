@@ -1,12 +1,22 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { RawData, WebSocket } from 'ws';
+import { ulid } from 'ulid';
 import { type JwtVerifier } from '../../application/ports/jwt-verifier';
+import {
+  type SttPort,
+  type SttStreamHandle,
+  type TranscriptEvent,
+} from '../../application/ports/stt-port';
+import { type TranslationPort } from '../../application/ports/translation-port';
 import { toHttpErrorEnvelope } from '../http/error-mapper';
 import { parseClientEvent, type ClientEvent } from './client-events';
 import {
   buildSessionError,
   buildSessionPong,
   buildSessionReady,
+  buildTranscriptFinal,
+  buildTranscriptPartial,
+  buildTranslationFinal,
   serializeServerEvent,
   type SessionErrorCode,
 } from './server-events';
@@ -14,36 +24,27 @@ import { authorizeRelayUpgrade, type RelayAuthorizedContext } from './relay-auth
 
 export type RelayRouteDependencies = Readonly<{
   jwtVerifier: JwtVerifier;
+  sttPort: SttPort;
+  translationPort: TranslationPort;
   clock: () => string;
-  /**
-   * クライアントに伝える `session.ready.payload.heartbeatIntervalSec`。
-   * クライアントはこの間隔で `session.ping` を送信する想定 (api-spec §6.2)。
-   */
   heartbeatIntervalSec: number;
-  /**
-   * サーバー側のハートビート監視スキャン間隔 (ミリ秒)。タイムアウト判定のため
-   * `setInterval` でポーリングする。既定 5 秒。
-   */
   heartbeatCheckIntervalMs?: number;
-  /**
-   * `heartbeatIntervalSec` に対するタイムアウト倍率。既定 2 倍。
-   * 前回の受信からこの時間を超えたら接続を切断する (1001 Going Away)。
-   */
   heartbeatTimeoutFactor?: number;
+  /** audio.frame/秒 の上限 (api-spec §2.4)。既定 10。 */
+  audioFrameRateLimitPerSec?: number;
+  /** translationId 生成器 (test で deterministic に) */
+  translationIdFactory?: () => string;
 }>;
 
 const DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS = 5000;
 const DEFAULT_HEARTBEAT_TIMEOUT_FACTOR = 2;
+const DEFAULT_AUDIO_FRAME_LIMIT_PER_SEC = 10;
 
 type RelayQuery = Readonly<{
   sessionId?: string;
   protocolVersion?: string;
 }>;
 
-/**
- * preValidation で確立した認可情報を handler へ渡す。request 拡張プロパティは
- * WebSocket upgrade 経路で参照が不安定なため、WeakMap で明示的に受け渡す。
- */
 const contextMap = new WeakMap<FastifyRequest, RelayAuthorizedContext>();
 
 const decodeRawMessage = (data: RawData): string => {
@@ -52,53 +53,45 @@ const decodeRawMessage = (data: RawData): string => {
   return Buffer.from(data).toString('utf8');
 };
 
-/**
- * 接続ごとの server event `sequence` 採番器。
- */
 const createSequencer = (): (() => number) => {
   let next = 0;
   return () => next++;
 };
 
 /**
- * クライアントイベントを dispatch する。MVP では session.ping のみ応答を返し、
- * それ以外は log に記録するだけ (IMPL-441/442 で mock STT/翻訳と連携する際に
- * 実処理を接続する)。
+ * 1 秒 sliding window の rate bucket。直近 windowMs (=1000) 内の timestamp を
+ * 保持し、max を超えたら reject。
  */
-const dispatchClientEvent = (
-  event: ClientEvent,
-  send: (eventJson: string) => void,
-  deps: RelayRouteDependencies,
-  context: RelayAuthorizedContext,
-  nextSequence: () => number,
-  logger: FastifyRequest['log'],
-): void => {
-  switch (event.eventType) {
-    case 'session.ping': {
-      send(
-        serializeServerEvent(
-          buildSessionPong({
-            sessionId: context.sessionId,
-            sequence: nextSequence(),
-            timestamp: deps.clock(),
-          }),
-        ),
-      );
-      return;
-    }
-    case 'session.start':
-    case 'audio.frame':
-    case 'session.pause':
-    case 'session.resume':
-    case 'session.stop': {
-      logger.debug(
-        { eventType: event.eventType, sequence: event.sequence },
-        'client event received',
-      );
-      return;
-    }
-  }
+const createRateBucket = (max: number, windowMs: number) => {
+  let timestamps: number[] = [];
+  return {
+    tryConsume: (now: number): boolean => {
+      timestamps = timestamps.filter((t) => now - t < windowMs);
+      if (timestamps.length >= max) return false;
+      timestamps.push(now);
+      return true;
+    },
+  };
 };
+
+const extractClaimString = (
+  claims: Readonly<Record<string, unknown>>,
+  key: string,
+): string | null => {
+  const value = claims[key];
+  return typeof value === 'string' ? value : null;
+};
+
+const extractClaimBoolean = (claims: Readonly<Record<string, unknown>>, key: string): boolean => {
+  const value = claims[key];
+  return typeof value === 'boolean' ? value : false;
+};
+
+type ActiveStream = Readonly<{
+  handle: SttStreamHandle;
+  targetLanguage: string;
+  sourceLanguage: string | null;
+}>;
 
 const sendSessionError = (
   socket: WebSocket,
@@ -127,23 +120,107 @@ const sendSessionError = (
   );
 };
 
+const emitTranscriptPartial = (
+  socket: WebSocket,
+  context: RelayAuthorizedContext,
+  nextSequence: () => number,
+  clock: () => string,
+  event: Extract<TranscriptEvent, { type: 'partial' }>,
+): void => {
+  socket.send(
+    serializeServerEvent(
+      buildTranscriptPartial({
+        sessionId: context.sessionId,
+        sequence: nextSequence(),
+        timestamp: clock(),
+        segmentId: event.segmentId,
+        revision: event.revision,
+        text: event.text,
+        language: event.language,
+        startOffsetMs: event.startOffsetMs,
+        endOffsetMs: event.endOffsetMs,
+      }),
+    ),
+  );
+};
+
+const emitTranscriptFinal = (
+  socket: WebSocket,
+  context: RelayAuthorizedContext,
+  nextSequence: () => number,
+  clock: () => string,
+  event: Extract<TranscriptEvent, { type: 'final' }>,
+): void => {
+  socket.send(
+    serializeServerEvent(
+      buildTranscriptFinal({
+        sessionId: context.sessionId,
+        sequence: nextSequence(),
+        timestamp: clock(),
+        segmentId: event.segmentId,
+        text: event.text,
+        language: event.language,
+        startOffsetMs: event.startOffsetMs,
+        endOffsetMs: event.endOffsetMs,
+        finalizedAt: event.finalizedAt,
+      }),
+    ),
+  );
+};
+
+const emitTranslationFinal = (
+  socket: WebSocket,
+  context: RelayAuthorizedContext,
+  nextSequence: () => number,
+  clock: () => string,
+  params: {
+    translationId: string;
+    sourceSegmentId: string;
+    text: string;
+    sourceLanguage: string | null;
+    targetLanguage: string;
+    latencyMs: number;
+  },
+): void => {
+  socket.send(
+    serializeServerEvent(
+      buildTranslationFinal({
+        sessionId: context.sessionId,
+        sequence: nextSequence(),
+        timestamp: clock(),
+        translationId: params.translationId,
+        sourceSegmentId: params.sourceSegmentId,
+        text: params.text,
+        sourceLanguage: params.sourceLanguage,
+        targetLanguage: params.targetLanguage,
+        latencyMs: params.latencyMs,
+      }),
+    ),
+  );
+};
+
 /**
- * IMPL-420 + IMPL-421 + IMPL-422 (部分) `/relay` WebSocket 接続ルート。
+ * IMPL-420/421/422/423 `/relay` WebSocket 接続ルート (完全版)。
  *
- * 対応範囲:
- * - upgrade 時認可 (JWT verify + sessionId ↔ sub 一致 + protocolVersion)
- * - `session.ready` 送信 (api-specification §6.3 準拠)
- * - client event 受信 + JSON / Zod validation
- * - `session.ping` → `session.pong` 応答
- * - 不正 payload は `session.error(VALIDATION_ERROR)` を返信 (接続は維持)
- *
- * 未対応 (後続):
- * - `session.start` / `audio.frame` に対応する STT / 翻訳 dispatch (IMPL-441/442)
- * - `pause` / `resume` / `stop` の session state 連携
- * - `transcript.*` / `translation.final` サーバーイベント生成 (IMPL-441/442)
- * - heartbeat (IMPL-423)
+ * 流れ:
+ * 1. HTTP upgrade 時に preValidation で stream token を検証 (IMPL-420)
+ * 2. `session.ready` 送信 (IMPL-422)
+ * 3. ハートビート監視開始 (IMPL-423)
+ * 4. `session.start` → SttPort.openStream、transcript event async loop を起動
+ *    (IMPL-421)
+ * 5. `audio.frame` → rate bucket (10/sec) + sendFrame (IMPL-402)
+ * 6. STT の partial → `transcript.partial` を client へ、final →
+ *    `transcript.final` + 並行して TranslationPort.translate → `translation.final`
+ *    送信 (IMPL-422 + IMPL-403)
+ * 7. `session.ping` → `session.pong` (IMPL-421)
+ * 8. `session.stop` → SttStreamHandle.close、接続を graceful close
+ * 9. `session.pause` / `session.resume`: MVP では log のみ (Deepgram は
+ *    stream pause 非対応、session state は client 側管理)
  */
 export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDependencies): void => {
+  const audioFrameLimit = deps.audioFrameRateLimitPerSec ?? DEFAULT_AUDIO_FRAME_LIMIT_PER_SEC;
+  const translationIdFactory = deps.translationIdFactory ?? (() => ulid());
+
   app.get<{ Querystring: RelayQuery }>(
     '/relay',
     {
@@ -187,8 +264,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
         ),
       );
 
-      // IMPL-423 ハートビート監視。前回の受信から
-      // heartbeatIntervalSec * heartbeatTimeoutFactor を超えたら切断。
+      // ハートビート監視
       const timeoutMs =
         deps.heartbeatIntervalSec *
         (deps.heartbeatTimeoutFactor ?? DEFAULT_HEARTBEAT_TIMEOUT_FACTOR) *
@@ -206,11 +282,186 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       }, checkIntervalMs);
       heartbeatTimer.unref();
 
+      // per-connection state
+      let activeStream: ActiveStream | null = null;
+      const audioFrameBucket = createRateBucket(audioFrameLimit, 1000);
+
+      const closeActiveStream = (): void => {
+        if (activeStream === null) return;
+        const handle = activeStream.handle;
+        activeStream = null;
+        void handle.close().match(
+          () => undefined,
+          (err) => {
+            request.log.warn({ err }, 'stt handle close failed');
+          },
+        );
+      };
+
       const cleanup = (): void => {
         clearInterval(heartbeatTimer);
+        closeActiveStream();
       };
       socket.on('close', cleanup);
       socket.on('error', cleanup);
+
+      /**
+       * STT transcript events を subscribe し、partial / final を client へ emit。
+       * final が来たら TranslationPort へ投げ、成功した translation.final を
+       * 送信 (失敗は log.warn、接続は維持)。
+       */
+      const runTranscriptLoop = (stream: ActiveStream): void => {
+        void (async () => {
+          for await (const event of stream.handle.events) {
+            try {
+              if (event.type === 'partial') {
+                emitTranscriptPartial(socket, context, nextSequence, deps.clock, event);
+                continue;
+              }
+              emitTranscriptFinal(socket, context, nextSequence, deps.clock, event);
+              // 翻訳は fire-and-forget (ホットパス翻訳、結果は translation.final で送信)
+              void (async () => {
+                const translationResult = await deps.translationPort.translate({
+                  text: event.text,
+                  sourceLanguage: stream.sourceLanguage,
+                  targetLanguage: stream.targetLanguage,
+                });
+                if (translationResult.isErr()) {
+                  request.log.warn(
+                    { err: translationResult.error, segmentId: event.segmentId },
+                    'translation failed — skipping translation.final',
+                  );
+                  return;
+                }
+                emitTranslationFinal(socket, context, nextSequence, deps.clock, {
+                  translationId: translationIdFactory(),
+                  sourceSegmentId: event.segmentId,
+                  text: translationResult.value.text,
+                  sourceLanguage: translationResult.value.detectedSourceLanguage,
+                  targetLanguage: stream.targetLanguage,
+                  latencyMs: translationResult.value.latencyMs,
+                });
+              })();
+            } catch (cause) {
+              request.log.error({ err: cause }, 'transcript loop iteration failed');
+            }
+          }
+        })();
+      };
+
+      const handleSessionStart = (
+        event: Extract<ClientEvent, { eventType: 'session.start' }>,
+      ): void => {
+        if (activeStream !== null) {
+          sendSessionError(socket, context, nextSequence, deps.clock, {
+            code: 'INVALID_STATE_TRANSITION',
+            message: 'session.start received while stream is already active',
+            retryable: false,
+            fatal: false,
+          });
+          return;
+        }
+        // JWT claims / session.start payload どちらからも language を決定
+        const sourceLanguage =
+          event.payload.sourceLanguage ??
+          extractClaimString(context.tokenPayload.claims, 'sourceLanguage');
+        const autoDetectLanguage =
+          event.payload.autoDetectLanguage ||
+          extractClaimBoolean(context.tokenPayload.claims, 'autoDetectLanguage');
+        const targetLanguage = event.payload.targetLanguage;
+        void deps.sttPort
+          .openStream({
+            sourceLanguage: autoDetectLanguage ? null : sourceLanguage,
+            autoDetectLanguage,
+          })
+          .match(
+            (handle) => {
+              const stream: ActiveStream = {
+                handle,
+                targetLanguage,
+                sourceLanguage: autoDetectLanguage ? null : sourceLanguage,
+              };
+              activeStream = stream;
+              runTranscriptLoop(stream);
+            },
+            (err) => {
+              request.log.error({ err }, 'stt openStream failed');
+              sendSessionError(socket, context, nextSequence, deps.clock, {
+                code: 'STT_ERROR',
+                message: 'failed to open STT stream',
+                retryable: true,
+                fatal: false,
+              });
+            },
+          );
+      };
+
+      const handleAudioFrame = (
+        event: Extract<ClientEvent, { eventType: 'audio.frame' }>,
+      ): void => {
+        if (activeStream === null) {
+          sendSessionError(socket, context, nextSequence, deps.clock, {
+            code: 'SESSION_NOT_READY',
+            message: 'audio.frame received before session.start',
+            retryable: false,
+            fatal: false,
+          });
+          return;
+        }
+        if (!audioFrameBucket.tryConsume(Date.now())) {
+          sendSessionError(socket, context, nextSequence, deps.clock, {
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: `audio.frame rate limit exceeded (${String(audioFrameLimit)}/sec)`,
+            retryable: true,
+            fatal: false,
+          });
+          return;
+        }
+        const result = activeStream.handle.sendFrame({
+          audioBase64: event.payload.audioBase64,
+          chunkId: event.payload.chunkId,
+        });
+        if (result.isErr()) {
+          request.log.warn({ err: result.error }, 'stt sendFrame failed');
+        }
+      };
+
+      const handleSessionStop = (): void => {
+        closeActiveStream();
+      };
+
+      const dispatchClientEvent = (event: ClientEvent): void => {
+        switch (event.eventType) {
+          case 'session.ping':
+            socket.send(
+              serializeServerEvent(
+                buildSessionPong({
+                  sessionId: context.sessionId,
+                  sequence: nextSequence(),
+                  timestamp: deps.clock(),
+                }),
+              ),
+            );
+            return;
+          case 'session.start':
+            handleSessionStart(event);
+            return;
+          case 'audio.frame':
+            handleAudioFrame(event);
+            return;
+          case 'session.stop':
+            handleSessionStop();
+            return;
+          case 'session.pause':
+          case 'session.resume':
+            // MVP: log のみ。Deepgram は stream pause 非対応のため再接続で代替
+            request.log.debug(
+              { eventType: event.eventType, sequence: event.sequence },
+              'pause/resume event received (no-op in MVP)',
+            );
+            return;
+        }
+      };
 
       socket.on('message', (raw: RawData) => {
         lastActivityMs = Date.now();
@@ -228,14 +479,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
           return;
         }
         try {
-          dispatchClientEvent(
-            parsed.value,
-            (json) => socket.send(json),
-            deps,
-            context,
-            nextSequence,
-            request.log,
-          );
+          dispatchClientEvent(parsed.value);
         } catch (cause) {
           request.log.error({ err: cause }, 'dispatch failure');
           sendSessionError(socket, context, nextSequence, deps.clock, {
