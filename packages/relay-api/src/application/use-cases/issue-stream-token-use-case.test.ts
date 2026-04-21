@@ -1,10 +1,8 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it, vi } from 'vitest';
-import { type RelaySession } from '../../domain/session/relay-session';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
 import { type IssueStreamTokenInput } from '../dto/issue-stream-token-dto';
 import { type JwtSigner } from '../ports/jwt-signer';
-import { type RelaySessionRepository } from '../ports/session-repository';
 import {
   createIssueStreamTokenUseCase,
   type IssueStreamTokenDependencies,
@@ -31,25 +29,12 @@ const buildDeps = (
   overrides: Partial<IssueStreamTokenDependencies> = {},
 ): IssueStreamTokenDependencies & {
   jwtSigner: { sign: ReturnType<typeof vi.fn<JwtSigner['sign']>> };
-  sessionRepository: {
-    save: ReturnType<typeof vi.fn<RelaySessionRepository['save']>>;
-    find: ReturnType<typeof vi.fn<RelaySessionRepository['find']>>;
-    delete: ReturnType<typeof vi.fn<RelaySessionRepository['delete']>>;
-  };
 } => {
   const jwtSigner = {
     sign: vi.fn<JwtSigner['sign']>(() => okAsync<string, DomainError>(JWT_STRING)),
   };
-  const sessionRepository = {
-    save: vi.fn<RelaySessionRepository['save']>(() => okAsync<void, DomainError>(undefined)),
-    find: vi.fn<RelaySessionRepository['find']>(() =>
-      okAsync<RelaySession | null, DomainError>(null),
-    ),
-    delete: vi.fn<RelaySessionRepository['delete']>(() => okAsync<void, DomainError>(undefined)),
-  };
   const base: IssueStreamTokenDependencies = {
     jwtSigner,
-    sessionRepository,
     clock: () => CREATED_AT,
     sessionIdFactory: () => SESSION_ID,
     streamTokenIdFactory: () => TOKEN_ID,
@@ -59,11 +44,11 @@ const buildDeps = (
     maxConcurrentSessions: 3,
     maxFrameRatePerSecond: 10,
   };
-  return { ...base, ...overrides, jwtSigner, sessionRepository };
+  return { ...base, ...overrides, jwtSigner };
 };
 
-describe('createIssueStreamTokenUseCase (IMPL-401)', () => {
-  it('returns sessionId + JWT + expiresAt and saves the session', async () => {
+describe('createIssueStreamTokenUseCase (IMPL-401, stateless)', () => {
+  it('returns sessionId + JWT + expiresAt without any repository', async () => {
     const deps = buildDeps();
     const useCase = createIssueStreamTokenUseCase(deps);
     const result = await useCase(buildInput());
@@ -78,7 +63,6 @@ describe('createIssueStreamTokenUseCase (IMPL-401)', () => {
       expect(result.value.limits.maxConcurrentSessions).toBe(3);
     }
     expect(deps.jwtSigner.sign).toHaveBeenCalledTimes(1);
-    expect(deps.sessionRepository.save).toHaveBeenCalledTimes(1);
   });
 
   it('signs the JWT with jti, sub, and expiresAtEpochSec', async () => {
@@ -93,6 +77,23 @@ describe('createIssueStreamTokenUseCase (IMPL-401)', () => {
     );
   });
 
+  it('embeds full session metadata into JWT extraClaims (stateless design)', async () => {
+    const deps = buildDeps();
+    const useCase = createIssueStreamTokenUseCase(deps);
+    await useCase(buildInput());
+    const payload = deps.jwtSigner.sign.mock.calls[0]?.[0];
+    expect(payload?.extraClaims).toEqual({
+      sourceType: 'tab',
+      displayName: 'YouTube Live',
+      sourceLanguage: 'en-US',
+      autoDetectLanguage: false,
+      targetLanguage: 'ja-JP',
+      overlayTarget: { kind: 'tab', tabId: 42 },
+      client: { extensionVersion: '0.1.0', protocolVersion: '1.0' },
+      createdAt: CREATED_AT,
+    });
+  });
+
   it('rejects invalid input (missing displayName)', async () => {
     const deps = buildDeps();
     const useCase = createIssueStreamTokenUseCase(deps);
@@ -103,7 +104,6 @@ describe('createIssueStreamTokenUseCase (IMPL-401)', () => {
     expect(result.isErr()).toBe(true);
     if (result.isErr()) expect(result.error.kind).toBe('validation');
     expect(deps.jwtSigner.sign).not.toHaveBeenCalled();
-    expect(deps.sessionRepository.save).not.toHaveBeenCalled();
   });
 
   it('rejects autoDetectLanguage=false with sourceLanguage=null', async () => {
@@ -112,27 +112,14 @@ describe('createIssueStreamTokenUseCase (IMPL-401)', () => {
     const result = await useCase(buildInput({ autoDetectLanguage: false, sourceLanguage: null }));
     expect(result.isErr()).toBe(true);
     if (result.isErr()) expect(result.error.kind).toBe('invariant-violation');
-    expect(deps.sessionRepository.save).not.toHaveBeenCalled();
+    expect(deps.jwtSigner.sign).not.toHaveBeenCalled();
   });
 
-  it('surfaces jwtSigner failure without saving', async () => {
+  it('surfaces jwtSigner failure', async () => {
     const deps = buildDeps();
     deps.jwtSigner.sign.mockReturnValueOnce(
       errAsync<string, DomainError>(
         invariantViolationError({ invariant: 'jwt-signing-failed', details: 'boom' }),
-      ),
-    );
-    const useCase = createIssueStreamTokenUseCase(deps);
-    const result = await useCase(buildInput());
-    expect(result.isErr()).toBe(true);
-    expect(deps.sessionRepository.save).not.toHaveBeenCalled();
-  });
-
-  it('surfaces sessionRepository failure', async () => {
-    const deps = buildDeps();
-    deps.sessionRepository.save.mockReturnValueOnce(
-      errAsync<void, DomainError>(
-        invariantViolationError({ invariant: 'repo-write-failed', details: 'boom' }),
       ),
     );
     const useCase = createIssueStreamTokenUseCase(deps);
