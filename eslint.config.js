@@ -105,6 +105,27 @@ export default tseslint.config(
     },
   },
 
+  // Mock leak prevention: production src/ は tests/ からインポートしない
+  // (tests/support/mock/* は test-only、本番配線に入れない契約を物理的に固定)
+  {
+    files: ['packages/relay-api/src/**/*.ts', 'packages/extension/src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/tests/**', '../../../tests/**', '../../tests/**', '../tests/**'],
+              message:
+                'src/ must not import from tests/ — Mock / in-memory helpers are test-only (Mock leak prevention)',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // React (extension package)
   {
     files: ['packages/extension/**/*.{ts,tsx}'],

@@ -1,8 +1,11 @@
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ulid } from 'ulid';
+import { WebSocket as WsWebSocket } from 'ws';
 import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
 import { type JwtVerifier } from '../../application/ports/jwt-verifier';
+import { type SttPort } from '../../application/ports/stt-port';
+import { type TranslationPort } from '../../application/ports/translation-port';
 import {
   createIssueStreamTokenUseCase,
   type IssueStreamTokenUseCase,
@@ -11,6 +14,8 @@ import { createJoseJwtSigner } from '../../infrastructure/auth/jose-jwt-signer';
 import { createJoseJwtVerifier } from '../../infrastructure/auth/jose-jwt-verifier';
 import { createStaticAccessTokenVerifier } from '../../infrastructure/auth/static-access-token-verifier';
 import { loggerOptions } from '../../infrastructure/logging/logger';
+import { createDeepgramSttProvider } from '../../infrastructure/providers/deepgram-stt-provider';
+import { createDeepLTranslationProvider } from '../../infrastructure/providers/deepl-translation-provider';
 import { registerRelayRoute } from '../ws/relay-route';
 import { registerRequestContextHook } from './request-context-hook';
 import { registerGetSessionRoute } from './routes/get-session';
@@ -22,6 +27,15 @@ export type AppDependencies = Readonly<{
   issueStreamTokenUseCase: IssueStreamTokenUseCase;
   jwtVerifier: JwtVerifier;
   accessTokenVerifier: AccessTokenVerifier;
+  /**
+   * STT プロバイダ。本番では Deepgram を配線する。test では mock-stt-provider
+   * を渡す (tests/support/mock)。PR G の WS wiring で使用する。
+   */
+  sttPort?: SttPort;
+  /**
+   * 翻訳プロバイダ。本番では DeepL を配線する。PR G の WS wiring で使用する。
+   */
+  translationPort?: TranslationPort;
   security?: SecurityPluginConfig;
   postSessionsRateLimit?: Readonly<{ max: number; timeWindowMs: number }>;
 }>;
@@ -87,6 +101,10 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
  * - CORS_ALLOWED_ORIGINS: CORS 許可 origin (カンマ区切り)。未設定時は任意の
  *   `chrome-extension://<32 chars>` を許容する dev friendly 挙動
  * - RATE_LIMIT_SESSIONS_PER_MIN: POST /sessions の per-user 上限 (既定 30)
+ * - DEEPGRAM_API_KEY: Deepgram STT API キー (必須)
+ * - DEEPGRAM_BASE_URL: 既定 `wss://api.deepgram.com/v1/listen`
+ * - DEEPL_API_KEY: DeepL 翻訳 API キー (必須)
+ * - DEEPL_BASE_URL: 既定 `https://api-free.deepl.com`。有料版は `https://api.deepl.com`
  */
 const buildProductionDependencies = (): AppDependencies => {
   const secret = process.env['STREAM_TOKEN_SECRET'];
@@ -134,10 +152,31 @@ const buildProductionDependencies = (): AppDependencies => {
     10,
   );
 
+  const deepgramApiKey = process.env['DEEPGRAM_API_KEY'];
+  if (deepgramApiKey === undefined || deepgramApiKey.length === 0) {
+    throw new Error('DEEPGRAM_API_KEY env var is required for production STT provider');
+  }
+  const sttPort = createDeepgramSttProvider({
+    apiKey: deepgramApiKey,
+    baseUrl: process.env['DEEPGRAM_BASE_URL'] ?? 'wss://api.deepgram.com/v1/listen',
+    webSocketFactory: (url, headers) => new WsWebSocket(url, { headers }),
+  });
+
+  const deeplApiKey = process.env['DEEPL_API_KEY'];
+  if (deeplApiKey === undefined || deeplApiKey.length === 0) {
+    throw new Error('DEEPL_API_KEY env var is required for production translation provider');
+  }
+  const translationPort = createDeepLTranslationProvider({
+    apiKey: deeplApiKey,
+    baseUrl: process.env['DEEPL_BASE_URL'] ?? 'https://api-free.deepl.com',
+  });
+
   return {
     issueStreamTokenUseCase,
     jwtVerifier,
     accessTokenVerifier,
+    sttPort,
+    translationPort,
     security: allowedOrigins !== undefined ? { allowedOrigins } : {},
     postSessionsRateLimit: { max: sessionsLimitPerMin, timeWindowMs: 60_000 },
   };
