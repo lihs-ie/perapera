@@ -12,6 +12,7 @@ import { createJoseJwtVerifier } from '../../infrastructure/auth/jose-jwt-verifi
 import { createStaticAccessTokenVerifier } from '../../infrastructure/auth/static-access-token-verifier';
 import { loggerOptions } from '../../infrastructure/logging/logger';
 import { registerRelayRoute } from '../ws/relay-route';
+import { registerRequestContextHook } from './request-context-hook';
 import { registerHealthRoute } from './routes/health';
 import { registerSessionsRoute } from './routes/sessions';
 
@@ -28,6 +29,8 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     trustProxy: true,
     genReqId: () => `req_${ulid()}`,
   });
+
+  registerRequestContextHook(app);
 
   // @fastify/websocket は onRoute hook で `{ websocket: true }` 経路を変換する。
   // hook は plugin load 後にしか有効にならないため、WebSocket route は本 plugin
