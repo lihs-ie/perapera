@@ -9,8 +9,13 @@ import {
   transitionSourceSessionState,
   type SourceSession,
 } from '../session/source-session.js';
-import { type SessionState } from '../session/session-state.js';
-import { validateSessionConcurrency } from './session-concurrency-policy.js';
+import { SESSION_STATES, type SessionState } from '../session/session-state.js';
+import {
+  MAX_CONCURRENT_ACTIVE_SESSIONS,
+  countActiveSessions,
+  isActiveSession,
+  satisfiesConcurrentSessionLimit,
+} from './concurrent-session-limit-specification.js';
 
 const SESSION_IDS = [
   '01HZX8Y1R8M7D3Q2P4T5V6W7A1',
@@ -91,61 +96,104 @@ const withState = (index: number, targetState: SessionState): SourceSession => {
   }
 };
 
-describe('SessionConcurrencyPolicy (DD-240)', () => {
-  describe('validateSessionConcurrency', () => {
-    it('returns ok for empty active session list', () => {
-      const result = validateSessionConcurrency([]);
-      expect(result.isOk()).toBe(true);
+describe('ConcurrentSessionLimitSpecification (DD-270)', () => {
+  it('exposes MAX_CONCURRENT_ACTIVE_SESSIONS = 3', () => {
+    expect(MAX_CONCURRENT_ACTIVE_SESSIONS).toBe(3);
+  });
+
+  describe('isActiveSession', () => {
+    const ACTIVE: readonly SessionState[] = [
+      'idle',
+      'requesting_permission',
+      'connecting',
+      'capturing',
+      'transcribing',
+      'translating',
+      'paused',
+      'reconnecting',
+      'degraded',
+      'error',
+    ];
+    const TERMINAL: readonly SessionState[] = ['stopped'];
+
+    it.each(ACTIVE)('treats %s as active', (state) => {
+      expect(isActiveSession(withState(0, state))).toBe(true);
     });
 
-    it('returns ok when active count is 1', () => {
-      const result = validateSessionConcurrency([withState(0, 'capturing')]);
-      expect(result.isOk()).toBe(true);
+    it.each(TERMINAL)('treats %s as non-active (terminal)', (state) => {
+      expect(isActiveSession(withState(0, state))).toBe(false);
     });
 
-    it('returns ok when active count is 2 (below limit)', () => {
-      const result = validateSessionConcurrency([
-        withState(0, 'capturing'),
-        withState(1, 'transcribing'),
-      ]);
-      expect(result.isOk()).toBe(true);
-    });
-
-    it('returns err with invariant-violation when active count reaches the limit', () => {
-      const result = validateSessionConcurrency([
-        withState(0, 'capturing'),
-        withState(1, 'transcribing'),
-        withState(2, 'translating'),
-      ]);
-      expect(result.isErr()).toBe(true);
-      if (result.isErr()) {
-        expect(result.error.kind).toBe('invariant-violation');
-        if (result.error.kind === 'invariant-violation') {
-          expect(result.error.invariant).toBe('concurrent-session-limit');
-          expect(result.error.details).toContain('3');
-        }
+    it('covers all 11 SessionState variants in the categorization', () => {
+      const covered = new Set<SessionState>([...ACTIVE, ...TERMINAL]);
+      for (const state of SESSION_STATES) {
+        expect(covered.has(state)).toBe(true);
       }
     });
+  });
 
-    it('returns err when active count exceeds the limit', () => {
-      const result = validateSessionConcurrency([
-        withState(0, 'capturing'),
-        withState(1, 'transcribing'),
-        withState(2, 'translating'),
-        withState(3, 'paused'),
-      ]);
-      expect(result.isErr()).toBe(true);
+  describe('countActiveSessions', () => {
+    it('returns 0 for an empty input', () => {
+      expect(countActiveSessions([])).toBe(0);
     });
 
-    it('ignores stopped sessions when evaluating the limit (2 active + 10 stopped → ok)', () => {
-      const result = validateSessionConcurrency([
+    it('counts only active sessions, ignoring stopped ones', () => {
+      const sessions: readonly SourceSession[] = [
         withState(0, 'capturing'),
-        withState(1, 'transcribing'),
-        withState(2, 'stopped'),
-        withState(3, 'stopped'),
-        withState(4, 'stopped'),
-      ]);
-      expect(result.isOk()).toBe(true);
+        withState(1, 'stopped'),
+        withState(2, 'transcribing'),
+      ];
+      expect(countActiveSessions(sessions)).toBe(2);
+    });
+
+    it('returns 0 when all sessions are stopped', () => {
+      const sessions: readonly SourceSession[] = [withState(0, 'stopped'), withState(1, 'stopped')];
+      expect(countActiveSessions(sessions)).toBe(0);
+    });
+  });
+
+  describe('satisfiesConcurrentSessionLimit', () => {
+    it('returns true for an empty session list', () => {
+      expect(satisfiesConcurrentSessionLimit([])).toBe(true);
+    });
+
+    it('returns true when active count is below the limit', () => {
+      expect(
+        satisfiesConcurrentSessionLimit([withState(0, 'capturing'), withState(1, 'transcribing')]),
+      ).toBe(true);
+    });
+
+    it('returns false when active count equals the limit (adding one more would exceed)', () => {
+      expect(
+        satisfiesConcurrentSessionLimit([
+          withState(0, 'capturing'),
+          withState(1, 'transcribing'),
+          withState(2, 'translating'),
+        ]),
+      ).toBe(false);
+    });
+
+    it('returns false when active count exceeds the limit', () => {
+      expect(
+        satisfiesConcurrentSessionLimit([
+          withState(0, 'capturing'),
+          withState(1, 'transcribing'),
+          withState(2, 'translating'),
+          withState(3, 'paused'),
+        ]),
+      ).toBe(false);
+    });
+
+    it('ignores stopped sessions when counting', () => {
+      expect(
+        satisfiesConcurrentSessionLimit([
+          withState(0, 'capturing'),
+          withState(1, 'transcribing'),
+          withState(2, 'stopped'),
+          withState(3, 'stopped'),
+          withState(4, 'stopped'),
+        ]),
+      ).toBe(true);
     });
   });
 });
