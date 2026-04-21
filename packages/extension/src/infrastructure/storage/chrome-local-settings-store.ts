@@ -64,9 +64,7 @@ const writeRaw = (
  * - chrome.storage I/O 失敗: `invariantViolationError({ invariant:
  *   'chrome-storage-access' })`
  */
-export const createChromeLocalSettingsStore = (
-  adapter: ChromeStorageAdapter = defaultChromeStorageAdapter,
-): SettingsStore => {
+export const createChromeLocalSettingsStore = (adapter: ChromeStorageAdapter): SettingsStore => {
   return {
     getDefaultLanguagePair: () =>
       readRaw(adapter, LANGUAGE_KEY).andThen((raw): ResultAsync<LanguagePair, DomainError> => {
