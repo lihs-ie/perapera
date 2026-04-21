@@ -1,11 +1,13 @@
+import fastifyWebsocket from '@fastify/websocket';
 import { errAsync, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { type JwtVerifiedPayload, type JwtVerifier } from '../../application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../../application/use-cases/issue-stream-token-use-case';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
 import { buildApp } from '../http/server';
+import { registerRelayRoute, type RelayRouteDependencies } from './relay-route';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const OTHER_SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7XX';
@@ -333,5 +335,79 @@ describe('WebSocket /relay route', () => {
         ws.close();
       }
     });
+  });
+
+  describe('IMPL-423 heartbeat', () => {
+    const startAppWithHeartbeat = async (
+      routeOverrides: Partial<RelayRouteDependencies> = {},
+    ): Promise<AppHarness> => {
+      const app = Fastify({ trustProxy: true });
+      void app.register(fastifyWebsocket);
+      void app.register((instance, _opts, done) => {
+        registerRelayRoute(instance, {
+          jwtVerifier: okVerifier,
+          clock: () => new Date().toISOString(),
+          heartbeatIntervalSec: 1,
+          heartbeatCheckIntervalMs: 50,
+          heartbeatTimeoutFactor: 2,
+          ...routeOverrides,
+        });
+        done();
+      });
+      await app.listen({ port: 0, host: '127.0.0.1' });
+      const address = app.server.address();
+      const port = typeof address === 'object' && address !== null ? address.port : 0;
+      return { app, port };
+    };
+
+    const awaitClose = (ws: WebSocket): Promise<{ code: number; reason: string }> =>
+      new Promise((resolve) => {
+        ws.once('close', (code: number, reason: Buffer) => {
+          resolve({ code, reason: reason.toString('utf8') });
+        });
+      });
+
+    it('closes the connection when the client stops sending for more than interval * factor', async () => {
+      harness = await startAppWithHeartbeat();
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // consume session.ready
+
+      const closed = await awaitClose(ws);
+      expect(closed.code).toBe(1001);
+      expect(closed.reason).toBe('heartbeat timeout');
+    }, 8000);
+
+    it('does not close the connection while the client keeps pinging within the interval', async () => {
+      harness = await startAppWithHeartbeat();
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // consume session.ready
+
+      let closed = false;
+      ws.once('close', () => {
+        closed = true;
+      });
+
+      // heartbeatIntervalSec=1 / factor=2 → timeout=2s. Ping at 500ms intervals
+      // for ~2.5s to prove the timer resets on each ping.
+      for (let i = 1; i <= 5; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        ws.send(
+          JSON.stringify({
+            eventType: 'session.ping',
+            sessionId: SESSION_ID,
+            sequence: i,
+            timestamp: new Date().toISOString(),
+            payload: {},
+          }),
+        );
+        await queue.next(); // consume session.pong
+      }
+      expect(closed).toBe(false);
+      ws.close();
+    }, 10000);
   });
 });
