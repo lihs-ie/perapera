@@ -43,17 +43,17 @@ author: 'Codex'
 
 ## 2. Phase 0: 着手前合意
 
-`CLAUDE.md` §未決事項のうち、実装に直接影響する判断を確定する。
+`CLAUDE.md` §Phase 0 合意事項のうち、実装に直接影響する判断を確定する。**全 5 項目完了 (2026-04-21)**。
 
-| ID       | タスク                                          | 完了基準                                                                                                | 関連                |
-| -------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------- |
-| IMPL-001 | `Result<T, E>` / `AsyncResult<T, E>` 提供元決定 | `neverthrow` を採用するか自作するか確定し、`packages/*/dependencies` に反映                             | CLAUDE.md §未決事項 |
-| IMPL-002 | ドメインエラー型階層方針決定                    | `SessionStateTransitionError` などの命名規則と階層粒度を `domain/shared/errors.ts` に最初の例として実装 | DD-220, DD-241      |
-| IMPL-003 | Lint / Format / E2E 配置確定                    | 現状ルート集約 + 各 workspace 継承で問題ないことを確認、または再配置                                    | CLAUDE.md §未決事項 |
-| IMPL-004 | `packages/shared` 採否決定                      | 拡張 ↔ Relay の WebSocket メッセージ契約・識別子型を共有するか個別定義するかを確定                      | DD-401, DD-411      |
-| IMPL-005 | SLO 視点の確定                                  | 翻訳応答 800ms が end-to-end か Relay 単体かをドキュメント化                                            | API-spec §2.6       |
+| ID       | ステータス | タスク                                          | 決定                                                                                                                                                                                       | 関連                        |
+| -------- | ---------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
+| IMPL-001 | [x]        | `Result<T, E>` / `AsyncResult<T, E>` 提供元決定 | `neverthrow` v8.1.1 を両 workspace で採用 (`Result` / `ResultAsync`)。`package.json` に反映済                                                                                              | CLAUDE.md §Phase 0 合意事項 |
+| IMPL-002 | [x]        | ドメインエラー型階層方針決定                    | discriminated union + factory 関数。初期 4 種 (`session-state-transition` / `invariant-violation` / `validation` / `not-found`) を `packages/extension/src/domain/shared/errors.ts` に実装 | DD-220, DD-241              |
+| IMPL-003 | [x]        | Lint / Format / E2E 配置確定                    | ルート集約 + workspace 継承で確定。Playwright は `packages/extension/e2e/`                                                                                                                 | CLAUDE.md §Phase 0 合意事項 |
+| IMPL-004 | [x]        | `packages/shared` 採否決定                      | 当面作らず個別定義。`api-specification.md` を SSOT とし、両 workspace で個別 Zod schema。Phase 4 で再評価                                                                                  | DD-401, DD-411              |
+| IMPL-005 | [x]        | SLO 視点の確定                                  | 翻訳 API 応答 800ms = Relay 単体、p95 1500ms = E2E。`api-specification.md` §2.6 と `operations-design.md` §4.4 に注記追加                                                                  | API-spec §2.6               |
 
-完了したら Phase 1 へ進む。
+→ **Phase 1 へ進む**。
 
 ---
 

@@ -151,6 +151,12 @@ flowchart TD
 | エラー    | `TRANSLATION_PROVIDER_FAILED` 比率 | 5 分窓で急増時に通知            |
 | 劣化運転  | `degraded` 状態セッション数        | 閾値超過で通知                  |
 
+**閾値視点の定義** (IMPL-005 で確定、Phase 0 合意事項):
+
+- 本節の `translation.final` 応答時間 `p95` は §2.2 の **翻訳字幕表示遅延 p95 1500ms** を指す (E2E 視点)
+- Relay API 内の翻訳プロバイダ呼び出し単体の上限は 800ms ([`api-specification.md` §2.6](../04-api-specification/api-specification.md) / [`infrastructure.md` §10.1](../03-detailed-design/infrastructure.md))。Relay 側ではこれを超過した段階で翻訳を打ち切り `session.error` + `session.state.changed(degraded)` を返す
+- 2 つの指標は別レイヤの SLO。Relay 単体が 800ms 以内でも、ネットワーク RTT や拡張側処理で E2E p95 が 1500ms を超える場合はアラートが発動する
+
 ## 5. メンテナンス
 
 ### 5.1 計画メンテナンス手順

@@ -190,18 +190,23 @@ GitHub Ruleset で `main` / `develop` を保護し、規約を実体として強
 - 字幕セグメントは `SegmentIdentifier`、翻訳は `TranslationIdentifier`
 - `sourceIdentifier` は `AudioSource` 集約ルート側の識別子。`SourceSession` 側の自己識別子は `sessionIdentifier`（フィールド名は `identifier` ではなく既存仕様に従い `sessionIdentifier` / `sourceIdentifier` を使用）
 
-## 未決事項（実装着手時に利用者と合意する）
+## Phase 0 合意事項（実装判断ログ）
 
-設計文書・本ファイル・グローバル規約のいずれにも明示されていない判断事項。勝手に選定せず、判断が必要になった時点で利用者に確認する:
+`docs/in-progress/12-implementation-tasks/Task.md` §2 Phase 0 で確定した判断。以降の実装はこれらを前提とする。
 
-- `Result<T, E>` / `AsyncResult<T, E>` の提供元（`neverthrow` / 自作等）
-- ドメインエラー型の細分化粒度と命名階層（`SessionStateTransitionError` 等の例外クラス体系）
-- Relay API のロガー選定（字幕本文・API キー・`Authorization` ヘッダーを平文出力しない規約を満たすもの）
-- Lint / Format / E2E 配置（ESLint / Prettier / Playwright のモノレポ内配置、ルート集約か各パッケージ配下か）
-- `packages/shared` による拡張 ↔ Relay の型共有可否（WebSocket メッセージ契約・識別子型）
-- SLO（翻訳応答 800ms）と運用アラート閾値（`translation.final` p95 1500ms 超で Warning）の関係が end-to-end 視点か Relay 単体視点かの確定
-- 実装コード未着手時点のリポジトリ構造（単一パッケージ / pnpm workspaces モノレポ、`src/` vs `packages/extension/src/` 等のトップレベル）
-- MVP に将来の TTS プロバイダ（`Deepgram Aura-2` / `Google Chirp 3: HD`）を含めるかの判断（設計上はホットパス外の後続拡張として扱われている）
+| ID       | 項目                                        | 決定                                                                                                                                                                                                  |
+| -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IMPL-001 | `Result<T, E>` / `AsyncResult<T, E>` 提供元 | **`neverthrow`** を両 workspace で採用 (`Result` / `ResultAsync`)                                                                                                                                     |
+| IMPL-002 | ドメインエラー型                            | **discriminated union + factory 関数** 形式。初期 4 種 (`session-state-transition` / `invariant-violation` / `validation` / `not-found`)。`packages/extension/src/domain/shared/errors.ts` が最初の例 |
+| IMPL-003 | Lint / Format / E2E 配置                    | ESLint flat config は **ルート集約 + `import rootConfig` で workspace 継承**。Prettier / TypeScript もルート一本。Playwright は `packages/extension/e2e/` 配下                                        |
+| IMPL-004 | `packages/shared` 採否                      | **作らず個別定義**。`docs/in-progress/04-api-specification/` を WebSocket メッセージ契約の SSOT として両 workspace で個別 Zod schema。Phase 4 で必要性が出た時点で再評価                              |
+| IMPL-005 | SLO 視点                                    | **翻訳 API 応答 800ms = Relay 単体**（超過で `degraded` 遷移）、**p95 1500ms = E2E**（運用アラート閾値でもある）。詳細注記は `api-specification.md` §2.6 と `operations-design.md` §4.4               |
+
+他の既に実態として決着済の項目:
+
+- **Relay API ロガー**: `pino` + redact（字幕本文・API キー・`Authorization` をマスク）で実装済
+- **リポジトリ構造**: pnpm workspaces モノレポ (`packages/extension`, `packages/relay-api`)
+- **TTS プロバイダ**: MVP 外。ホットパス外の後続拡張として扱う
 
 # 開発スタイル
 

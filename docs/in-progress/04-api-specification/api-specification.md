@@ -97,6 +97,12 @@ HTTP レートリミット応答には次のヘッダーを含める。
 
 注意: 上記は運用上の SLO であり、外部プロバイダやネットワーク状況により絶対保証ではない。
 
+**視点の区別** (IMPL-005 で確定、Phase 0 合意事項):
+
+- 本節の **翻訳 API 応答 800ms** は **Relay API 単体** の翻訳プロバイダ応答上限。超過で該当セグメントの翻訳を打ち切り、セッションは `degraded` へ遷移する
+- 拡張の音声取得から Overlay 描画までの **end-to-end SLO** は別指標として [`operations-design.md` §2.2](../10-operations-design/operations-design.md) に定義（翻訳字幕表示遅延 p50 800ms / p95 1500ms / p99 2500ms）
+- 運用アラート閾値 ([`operations-design.md` §4.4](../10-operations-design/operations-design.md)) は E2E p95 視点
+
 ## 3. 共通レスポンス形式
 
 ### 3.1 HTTP 成功レスポンス
