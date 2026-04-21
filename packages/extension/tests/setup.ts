@@ -37,3 +37,40 @@ Object.defineProperty(globalThis, 'chrome', {
   writable: true,
   configurable: true,
 });
+
+// jsdom does not provide MediaStream / MediaStreamTrack globals. We polyfill
+// minimal class stubs so test code can reference the DOM type when
+// constructing fake streams (adapter tests only validate DI wiring, not real
+// audio routing — those are covered by E2E).
+if (typeof globalThis.MediaStream === 'undefined') {
+  class MediaStreamStub {
+    public readonly id: string;
+    public readonly active: boolean = true;
+    private readonly tracks: unknown[] = [];
+    constructor(tracks?: unknown[]) {
+      this.id = `stub-media-stream-${String(Math.random()).slice(2, 8)}`;
+      if (tracks !== undefined) this.tracks.push(...tracks);
+    }
+    getTracks(): unknown[] {
+      return [...this.tracks];
+    }
+    getAudioTracks(): unknown[] {
+      return [...this.tracks];
+    }
+    getVideoTracks(): unknown[] {
+      return [];
+    }
+    addTrack(track: unknown): void {
+      this.tracks.push(track);
+    }
+    removeTrack(track: unknown): void {
+      const index = this.tracks.indexOf(track);
+      if (index >= 0) this.tracks.splice(index, 1);
+    }
+  }
+  Object.defineProperty(globalThis, 'MediaStream', {
+    value: MediaStreamStub,
+    writable: true,
+    configurable: true,
+  });
+}
