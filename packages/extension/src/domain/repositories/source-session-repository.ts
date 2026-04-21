@@ -1,7 +1,7 @@
 import { type ResultAsync } from 'neverthrow';
-import { type SessionIdentifier } from '../session/session-identifier.js';
-import { type SourceSession } from '../session/source-session.js';
-import { type DomainError } from '../shared/errors.js';
+import { type SessionIdentifier } from '../session/session-identifier';
+import { type SourceSession } from '../session/source-session';
+import { type DomainError } from '../shared/errors';
 
 /**
  * ソースセッションリポジトリ (DD-260)。

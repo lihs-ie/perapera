@@ -1,7 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * 拡張プロファイル集約 (`ExtensionProfile`, DD-212) の識別子。

@@ -1,7 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
-import { type DomainError, invariantViolationError, validationError } from '../shared/errors.js';
-import { parseSegmentIdentifier, type SegmentIdentifier } from './segment-identifier.js';
-import { type TimestampRange } from './timestamp-range.js';
+import { type DomainError, invariantViolationError, validationError } from '../shared/errors';
+import { parseSegmentIdentifier, type SegmentIdentifier } from './segment-identifier';
+import { type TimestampRange } from './timestamp-range';
 
 /**
  * 字幕セグメントエンティティ (DD-221)。

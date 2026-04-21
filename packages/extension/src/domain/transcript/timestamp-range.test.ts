@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTimestampRange } from './timestamp-range.js';
+import { createTimestampRange } from './timestamp-range';
 
 describe('TimestampRange', () => {
   it('accepts start < end', () => {

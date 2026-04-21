@@ -1,9 +1,9 @@
 import { err, ok, type Result } from 'neverthrow';
-import { type ExportFormat } from '../export/export-record.js';
-import { type TranscriptSegment } from '../transcript/transcript-segment.js';
-import { type TranscriptStream } from '../transcript/transcript-stream.js';
-import { type TranslationSegment } from '../transcript/translation-segment.js';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type ExportFormat } from '../export/export-record';
+import { type TranscriptSegment } from '../transcript/transcript-segment';
+import { type TranscriptStream } from '../transcript/transcript-stream';
+import { type TranslationSegment } from '../transcript/translation-segment';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * エクスポート整形サービス (DD-242)。

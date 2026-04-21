@@ -1,11 +1,8 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
-import { parseSegmentIdentifier, type SegmentIdentifier } from './segment-identifier.js';
-import {
-  parseTranslationIdentifier,
-  type TranslationIdentifier,
-} from './translation-identifier.js';
+import { type DomainError, validationError } from '../shared/errors';
+import { parseSegmentIdentifier, type SegmentIdentifier } from './segment-identifier';
+import { parseTranslationIdentifier, type TranslationIdentifier } from './translation-identifier';
 
 /**
  * 翻訳セグメントエンティティ (DD-222)。

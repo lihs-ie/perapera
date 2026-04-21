@@ -1,10 +1,10 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from '../session/language-pair.js';
-import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier.js';
-import { createSourceSession, type SourceSession } from '../session/source-session.js';
-import { notFoundError, type DomainError } from '../shared/errors.js';
-import { type SourceSessionRepository } from './source-session-repository.js';
+import { createLanguagePair } from '../session/language-pair';
+import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier';
+import { createSourceSession, type SourceSession } from '../session/source-session';
+import { notFoundError, type DomainError } from '../shared/errors';
+import { type SourceSessionRepository } from './source-session-repository';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const SESSION_ID_2 = '01HZX8Y1R8M7D3Q2P4T5V6W7A2';

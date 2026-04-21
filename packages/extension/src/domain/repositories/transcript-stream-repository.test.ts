@@ -1,19 +1,19 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
-import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier.js';
-import { invariantViolationError, notFoundError, type DomainError } from '../shared/errors.js';
-import { createTimestampRange } from '../transcript/timestamp-range.js';
+import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier';
+import { invariantViolationError, notFoundError, type DomainError } from '../shared/errors';
+import { createTimestampRange } from '../transcript/timestamp-range';
 import {
   createPartialTranscriptSegment,
   finalizeTranscriptSegment,
   type TranscriptSegment,
-} from '../transcript/transcript-segment.js';
-import { createTranscriptStream, type TranscriptStream } from '../transcript/transcript-stream.js';
+} from '../transcript/transcript-segment';
+import { createTranscriptStream, type TranscriptStream } from '../transcript/transcript-stream';
 import {
   createCompletedTranslationSegment,
   type TranslationSegment,
-} from '../transcript/translation-segment.js';
-import { type TranscriptStreamRepository } from './transcript-stream-repository.js';
+} from '../transcript/translation-segment';
+import { type TranscriptStreamRepository } from './transcript-stream-repository';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const SEGMENT_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7D1';

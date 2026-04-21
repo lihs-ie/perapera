@@ -1,7 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * 翻訳セグメントの識別子 (DD-222)。

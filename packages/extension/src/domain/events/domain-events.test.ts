@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from '../session/language-pair.js';
-import { createSourceSession } from '../session/source-session.js';
-import { createPartialTranscriptSegment } from '../transcript/transcript-segment.js';
-import { createTimestampRange } from '../transcript/timestamp-range.js';
-import { createCompletedTranslationSegment } from '../transcript/translation-segment.js';
+import { createLanguagePair } from '../session/language-pair';
+import { createSourceSession } from '../session/source-session';
+import { createPartialTranscriptSegment } from '../transcript/transcript-segment';
+import { createTimestampRange } from '../transcript/timestamp-range';
+import { createCompletedTranslationSegment } from '../transcript/translation-segment';
 import {
   sourceSessionDegraded,
   sourceSessionStarted,
@@ -12,7 +12,7 @@ import {
   transcriptPartialUpdated,
   translationCompleted,
   type DomainEvent,
-} from './domain-events.js';
+} from './domain-events';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const SOURCE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7B1';

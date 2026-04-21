@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SESSION_STATES, parseSessionState } from './session-state.js';
+import { SESSION_STATES, parseSessionState } from './session-state';
 
 describe('SessionState', () => {
   it('enumerates exactly 11 states (DD-233)', () => {

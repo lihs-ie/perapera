@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from './language-pair.js';
+import { createLanguagePair } from './language-pair';
 
 describe('LanguagePair', () => {
   it('accepts a valid pair (en-US -> ja-JP)', () => {

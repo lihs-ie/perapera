@@ -1,8 +1,8 @@
 import { ok, type Result } from 'neverthrow';
-import { type LanguagePair } from '../session/language-pair.js';
-import { type DomainError } from '../shared/errors.js';
-import { type OverlaySettings } from './overlay-settings.js';
-import { parseProfileIdentifier, type ProfileIdentifier } from './profile-identifier.js';
+import { type LanguagePair } from '../session/language-pair';
+import { type DomainError } from '../shared/errors';
+import { type OverlaySettings } from './overlay-settings';
+import { parseProfileIdentifier, type ProfileIdentifier } from './profile-identifier';
 
 /**
  * 拡張プロファイル集約ルート (DD-212)。

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSegmentIdentifier, parseSegmentIdentifier } from './segment-identifier.js';
+import { createSegmentIdentifier, parseSegmentIdentifier } from './segment-identifier';
 
 describe('SegmentIdentifier', () => {
   it('creates a ULID-shaped identifier', () => {

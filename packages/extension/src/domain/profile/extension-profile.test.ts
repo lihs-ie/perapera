@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from '../session/language-pair.js';
+import { createLanguagePair } from '../session/language-pair';
 import {
   createExtensionProfile,
   updateDefaultLanguagePair,
   updateDefaultOverlaySettings,
   toggleAutoDetect,
-} from './extension-profile.js';
-import { createOverlaySettings } from './overlay-settings.js';
+} from './extension-profile';
+import { createOverlaySettings } from './overlay-settings';
 
 const PROFILE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const defaultLanguagePair = createLanguagePair({

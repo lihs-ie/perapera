@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createOverlaySettings } from './overlay-settings.js';
+import { createOverlaySettings } from './overlay-settings';
 
 const baseValid = {
   positionPreset: 'bottom' as const,

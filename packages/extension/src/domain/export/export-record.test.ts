@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createExportRecord, EXPORT_FORMATS } from './export-record.js';
+import { createExportRecord, EXPORT_FORMATS } from './export-record';
 
 const VALID_EXPORT_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const VALID_SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X9';

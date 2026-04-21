@@ -1,10 +1,10 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
-import { createExtensionProfile, type ExtensionProfile } from '../profile/extension-profile.js';
-import { createOverlaySettings } from '../profile/overlay-settings.js';
-import { createLanguagePair } from '../session/language-pair.js';
-import { notFoundError, type DomainError } from '../shared/errors.js';
-import { type ExtensionProfileRepository } from './extension-profile-repository.js';
+import { createExtensionProfile, type ExtensionProfile } from '../profile/extension-profile';
+import { createOverlaySettings } from '../profile/overlay-settings';
+import { createLanguagePair } from '../session/language-pair';
+import { notFoundError, type DomainError } from '../shared/errors';
+import { type ExtensionProfileRepository } from './extension-profile-repository';
 
 const PROFILE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7C1';
 

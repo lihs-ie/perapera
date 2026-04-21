@@ -1,7 +1,7 @@
 import { ok, type Result } from 'neverthrow';
-import { type ExtensionProfile } from '../profile/extension-profile.js';
-import { createLanguagePair, type LanguagePair } from '../session/language-pair.js';
-import { type DomainError } from '../shared/errors.js';
+import { type ExtensionProfile } from '../profile/extension-profile';
+import { createLanguagePair, type LanguagePair } from '../session/language-pair';
+import { type DomainError } from '../shared/errors';
 
 /**
  * 言語ルーティングポリシー (DD-243)。

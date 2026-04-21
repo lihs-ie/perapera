@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createCompletedTranslationSegment,
   createFailedTranslationSegment,
-} from './translation-segment.js';
+} from './translation-segment';
 
 const VALID_ULID_A = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const VALID_ULID_B = '01HZX8Y1R8M7D3Q2P4T5V6W7X9';

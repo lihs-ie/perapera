@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SESSION_STATES, type SessionState } from '../session/session-state.js';
+import { SESSION_STATES, type SessionState } from '../session/session-state';
 import {
   ALLOWED_TRANSITIONS,
   canTransitionSessionState,
   validateSessionStateTransition,
-} from './session-state-transition-policy.js';
+} from './session-state-transition-policy';
 
 /**
  * 状態遷移表 (detailed-design.md §7.2) を網羅的に検証する。

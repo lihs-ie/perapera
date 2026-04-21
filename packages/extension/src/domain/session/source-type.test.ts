@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SOURCE_TYPES, parseSourceType } from './source-type.js';
+import { SOURCE_TYPES, parseSourceType } from './source-type';
 
 describe('SourceType', () => {
   it('accepts "tab"', () => {
