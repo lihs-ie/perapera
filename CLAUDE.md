@@ -147,6 +147,16 @@ MVP に中央 RDBMS なし。クライアント側のみ:
 
 CI では外部プロバイダ依存の揺らぎを避けるため、原則モック応答を使用する。
 
+## CI/CD
+
+GitHub Actions で利用する第三者 action は **コミット SHA で pin する**。タグ参照 (`@v4` 等) は作者が後から書き換え可能で供給網攻撃の余地があるため、不変な SHA を使い、human-readable なバージョン情報はコメントに残す:
+
+```yaml
+- uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+```
+
+SHA は最新タグに追従させる。更新は `actrun lint .github/workflows/<file>.yml --update-hash` で自動化する。ローカル CI 検証は `actrun workflow run .github/workflows/ci.yml` で行える（`actrun.toml` に skip 設定済、e2e / docker-relay は step-level `if: ${{ !env.ACTRUN_LOCAL }}` で actrun 時のみ skip）。
+
 ## 命名規則（本プロジェクト固有）
 
 グローバル規約（ユーザー `~/.claude/CLAUDE.md`）に加え、本プロジェクトで固有の識別子は以下:
