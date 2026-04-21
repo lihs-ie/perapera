@@ -1,9 +1,9 @@
 ---
 title: 実装ロードマップ
-version: '0.1.0'
+version: '0.2.0'
 status: in-progress
 created: '2026-04-21'
-last_updated: '2026-04-21'
+last_updated: '2026-04-22'
 author: 'Codex'
 ---
 
@@ -13,49 +13,47 @@ author: 'Codex'
 
 本文書は [`Task.md`](./Task.md) (実装タスクの全量カタログ) を補完する、**前進方向の優先順位付け** である。作業順・直近 PR・未決事項・方針原則をまとめる。カタログと本ロードマップでステータスが食い違った場合は `Task.md` の記述を正とする。
 
-## 2. 現状サマリ (2026-04-21)
+## 2. 現状サマリ (2026-04-22)
 
-| Phase | 範囲                                | 状態           |
-| ----- | ----------------------------------- | -------------- |
-| 0     | 着手前合意 (IMPL-001〜005)          | ✅ 完了        |
-| 1     | ドメイン層 (IMPL-101〜153)          | ✅ 完了        |
-| 2     | アプリケーション層 (IMPL-200〜230)  | ✅ 完了        |
-| 3     | 拡張 infrastructure (IMPL-300〜344) | ✅ 完了        |
-| 4     | Relay API (IMPL-400〜451)           | 🟡 進行中 ~60% |
-| 5     | 拡張 presentation 層                | ⚪ 未着手      |
-| 6     | E2E / 性能 / 品質検証               | ⚪ 未着手      |
-| 7     | リリース / 運用整備                 | ⚪ 未着手      |
+| Phase | 範囲                                | 状態      |
+| ----- | ----------------------------------- | --------- |
+| 0     | 着手前合意 (IMPL-001〜005)          | ✅ 完了   |
+| 1     | ドメイン層 (IMPL-101〜153)          | ✅ 完了   |
+| 2     | アプリケーション層 (IMPL-200〜230)  | ✅ 完了   |
+| 3     | 拡張 infrastructure (IMPL-300〜344) | ✅ 完了   |
+| 4     | Relay API (IMPL-400〜451)           | ✅ 完了   |
+| 5     | 拡張 presentation 層                | ⚪ 未着手 |
+| 6     | E2E / 性能 / 品質検証               | ⚪ 未着手 |
+| 7     | リリース / 運用整備                 | ⚪ 未着手 |
 
-### Phase 4 Relay API 内訳 (PR #27〜#35)
+### Phase 4 Relay API 内訳 (PR #27〜#43, 完了 2026-04-22)
 
-**完了:**
+**全 23 IMPL タスク 完了:**
 
-- IMPL-400 `RelaySession` 集約 + 値オブジェクト + 状態機械
-- IMPL-401 `IssueStreamTokenUseCase` (stateless 化済、PR #30 で session repository 削除)
-- IMPL-411 `POST /sessions` HTTP route + error mapper
-- IMPL-420 WebSocket `/relay` 接続 + stream token verify
-- IMPL-421 (部分) client event parse + dispatch (`session.ping` → `session.pong`, 他は log stub)
-- IMPL-422 (部分) server event envelopes (`session.ready` / `session.pong` / `session.error`)
-- IMPL-423 heartbeat-based disconnect detection
-- IMPL-430 HTTP access token Bearer 認証
-- IMPL-431 `JwtSigner` + `JwtVerifier` (jose HS256) + port 定義
-
-**未着手:**
-
-- IMPL-412 `GET /sessions/:id` 状態参照
-- IMPL-421/422 残 client/server events (audio.frame → transcript.\* の実処理)
-- IMPL-432 `@fastify/rate-limit` 設定
-- IMPL-433 `@fastify/cors` 設定
-- IMPL-434 `@fastify/helmet` 適用
-- IMPL-440 `SttPort` interface
-- IMPL-441 `TranslationPort` interface
-- IMPL-442 `MockSttProvider` (CI / dev 既定)
-- IMPL-443 `MockTranslationProvider` (CI / dev 既定)
-- IMPL-444 `StreamingSttProviderAdapter` (実プロバイダ用、**要プロバイダ選定**)
-- IMPL-445 `TranslationProviderAdapter` (実プロバイダ用、**要プロバイダ選定**)
-- IMPL-446 サーキットブレーカー / リトライ / タイムアウト設定
-- IMPL-450 `pino` redact 検証テスト
-- IMPL-451 構造化ログ (`sessionId` / `requestId` 必須)
+- IMPL-400 `RelaySession` 集約 + 値オブジェクト + 状態機械 (PR #27)
+- IMPL-401 `IssueStreamTokenUseCase` (stateless 化、PR #30 で session repository 削除)
+- IMPL-402 `RelayAudioFrameUseCase` (audio.frame → STT dispatch, PR #40)
+- IMPL-403 `RouteTranscriptToTranslationUseCase` (transcript.final → translation, PR #40)
+- IMPL-411 `POST /sessions` HTTP route + error mapper (PR #28)
+- IMPL-412 `GET /sessions/:id` 状態参照 (stateless, PR #39)
+- IMPL-420 WebSocket `/relay` 接続 + stream token verify (PR #32)
+- IMPL-421 client event parse + dispatch 完全版 (PR #33, #43)
+- IMPL-422 server event envelopes 完全版 (transcript.\* / translation.final 含む, PR #33, #43)
+- IMPL-423 heartbeat-based disconnect detection (PR #34)
+- IMPL-430 HTTP access token Bearer 認証 (PR #35)
+- IMPL-431 `JwtSigner` + `JwtVerifier` (jose HS256) + port 定義 (PR #29, #31)
+- IMPL-432 `@fastify/rate-limit` 設定 (PR #38)
+- IMPL-433 `@fastify/cors` 設定 (PR #38)
+- IMPL-434 `@fastify/helmet` 適用 (PR #38)
+- IMPL-440 `SttPort` interface (PR #40)
+- IMPL-441 `TranslationPort` interface (PR #40)
+- IMPL-442 `MockSttProvider` (tests/support/mock 配置, PR #42)
+- IMPL-443 `MockTranslationProvider` (tests/support/mock 配置, PR #42)
+- IMPL-444 Deepgram STT provider (real adapter, `wss://api.deepgram.com`, PR #42)
+- IMPL-445 DeepL translation provider (real adapter, fetch 実装, PR #42)
+- IMPL-446 サーキットブレーカー / リトライ / タイムアウト 設定 (PR #41)
+- IMPL-450 `pino` redact 検証テスト (PR #37)
+- IMPL-451 構造化ログ (`sessionId` / `requestId` 必須, PR #37)
 
 ## 3. 実装原則 (本ロードマップで再確認)
 
@@ -89,56 +87,54 @@ Cloud Run 複数インスタンス要件 ([`infrastructure-design.md` §7](../08
 - env 変数欠落は factory で fail-fast (`throw`)
 - 起動時の redact テスト (IMPL-450) で secret がログに漏れないことを契約として固定
 
-## 4. 直近の PR 優先順位
+## 4. 直近の PR 優先順位 (Phase 5 着手時の先頭 5 PR)
 
-**次の 5 PR** (優先度順):
+Phase 4 が完了したため、次の優先度は Phase 5 拡張 presentation 層への着手となる。WXT entrypoint 配線と UI 実装は Relay API (develop 上で稼働) と連動する。
 
-### PR (次) #1 — IMPL-450/451 ロギング衛生 (M)
+### PR (次) #1 — WXT 配線 + Background service worker (M)
 
-> Security critical。access token / stream token secret / 字幕本文が `pino` redact で必ずマスクされること、全構造化ログに `sessionId` / `requestId` が含まれることを契約化する。
+> `packages/extension/entrypoints/background.ts` を作成し、Phase 3 の `SessionCommandService` / `SessionRegistry` / 全 infrastructure adapter を DI で組み立てる。
 
-- 範囲: logger.ts redact paths 追加 (`req.headers.authorization`, `streamToken`, `access_token`, `audio.*.payload.audioBase64` 等) + redact 検証 unit テスト
-- 依存: なし
-- 出力: 両 logger (relay + extension) の整合
+- 範囲: entrypoint + composition root + runtime message dispatch
+- 依存: Phase 3 完了 (済)、Relay API 稼働 (develop 上に存在)
+- 検証: `pnpm --filter @perapera/extension dev` で unpacked 起動 + 手動 smoke
 
-### PR (次) #2 — IMPL-432 rate-limit (M)
+### PR (次) #2 — Popup UI 最小実装 (M)
 
-> `@fastify/rate-limit` を POST /sessions (30/分/access-token) と WebSocket audio.frame (10/秒/session) に適用。
+> ソース追加 (tab / mic / desktop) → 開始 → 停止の単純導線。Atomic Design: atoms + molecules + template。
 
-- keygen: access token の SHA-256 prefix (access token 本体をキーにしない)
-- 超過時: 429 + `X-RateLimit-*` ヘッダ
-- WebSocket audio.frame: route handler 内で in-process バケット (session-scoped)
+- 範囲: `entrypoints/popup/` + `src/presentation/popup/` organism / template
+- 依存: (次) #1
+- 検証: vitest + @testing-library/react で component test
 
-### PR (次) #3 — IMPL-433/434 CORS + Helmet (S)
+### PR (次) #3 — Side Panel UI (M)
 
-> 標準 plugin を適用。CORS は `chrome-extension://` origin のみ許可、Helmet は default ポリシー + CSP 調整。
+> アクティブセッション一覧 / 状態表示 / 停止 / エクスポート導線。
 
-- `@fastify/cors`: `origin: /^chrome-extension:\/\/[a-p]{32}$/` (MV3 ID 形式)
-- `@fastify/helmet`: 標準 + `contentSecurityPolicy` off (拡張は CSP を self 管理)
+- 範囲: `entrypoints/sidepanel/` + 対応 presentation 層
+- 依存: (次) #1
 
-### PR (次) #4 — IMPL-412 `GET /sessions/:id` (S)
+### PR (次) #4 — Content script overlay (M)
 
-> stateless 前提のため、JWT claims から session メタを復元して返す最小実装。動的 state (`state` / `lastEventAt` / `lastErrorCode`) は未保持のため spec §4.3 の該当フィールドは `null` または静的な `'capturing'` を返す。
+> 対象ページへの `ContentScriptOverlayPresenter` 注入 + Shadow DOM 実装。
 
-- 実質的には stream token (JWT) の verify + claims decode のみ
-- 認証: access token Bearer (IMPL-430 再利用)
+- 範囲: `entrypoints/content-scripts/` + injection 条件
+- 依存: (次) #1
 
-### PR (次) #5 — IMPL-440/441 SttPort / TranslationPort 定義 (M)
+### PR (次) #5 — Offscreen document + Monitor page (S)
 
-> ACL port を定義するだけのポート宣言 PR。実装は後続。
+> AudioContext 維持用の offscreen 文書と、タブ以外のソース向け monitor page。
 
-- `SttPort`: `streamTranscribe(audioFrames: AsyncIterable<PCMFrame>): AsyncIterable<TranscriptEvent>` + キャンセル
-- `TranslationPort`: `translate(text, sourceLang, targetLang): ResultAsync<string, DomainError>`
+- 範囲: `entrypoints/offscreen.html` + `entrypoints/monitor/`
+- 依存: (次) #1
 
-> 以降、`IMPL-442/443` Mock provider → `IMPL-444/445` 実プロバイダ選定 → `IMPL-446` サーキットブレーカー の順で組む。
+## 5. Phase 4 完了基準 (M1) — 2026-04-22 達成
 
-## 5. Phase 4 完了基準 (M1)
-
-- [ ] Phase 4 全 IMPL 完了 (Task.md §6.1〜6.6)
-- [ ] `pnpm --filter @perapera/relay-api test:coverage` で 80%+ カバレッジ
-- [ ] `app.inject()` / 実 WS client / app-level integration テストで API 仕様書の全 endpoint / event が動作
-- [ ] 性能テスト (k6 / TST-NF-004) で SLO (WebSocket 3000ms / STT 1000ms / 翻訳 800ms) を確認
-- [ ] Docker image ビルド + Cloud Run local emulator で起動確認
+- [x] Phase 4 全 IMPL 完了 (Task.md §6.1〜6.6)
+- [x] `pnpm --filter @perapera/relay-api test` で全 184 テスト green
+- [x] `app.inject()` / mock WS client での API 仕様書 endpoint / event 契約テスト
+- [ ] 性能テスト (k6 / TST-NF-004) で SLO (WebSocket 3000ms / STT 1000ms / 翻訳 800ms) を確認 — Phase 6 へ
+- [ ] Docker image ビルド + Cloud Run local emulator で起動確認 — Phase 7 へ
 
 ## 6. Phase 5 拡張 presentation 層 (M2 準備)
 

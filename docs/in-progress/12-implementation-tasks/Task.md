@@ -223,6 +223,8 @@ author: 'Codex'
 
 ## 6. Phase 4: Relay API (`packages/relay-api/src/`)
 
+**ステータス: ✅ 完了 (2026-04-22)** — PR #27〜#43。全 23 IMPL タスク (400, 401, 402, 403, 411, 412, 420, 421, 422, 423, 430, 431, 432, 433, 434, 440, 441, 442, 443, 444, 445, 446, 450, 451) が develop にマージ済。relay-api 184 テスト / extension 593 テスト green。
+
 設計: `docs/in-progress/04-api-specification/api-specification.md` + `docs/in-progress/03-detailed-design/{infrastructure,acl}.md`
 
 ### 6.1 ドメイン / アプリケーション
