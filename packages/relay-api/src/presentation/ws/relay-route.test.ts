@@ -69,18 +69,59 @@ const connectWithAuth = (url: string, token: string | null): WebSocket =>
     token === null ? undefined : { headers: { authorization: `Bearer ${token}` } },
   );
 
-const awaitFirstMessage = (ws: WebSocket): Promise<string> =>
+const decodeMessage = (data: WebSocket.RawData): string => {
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  if (Buffer.isBuffer(data)) return data.toString('utf8');
+  return Buffer.from(data).toString('utf8');
+};
+
+const awaitOpen = (ws: WebSocket): Promise<void> =>
   new Promise((resolve, reject) => {
-    ws.once('message', (data) => {
-      const buf = Array.isArray(data)
-        ? Buffer.concat(data)
-        : Buffer.isBuffer(data)
-          ? data
-          : Buffer.from(data);
-      resolve(buf.toString('utf8'));
-    });
+    ws.once('open', () => resolve());
     ws.once('error', reject);
   });
+
+/**
+ * 入ってくる message を queue に蓄積し、pop 時に待機する helper。
+ * `once('message')` を送信後に attach すると race して message を落とすため、
+ * 接続直後に attach して以降すべて拾う。
+ */
+type MessageQueue = Readonly<{
+  next: (timeoutMs?: number) => Promise<unknown>;
+}>;
+
+const createMessageQueue = (ws: WebSocket): MessageQueue => {
+  const pending: unknown[] = [];
+  const waiters: ((value: unknown) => void)[] = [];
+  ws.on('message', (data) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(decodeMessage(data));
+    } catch {
+      parsed = decodeMessage(data);
+    }
+    const waiter = waiters.shift();
+    if (waiter !== undefined) waiter(parsed);
+    else pending.push(parsed);
+  });
+  return {
+    next: (timeoutMs = 3000) =>
+      new Promise<unknown>((resolve, reject) => {
+        const buffered = pending.shift();
+        if (buffered !== undefined) {
+          resolve(buffered);
+          return;
+        }
+        const timer = setTimeout(() => {
+          reject(new Error(`timed out waiting for ws message (${timeoutMs}ms)`));
+        }, timeoutMs);
+        waiters.push((value) => {
+          clearTimeout(timer);
+          resolve(value);
+        });
+      }),
+  };
+};
 
 const awaitUnexpectedResponse = (ws: WebSocket): Promise<{ status: number }> =>
   new Promise((resolve, reject) => {
@@ -95,7 +136,7 @@ const awaitUnexpectedResponse = (ws: WebSocket): Promise<{ status: number }> =>
     });
   });
 
-describe('WebSocket /relay route (IMPL-420)', () => {
+describe('WebSocket /relay route', () => {
   let harness: AppHarness | null = null;
 
   beforeEach(() => {
@@ -106,66 +147,191 @@ describe('WebSocket /relay route (IMPL-420)', () => {
     if (harness !== null) await harness.app.close();
   });
 
-  it('sends session.ready event after a successful handshake', async () => {
-    harness = await startApp(okVerifier);
-    const ws = connectWithAuth(relayUrl(harness), 'valid.jwt.token');
-    try {
-      const raw = await awaitFirstMessage(ws);
-      const parsed: unknown = JSON.parse(raw);
-      expect(parsed).toMatchObject({
-        type: 'session.ready',
-        sessionId: SESSION_ID,
-        heartbeatIntervalSec: 15,
-      });
-    } finally {
-      ws.close();
-    }
+  describe('IMPL-420 handshake + session.ready', () => {
+    it('sends session.ready with spec §6.3 envelope + payload', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt.token');
+      const queue = createMessageQueue(ws);
+      try {
+        const msg = await queue.next();
+        expect(msg).toMatchObject({
+          eventType: 'session.ready',
+          sessionId: SESSION_ID,
+          sequence: 0,
+          payload: {
+            state: 'capturing',
+            heartbeatIntervalSec: 15,
+            acceptedAudio: {
+              transport: 'json-base64',
+              sampleRateHz: 16000,
+              channels: 1,
+              frameDurationMs: 100,
+            },
+          },
+        });
+      } finally {
+        ws.close();
+      }
+    });
+
+    it('rejects the upgrade with 401 when Authorization is missing', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), null);
+      try {
+        const { status } = await awaitUnexpectedResponse(ws);
+        expect(status).toBe(401);
+      } finally {
+        ws.close();
+      }
+    });
+
+    it('rejects the upgrade with 401 when the verifier fails', async () => {
+      harness = await startApp(failingVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'expired.jwt');
+      try {
+        const { status } = await awaitUnexpectedResponse(ws);
+        expect(status).toBe(401);
+      } finally {
+        ws.close();
+      }
+    });
+
+    it('rejects the upgrade with 401 when sessionId query mismatches sub', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(
+        relayUrl(harness, `sessionId=${OTHER_SESSION_ID}&protocolVersion=1.0`),
+        'valid.jwt',
+      );
+      try {
+        const { status } = await awaitUnexpectedResponse(ws);
+        expect(status).toBe(401);
+      } finally {
+        ws.close();
+      }
+    });
+
+    it('rejects the upgrade with 401 when protocolVersion is missing', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness, `sessionId=${SESSION_ID}`), 'valid.jwt');
+      try {
+        const { status } = await awaitUnexpectedResponse(ws);
+        expect(status).toBe(401);
+      } finally {
+        ws.close();
+      }
+    });
   });
 
-  it('rejects the upgrade with 401 when Authorization is missing', async () => {
-    harness = await startApp(okVerifier);
-    const ws = connectWithAuth(relayUrl(harness), null);
-    try {
-      const { status } = await awaitUnexpectedResponse(ws);
-      expect(status).toBe(401);
-    } finally {
-      ws.close();
-    }
-  });
+  describe('IMPL-421 client event dispatch', () => {
+    it('responds to session.ping with session.pong (monotonic sequence)', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      try {
+        await awaitOpen(ws);
+        const ready = await queue.next();
+        expect(ready).toMatchObject({ sequence: 0 });
 
-  it('rejects the upgrade with 401 when the verifier fails', async () => {
-    harness = await startApp(failingVerifier);
-    const ws = connectWithAuth(relayUrl(harness), 'expired.jwt');
-    try {
-      const { status } = await awaitUnexpectedResponse(ws);
-      expect(status).toBe(401);
-    } finally {
-      ws.close();
-    }
-  });
+        ws.send(
+          JSON.stringify({
+            eventType: 'session.ping',
+            sessionId: SESSION_ID,
+            sequence: 1,
+            timestamp: new Date().toISOString(),
+            payload: {},
+          }),
+        );
+        const pong = await queue.next();
+        expect(pong).toMatchObject({
+          eventType: 'session.pong',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          payload: {},
+        });
+      } finally {
+        ws.close();
+      }
+    });
 
-  it('rejects the upgrade with 401 when sessionId query mismatches sub', async () => {
-    harness = await startApp(okVerifier);
-    const ws = connectWithAuth(
-      relayUrl(harness, `sessionId=${OTHER_SESSION_ID}&protocolVersion=1.0`),
-      'valid.jwt',
-    );
-    try {
-      const { status } = await awaitUnexpectedResponse(ws);
-      expect(status).toBe(401);
-    } finally {
-      ws.close();
-    }
-  });
+    it('sends session.error when the payload is invalid JSON', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      try {
+        await awaitOpen(ws);
+        await queue.next(); // consume session.ready
+        ws.send('{ not-json');
+        const err = await queue.next();
+        expect(err).toMatchObject({
+          eventType: 'session.error',
+          payload: { code: 'VALIDATION_ERROR', retryable: false, fatal: false },
+        });
+      } finally {
+        ws.close();
+      }
+    });
 
-  it('rejects the upgrade with 401 when protocolVersion is missing', async () => {
-    harness = await startApp(okVerifier);
-    const ws = connectWithAuth(relayUrl(harness, `sessionId=${SESSION_ID}`), 'valid.jwt');
-    try {
-      const { status } = await awaitUnexpectedResponse(ws);
-      expect(status).toBe(401);
-    } finally {
-      ws.close();
-    }
+    it('sends session.error for unknown eventType', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      try {
+        await awaitOpen(ws);
+        await queue.next();
+        ws.send(
+          JSON.stringify({
+            eventType: 'weather.update',
+            sessionId: SESSION_ID,
+            sequence: 1,
+            timestamp: new Date().toISOString(),
+            payload: {},
+          }),
+        );
+        const err = await queue.next();
+        expect(err).toMatchObject({
+          eventType: 'session.error',
+          payload: { code: 'VALIDATION_ERROR' },
+        });
+      } finally {
+        ws.close();
+      }
+    });
+
+    it('silently accepts session.start followed by session.ping (only pong returned)', async () => {
+      harness = await startApp(okVerifier);
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      try {
+        await awaitOpen(ws);
+        await queue.next();
+        ws.send(
+          JSON.stringify({
+            eventType: 'session.start',
+            sessionId: SESSION_ID,
+            sequence: 1,
+            timestamp: new Date().toISOString(),
+            payload: {
+              sourceLanguage: 'en-US',
+              autoDetectLanguage: false,
+              targetLanguage: 'ja-JP',
+              translationEnabled: true,
+            },
+          }),
+        );
+        ws.send(
+          JSON.stringify({
+            eventType: 'session.ping',
+            sessionId: SESSION_ID,
+            sequence: 2,
+            timestamp: new Date().toISOString(),
+            payload: {},
+          }),
+        );
+        const nextMessage = await queue.next();
+        expect(nextMessage).toMatchObject({ eventType: 'session.pong' });
+      } finally {
+        ws.close();
+      }
+    });
   });
 });
