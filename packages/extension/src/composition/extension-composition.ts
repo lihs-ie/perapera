@@ -1,0 +1,345 @@
+import { ulid } from 'ulid';
+import { createExportSessionResultUseCase } from '../application/use-cases/export-session-result-use-case';
+import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
+import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';
+import { createHandleTranscriptPartialUseCase } from '../application/use-cases/handle-transcript-partial-use-case';
+import { createStartSourceSessionUseCase } from '../application/use-cases/start-source-session-use-case';
+import { createStopSourceSessionUseCase } from '../application/use-cases/stop-source-session-use-case';
+import { createUpdateSourceSettingsUseCase } from '../application/use-cases/update-source-settings-use-case';
+import {
+  createCaptureOrchestrator,
+  type CaptureOrchestrator,
+} from '../application/services/capture-orchestrator';
+import { createExportService, type ExportService } from '../application/services/export-service';
+import {
+  createSessionCommandService,
+  type SessionCommandService,
+} from '../application/services/session-command-service';
+import {
+  createSessionRegistry,
+  type SessionRegistry,
+} from '../application/services/session-registry';
+import {
+  createTranscriptAssembler,
+  type TranscriptAssembler,
+} from '../application/services/transcript-assembler';
+import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
+import { type SourceSession } from '../domain/session/source-session';
+import {
+  createAudioPreprocessor,
+  defaultAudioContextFactory,
+  type AudioContextFactory,
+} from '../infrastructure/audio/audio-preprocessor';
+import {
+  createDesktopCaptureSourceAdapter,
+  defaultDesktopCaptureApi,
+  type DesktopCaptureApi,
+} from '../infrastructure/capture/desktop-capture-source-adapter';
+import { createSourceAdapterFactory } from '../infrastructure/capture/source-adapter-factory';
+import {
+  createTabCaptureSourceAdapter,
+  defaultTabCaptureApi,
+  type TabCaptureApi,
+} from '../infrastructure/capture/tab-capture-source-adapter';
+import {
+  createUserMediaSourceAdapter,
+  defaultUserMediaApi,
+  type UserMediaApi,
+} from '../infrastructure/capture/user-media-source-adapter';
+import {
+  createChromeMessagingOverlayPresenter,
+  defaultOverlayMessagingBridge,
+  type OverlayMessagingBridge,
+} from '../infrastructure/overlay/chrome-messaging-overlay-presenter';
+import {
+  createChromePermissionCoordinator,
+  defaultChromePermissionsApi,
+  type ChromePermissionsApi,
+} from '../infrastructure/permission/chrome-permission-coordinator';
+import {
+  createDefaultWsEndpointBuilder,
+  createFetchStreamTokenIssuer,
+  type OverlayTargetDescriptor,
+} from '../infrastructure/relay/fetch-stream-token-issuer';
+import { createRelayWebSocketGateway } from '../infrastructure/relay/relay-websocket-gateway';
+import {
+  createBrowserWebSocketFactory,
+  type WebSocketFactory,
+} from '../infrastructure/relay/websocket-factory';
+import {
+  createChromeLocalExtensionProfileRepository,
+  createChromeLocalSettingsStore,
+  createIndexedDbExportRecordRepository,
+  createIndexedDbSessionStore,
+  createIndexedDbSourceSessionRepository,
+  createIndexedDbTranscriptStreamRepository,
+  defaultChromeStorageAdapter,
+  type ChromeStorageAdapter,
+  type CloseableExportRecordRepository,
+  type CloseableSessionStore,
+  type CloseableSourceSessionRepository,
+  type CloseableTranscriptStreamRepository,
+} from '../infrastructure/storage';
+
+/**
+ * IMPL-500 Background Service Worker composition root。
+ *
+ * 拡張エントリポイント (`entrypoints/background.ts`) から呼び出される DI 組立
+ * factory。Phase 1〜3.5 の全 infrastructure adapter と Phase 2 UseCase /
+ * Phase 3 application service を整合性のある形で配線する。
+ *
+ * **本番実装で mock / in-memory を使わない原則**:
+ * - 全 adapter が real implementation。`createProductionRuntimePorts` で
+ *   `chrome.*` / AudioContext / fetch / WebSocket などの production default を集約
+ * - test で利用する場合は `createExtensionApp(config, testPorts)` のように
+ *   override を明示注入 (ports の各要素は optional ではなく Required)
+ *
+ * 返り値 `ExtensionApp` は 3 つの application facade + SessionRegistry +
+ * teardown 関数を公開する。Service Worker は `sessionCommandService` を
+ * runtime message dispatch の dispatch target として使う。
+ */
+export type ExtensionRuntimeConfig = Readonly<{
+  /** Relay API base URL (例: `http://localhost:3001` / `https://relay.example.com`)。末尾 / なし */
+  relayApiBaseUrl: string;
+  /** POST /sessions 用の Bearer access token。`CLAUDE.md` §データ保存方針に従い chrome.storage 管理 */
+  relayAccessToken: string;
+  /** WebSocket パス (default `/api/v1/relay`) */
+  relayWsPath?: string;
+  /** 拡張バージョン (manifest.version) */
+  extensionVersion: string;
+  /** api-specification §4.1 client.protocolVersion */
+  protocolVersion: string;
+  /** IndexedDB 名 (default `perapera`) */
+  databaseName?: string;
+  /** AudioWorklet module URL (通常 `chrome.runtime.getURL('/audio-worklet.js')`) */
+  workletModuleUrl: string;
+  /** SourceSession → displayName (default: sourceType 名) */
+  resolveDisplayName?: (session: SourceSession) => string;
+  /** SourceSession → overlayTarget (default: `{ kind: 'monitor' }`) */
+  resolveOverlayTarget?: (session: SourceSession) => OverlayTargetDescriptor;
+  /** SourceSession → autoDetectLanguage (default: `false`) */
+  resolveAutoDetectLanguage?: (session: SourceSession) => boolean;
+}>;
+
+/**
+ * Infrastructure DI port 集合。production では `createProductionRuntimePorts()` の
+ * 結果をそのまま渡す。test では `chrome.*` を fake に差し替える。
+ */
+export type ExtensionRuntimePorts = Readonly<{
+  chromePermissionsApi: ChromePermissionsApi;
+  chromeStorageAdapter: ChromeStorageAdapter;
+  audioContextFactory: AudioContextFactory;
+  webSocketFactory: WebSocketFactory;
+  fetchImpl: typeof fetch;
+  overlayMessagingBridge: OverlayMessagingBridge;
+  tabCaptureApi: TabCaptureApi;
+  userMediaApi: UserMediaApi;
+  desktopCaptureApi: DesktopCaptureApi;
+  clockMs: () => number;
+  clockIso: () => string;
+  sessionIdFactory: () => string;
+  sourceIdFactory: () => string;
+  translationIdFactory: () => string;
+  exportIdFactory: () => string;
+}>;
+
+/**
+ * 拡張 production 環境向け DI port の既定セット。Service Worker 起動時に
+ * 一度だけ生成して `createExtensionApp` に渡す。
+ *
+ * すべて Phase 3 / Phase 3.5 で作成済の `defaultXxx` を使う。DI 対象は
+ * chrome.\* / AudioContext / fetch / WebSocket / ulid などの外部境界に限る。
+ */
+export const createProductionRuntimePorts = (): ExtensionRuntimePorts => ({
+  chromePermissionsApi: defaultChromePermissionsApi,
+  chromeStorageAdapter: defaultChromeStorageAdapter,
+  audioContextFactory: defaultAudioContextFactory,
+  webSocketFactory: createBrowserWebSocketFactory(),
+  fetchImpl: fetch,
+  overlayMessagingBridge: defaultOverlayMessagingBridge,
+  tabCaptureApi: defaultTabCaptureApi,
+  userMediaApi: defaultUserMediaApi,
+  desktopCaptureApi: defaultDesktopCaptureApi,
+  clockMs: () => Date.now(),
+  clockIso: () => new Date().toISOString(),
+  sessionIdFactory: () => ulid(),
+  sourceIdFactory: () => ulid(),
+  translationIdFactory: () => ulid(),
+  exportIdFactory: () => ulid(),
+});
+
+/**
+ * Service Worker 起動時に 1 度だけ生成される拡張アプリ。複数 facade を
+ * message dispatcher や popup/sidepanel から利用する。
+ *
+ * `close()` は IndexedDB connection と chrome-storage adapter の teardown を行う。
+ * Service Worker shutdown 時に呼ぶ (chrome.runtime.onSuspend 等)。
+ */
+export type ExtensionApp = Readonly<{
+  sessionCommandService: SessionCommandService;
+  exportService: ExportService;
+  getSessionMonitorStateQuery: GetSessionMonitorStateQuery;
+  sessionRegistry: SessionRegistry;
+  captureOrchestrator: CaptureOrchestrator;
+  transcriptAssembler: TranscriptAssembler;
+  close: () => Promise<void>;
+}>;
+
+const DEFAULT_RESOLVE_DISPLAY_NAME = (session: SourceSession): string => session.sourceType;
+const DEFAULT_RESOLVE_OVERLAY_TARGET = (_session: SourceSession): OverlayTargetDescriptor => ({
+  kind: 'monitor',
+});
+const DEFAULT_RESOLVE_AUTO_DETECT = (_session: SourceSession): boolean => false;
+
+export const createExtensionApp = (
+  config: ExtensionRuntimeConfig,
+  ports: ExtensionRuntimePorts,
+): ExtensionApp => {
+  // --------------- Storage (Phase 3 / 3.5) ---------------
+  const databaseName = config.databaseName;
+  const dbOptions = databaseName !== undefined ? { databaseName } : {};
+
+  const sessionStore: CloseableSessionStore = createIndexedDbSessionStore(dbOptions);
+  const settingsStore = createChromeLocalSettingsStore(ports.chromeStorageAdapter);
+
+  const sourceSessionRepository: CloseableSourceSessionRepository =
+    createIndexedDbSourceSessionRepository(dbOptions);
+  const transcriptStreamRepository: CloseableTranscriptStreamRepository =
+    createIndexedDbTranscriptStreamRepository(dbOptions);
+  const exportRecordRepository: CloseableExportRecordRepository =
+    createIndexedDbExportRecordRepository(dbOptions);
+  const extensionProfileRepository = createChromeLocalExtensionProfileRepository(
+    ports.chromeStorageAdapter,
+  );
+
+  // --------------- Capture / Audio ---------------
+  const tabCaptureSourceAdapter = createTabCaptureSourceAdapter({
+    tabCaptureApi: ports.tabCaptureApi,
+  });
+  const userMediaSourceAdapter = createUserMediaSourceAdapter({
+    userMediaApi: ports.userMediaApi,
+  });
+  const desktopCaptureSourceAdapter = createDesktopCaptureSourceAdapter({
+    desktopCaptureApi: ports.desktopCaptureApi,
+  });
+  const sourceAdapterFactory = createSourceAdapterFactory({
+    tabCaptureSourceAdapter,
+    userMediaSourceAdapter,
+    desktopCaptureSourceAdapter,
+  });
+  const audioPreprocessor = createAudioPreprocessor({
+    audioContextFactory: ports.audioContextFactory,
+    workletModuleUrl: config.workletModuleUrl,
+    clock: ports.clockMs,
+  });
+
+  // --------------- Permission + Relay ---------------
+  const permissionCoordinator = createChromePermissionCoordinator({
+    chromePermissionsApi: ports.chromePermissionsApi,
+  });
+  const tokenIssuer = createFetchStreamTokenIssuer({
+    baseUrl: config.relayApiBaseUrl,
+    accessToken: config.relayAccessToken,
+    extensionVersion: config.extensionVersion,
+    protocolVersion: config.protocolVersion,
+    resolveDisplayName: config.resolveDisplayName ?? DEFAULT_RESOLVE_DISPLAY_NAME,
+    resolveOverlayTarget: config.resolveOverlayTarget ?? DEFAULT_RESOLVE_OVERLAY_TARGET,
+    resolveAutoDetectLanguage: config.resolveAutoDetectLanguage ?? DEFAULT_RESOLVE_AUTO_DETECT,
+    fetchImpl: ports.fetchImpl,
+  });
+  const wsEndpointBuilder = createDefaultWsEndpointBuilder({
+    baseUrl: config.relayApiBaseUrl,
+    ...(config.relayWsPath !== undefined ? { wsPath: config.relayWsPath } : {}),
+  });
+  const relayGateway = createRelayWebSocketGateway({
+    webSocketFactory: ports.webSocketFactory,
+    tokenIssuer,
+    clock: ports.clockMs,
+    wsEndpointBuilder,
+  });
+
+  // --------------- Overlay / presenter ---------------
+  const overlayPresenter = createChromeMessagingOverlayPresenter({
+    bridge: ports.overlayMessagingBridge,
+  });
+
+  // --------------- UseCases (Phase 2) ---------------
+  const startSourceSessionUseCase = createStartSourceSessionUseCase({
+    sourceSessionRepository,
+    extensionProfileRepository,
+    relayGateway,
+    permissionCoordinator,
+    clock: ports.clockIso,
+    idFactory: {
+      session: ports.sessionIdFactory,
+      source: ports.sourceIdFactory,
+    },
+  });
+  const stopSourceSessionUseCase = createStopSourceSessionUseCase({
+    sourceSessionRepository,
+    relayGateway,
+    overlayPresenter,
+    clock: ports.clockIso,
+  });
+  const updateSourceSettingsUseCase = createUpdateSourceSettingsUseCase({
+    sourceSessionRepository,
+    overlayPresenter,
+    clock: ports.clockIso,
+  });
+  const handleTranscriptPartialUseCase = createHandleTranscriptPartialUseCase({
+    transcriptStreamRepository,
+    overlayPresenter,
+    sessionStore,
+    settingsStore,
+  });
+  const handleTranscriptFinalUseCase = createHandleTranscriptFinalUseCase({
+    transcriptStreamRepository,
+    overlayPresenter,
+    sessionStore,
+    settingsStore,
+    translationIdFactory: ports.translationIdFactory,
+  });
+  const exportSessionResultUseCase = createExportSessionResultUseCase({
+    sessionStore,
+    exportRecordRepository,
+    clock: ports.clockIso,
+    exportIdFactory: ports.exportIdFactory,
+  });
+  const getSessionMonitorStateQuery = createGetSessionMonitorStateQuery({
+    sourceSessionRepository,
+    transcriptStreamRepository,
+    settingsStore,
+  });
+
+  // --------------- Application services (Phase 3) ---------------
+  const sessionCommandService = createSessionCommandService({
+    startSourceSessionUseCase,
+    stopSourceSessionUseCase,
+    updateSourceSettingsUseCase,
+    handleTranscriptPartialUseCase,
+    handleTranscriptFinalUseCase,
+    clock: ports.clockMs,
+  });
+  const exportService = createExportService({ exportSessionResultUseCase });
+  const sessionRegistry = createSessionRegistry();
+  const captureOrchestrator = createCaptureOrchestrator({
+    sourceAdapterFactory,
+    audioPreprocessor,
+  });
+  const transcriptAssembler = createTranscriptAssembler();
+
+  return {
+    sessionCommandService,
+    exportService,
+    getSessionMonitorStateQuery,
+    sessionRegistry,
+    captureOrchestrator,
+    transcriptAssembler,
+    close: async () => {
+      await sessionStore.close();
+      await sourceSessionRepository.close();
+      await transcriptStreamRepository.close();
+      await exportRecordRepository.close();
+    },
+  };
+};
