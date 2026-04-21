@@ -7,6 +7,7 @@ import { toHttpErrorEnvelope } from '../error-mapper';
 export type SessionsRouteDependencies = Readonly<{
   issueStreamTokenUseCase: IssueStreamTokenUseCase;
   accessTokenVerifier: AccessTokenVerifier;
+  rateLimit?: Readonly<{ max: number; timeWindowMs: number }>;
 }>;
 
 /**
@@ -24,9 +25,15 @@ export const registerSessionsRoute = (
   app: FastifyInstance,
   deps: SessionsRouteDependencies,
 ): void => {
+  const rateLimit = deps.rateLimit;
   app.post(
     '/sessions',
-    { preHandler: createBearerAuthPreHandler(deps.accessTokenVerifier) },
+    {
+      preHandler: createBearerAuthPreHandler(deps.accessTokenVerifier),
+      ...(rateLimit === undefined
+        ? {}
+        : { config: { rateLimit: { max: rateLimit.max, timeWindow: rateLimit.timeWindowMs } } }),
+    },
     async (request, reply) => {
       const result = await deps.issueStreamTokenUseCase(request.body);
       return result.match(

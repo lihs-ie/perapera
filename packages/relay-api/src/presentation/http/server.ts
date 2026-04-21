@@ -15,11 +15,14 @@ import { registerRelayRoute } from '../ws/relay-route';
 import { registerRequestContextHook } from './request-context-hook';
 import { registerHealthRoute } from './routes/health';
 import { registerSessionsRoute } from './routes/sessions';
+import { registerSecurityPlugins, type SecurityPluginConfig } from './security-plugins';
 
 export type AppDependencies = Readonly<{
   issueStreamTokenUseCase: IssueStreamTokenUseCase;
   jwtVerifier: JwtVerifier;
   accessTokenVerifier: AccessTokenVerifier;
+  security?: SecurityPluginConfig;
+  postSessionsRateLimit?: Readonly<{ max: number; timeWindowMs: number }>;
 }>;
 
 export function buildApp(deps: AppDependencies): FastifyInstance {
@@ -32,23 +35,29 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
 
   registerRequestContextHook(app);
 
-  // @fastify/websocket は onRoute hook で `{ websocket: true }` 経路を変換する。
-  // hook は plugin load 後にしか有効にならないため、WebSocket route は本 plugin
-  // 登録の "後" に load されるネスト plugin 内で宣言する必要がある。
-  void app.register(fastifyWebsocket);
-
-  registerHealthRoute(app);
-  registerSessionsRoute(app, {
-    issueStreamTokenUseCase: deps.issueStreamTokenUseCase,
-    accessTokenVerifier: deps.accessTokenVerifier,
+  // security plugins を encapsulated scope 内で `await` してから HTTP route
+  // を宣言することで、`@fastify/rate-limit` の route-level `config.rateLimit`
+  // を確実に効かせる。
+  void app.register(async (httpScope) => {
+    await registerSecurityPlugins(httpScope, deps.security ?? {});
+    registerHealthRoute(httpScope);
+    registerSessionsRoute(httpScope, {
+      issueStreamTokenUseCase: deps.issueStreamTokenUseCase,
+      accessTokenVerifier: deps.accessTokenVerifier,
+      rateLimit: deps.postSessionsRateLimit ?? { max: 30, timeWindowMs: 60_000 },
+    });
   });
-  void app.register((instance, _opts, done) => {
-    registerRelayRoute(instance, {
+
+  // WebSocket 経路。@fastify/websocket の onRoute hook 適用のためにネスト
+  // plugin 内で websocket plugin → relay route を順に登録する。security
+  // plugins とは別 scope で影響を切り離す。
+  void app.register(async (wsScope) => {
+    await wsScope.register(fastifyWebsocket);
+    registerRelayRoute(wsScope, {
       jwtVerifier: deps.jwtVerifier,
       clock: () => new Date().toISOString(),
       heartbeatIntervalSec: 15,
     });
-    done();
   });
 
   return app;
@@ -70,6 +79,9 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
  * - STREAM_TOKEN_TTL_SEC: 短命トークンの TTL 秒数 (既定 1800 = 30 分)
  * - ACCESS_TOKENS: HTTP control API の Bearer トークン (カンマ区切り。
  *   鍵ローテーション時は複数指定可)。各要素は 16 文字以上
+ * - CORS_ALLOWED_ORIGINS: CORS 許可 origin (カンマ区切り)。未設定時は任意の
+ *   `chrome-extension://<32 chars>` を許容する dev friendly 挙動
+ * - RATE_LIMIT_SESSIONS_PER_MIN: POST /sessions の per-user 上限 (既定 30)
  */
 const buildProductionDependencies = (): AppDependencies => {
   const secret = process.env['STREAM_TOKEN_SECRET'];
@@ -108,7 +120,22 @@ const buildProductionDependencies = (): AppDependencies => {
     maxFrameRatePerSecond: 10,
   });
 
-  return { issueStreamTokenUseCase, jwtVerifier, accessTokenVerifier };
+  const allowedOrigins = process.env['CORS_ALLOWED_ORIGINS']
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  const sessionsLimitPerMin = Number.parseInt(
+    process.env['RATE_LIMIT_SESSIONS_PER_MIN'] ?? '30',
+    10,
+  );
+
+  return {
+    issueStreamTokenUseCase,
+    jwtVerifier,
+    accessTokenVerifier,
+    security: allowedOrigins !== undefined ? { allowedOrigins } : {},
+    postSessionsRateLimit: { max: sessionsLimitPerMin, timeWindowMs: 60_000 },
+  };
 };
 
 async function start(): Promise<void> {
