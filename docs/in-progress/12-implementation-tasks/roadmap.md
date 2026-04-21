@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.2.0'
+version: '0.3.0'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -15,16 +15,35 @@ author: 'Codex'
 
 ## 2. 現状サマリ (2026-04-22)
 
-| Phase | 範囲                                | 状態      |
-| ----- | ----------------------------------- | --------- |
-| 0     | 着手前合意 (IMPL-001〜005)          | ✅ 完了   |
-| 1     | ドメイン層 (IMPL-101〜153)          | ✅ 完了   |
-| 2     | アプリケーション層 (IMPL-200〜230)  | ✅ 完了   |
-| 3     | 拡張 infrastructure (IMPL-300〜344) | ✅ 完了   |
-| 4     | Relay API (IMPL-400〜451)           | ✅ 完了   |
-| 5     | 拡張 presentation 層                | ⚪ 未着手 |
-| 6     | E2E / 性能 / 品質検証               | ⚪ 未着手 |
-| 7     | リリース / 運用整備                 | ⚪ 未着手 |
+| Phase | 範囲                                       | 状態           |
+| ----- | ------------------------------------------ | -------------- |
+| 0     | 着手前合意 (IMPL-001〜005)                 | ✅ 完了        |
+| 1     | ドメイン層 (IMPL-101〜153)                 | ✅ 完了        |
+| 2     | アプリケーション層 (IMPL-200〜230)         | ✅ 完了        |
+| 3     | 拡張 infrastructure (IMPL-300〜344)        | ✅ 完了        |
+| 3.5   | Domain Repository Adapters (IMPL-140〜143) | ✅ 完了 (#45)  |
+| 4     | Relay API (IMPL-400〜451)                  | ✅ 完了        |
+| 5     | 拡張 presentation 層                       | 🟡 進行中 ~10% |
+| 6     | E2E / 性能 / 品質検証                      | ⚪ 未着手      |
+| 7     | リリース / 運用整備                        | ⚪ 未着手      |
+
+### Phase 3.5 Domain Repository Adapters 内訳 (PR #45, 完了 2026-04-22)
+
+Phase 1 §3.5 (IMPL-140〜143) の domain repository ポートに対応する infrastructure
+実装を追加。Phase 3 の `IndexedDbSessionStore` / `ChromeLocalSettingsStore` と
+同一 storage を共有しつつ、ドメイン層が要求する整合検査・検索を独立した
+adapter として提供。
+
+- IMPL-140 `IndexedDbSourceSessionRepository` (DD-260 / DB-001)
+- IMPL-141 `IndexedDbTranscriptStreamRepository` (DD-261 / DB-002, 003) — 防御検証 2 種 (append-final / append-translation) 実装済
+- IMPL-142 `ChromeLocalExtensionProfileRepository` (DD-262 / DD-107 / DB-005) — 既存 SettingsStore key 体系と共有
+- IMPL-143 `IndexedDbExportRecordRepository` (DD-263 / DB-004)
+
+共通基盤:
+
+- `open-perapera-db.ts` — PeraperaSchema / `createPeraperaDbHandle` / `toPersistenceError` を切り出し、SessionStore と Repository 間で共有
+- `transcript-stream-assembler.ts` — 行ロー → `TranscriptStream` 集約組立ロジックの共有
+- `IndexedDbSessionStore` は public API を変更せず内部リファクタのみ
 
 ### Phase 4 Relay API 内訳 (PR #27〜#43, 完了 2026-04-22)
 
@@ -87,24 +106,28 @@ Cloud Run 複数インスタンス要件 ([`infrastructure-design.md` §7](../08
 - env 変数欠落は factory で fail-fast (`throw`)
 - 起動時の redact テスト (IMPL-450) で secret がログに漏れないことを契約として固定
 
-## 4. 直近の PR 優先順位 (Phase 5 着手時の先頭 5 PR)
+## 4. 直近の PR 優先順位 (Phase 5 進行中)
 
-Phase 4 が完了したため、次の優先度は Phase 5 拡張 presentation 層への着手となる。WXT entrypoint 配線と UI 実装は Relay API (develop 上で稼働) と連動する。
+Domain Repository adapter (PR #45) が develop に揃ったため、Background service
+worker composition root から Phase 3 infrastructure を DI 注入できるようになった。
+次は以下の順で進める。
 
-### PR (次) #1 — WXT 配線 + Background service worker (M)
+### PR (次) #1 — Background service worker composition root (L)
 
-> `packages/extension/entrypoints/background.ts` を作成し、Phase 3 の `SessionCommandService` / `SessionRegistry` / 全 infrastructure adapter を DI で組み立てる。
+> `packages/extension/src/entrypoints/background.ts` で `SessionCommandService` /
+> `SessionRegistry` / `CaptureOrchestrator` を DI 組立し、chrome.runtime.onMessage /
+> onConnect でポップアップ・側パネルからのコマンドを受けて UseCase に dispatch する。
 
-- 範囲: entrypoint + composition root + runtime message dispatch
-- 依存: Phase 3 完了 (済)、Relay API 稼働 (develop 上に存在)
-- 検証: `pnpm --filter @perapera/extension dev` で unpacked 起動 + 手動 smoke
+- 範囲: `src/composition/extension-composition.ts` (新規) + `entrypoints/background.ts` 差し替え + runtime message schema + DI テスト
+- 依存: PR #45 の repository adapter (完了)、Phase 3 の `IndexedDbSessionStore` / `ChromeLocalSettingsStore` / relay gateway 等 (完了)
+- 検証: vitest で composition factory の DI 契約を確認 (chrome.\* を stub)、手動 smoke は `wxt dev` で unpacked 起動し、chrome://extensions 上での起動ログ確認
 
 ### PR (次) #2 — Popup UI 最小実装 (M)
 
 > ソース追加 (tab / mic / desktop) → 開始 → 停止の単純導線。Atomic Design: atoms + molecules + template。
 
-- 範囲: `entrypoints/popup/` + `src/presentation/popup/` organism / template
-- 依存: (次) #1
+- 範囲: `entrypoints/popup/` + `src/presentation/{atoms,molecules,organisms,templates}/popup/`
+- 依存: (次) #1 の background composition (messaging API 越しに UseCase 呼び出し)
 - 検証: vitest + @testing-library/react で component test
 
 ### PR (次) #3 — Side Panel UI (M)
@@ -116,17 +139,27 @@ Phase 4 が完了したため、次の優先度は Phase 5 拡張 presentation �
 
 ### PR (次) #4 — Content script overlay (M)
 
-> 対象ページへの `ContentScriptOverlayPresenter` 注入 + Shadow DOM 実装。
+> 対象ページへの `ContentScriptOverlayPresenter` 注入 + Shadow DOM 実装 + 字幕描画の
+> hotpath 確認 (partial / final / translation final の再描画)。
 
-- 範囲: `entrypoints/content-scripts/` + injection 条件
+- 範囲: `entrypoints/content/` + injection 条件 + overlay view の React 化
 - 依存: (次) #1
 
 ### PR (次) #5 — Offscreen document + Monitor page (S)
 
 > AudioContext 維持用の offscreen 文書と、タブ以外のソース向け monitor page。
 
-- 範囲: `entrypoints/offscreen.html` + `entrypoints/monitor/`
+- 範囲: `entrypoints/offscreen/` + `entrypoints/monitor/`
 - 依存: (次) #1
+
+### PR (次) #6 — Design system tokens + atoms (M)
+
+> IMPL-500/501 (カラー / タイポ / スペーシング token 化、`IBM Plex Sans JP` / `Space Grotesk` 読込)
+> を先行実装。Popup / SidePanel / Content Script / Monitor が共通利用する atoms を固める。
+
+- 範囲: `src/presentation/atoms/` + CSS variables + フォント読み込み
+- 依存: なし (並列可)
+- 検証: Storybook 相当 (sandbox ページ or test snapshot)
 
 ## 5. Phase 4 完了基準 (M1) — 2026-04-22 達成
 
@@ -138,31 +171,35 @@ Phase 4 が完了したため、次の優先度は Phase 5 拡張 presentation �
 
 ## 6. Phase 5 拡張 presentation 層 (M2 準備)
 
-Phase 4 完了後に着手。範囲:
+PR #45 で domain repository adapter が揃ったため、Background composition root から
+全 infrastructure を DI 注入可能になった。本 Phase では下記を順次実装する。
 
-- Background service worker: `SessionCommandService` 配線 (Phase 3 の全 infrastructure adapter 注入)
-- Popup UI: ソース追加・開始・設定
-- Side Panel UI: アクティブセッション一覧・停止・エクスポート
-- Content Script: `ContentScriptOverlayPresenter` の対象ページ注入
-- Offscreen document: `AudioPreprocessor` のホスト (AudioContext 維持)
-- Monitor page: タブ以外のソース用 overlay 表示
-- WXT バンドル・zip 出力
+**マイルストン (M2)** — `wxt dev` で unpacked 拡張起動 → 手動で tab / mic / desktop ソース作成 → 翻訳オーバーレイが描画される:
 
-依存: Phase 4 の Relay API が動いて連携可能なこと (mock provider で OK)。
+1. Background service worker: `SessionCommandService` 配線 (§4 PR 次 #1)
+2. Popup UI: ソース追加・開始・設定 (§4 PR 次 #2)
+3. Side Panel UI: アクティブセッション一覧・停止・エクスポート (§4 PR 次 #3)
+4. Content Script: `ContentScriptOverlayPresenter` の対象ページ注入 (§4 PR 次 #4)
+5. Offscreen document: `AudioPreprocessor` のホスト (AudioContext 維持) (§4 PR 次 #5)
+6. Monitor page: タブ以外のソース用 overlay 表示 (§4 PR 次 #5)
+7. Design system tokens / atoms / molecules (§4 PR 次 #6 + IMPL-500〜522)
+8. WXT バンドル・zip 出力
+
+依存: Phase 4 の Relay API が develop 上で動作中 (完了)、Phase 3 infrastructure adapter および Phase 3.5 repository adapter が揃っている (完了)。
 
 ## 7. 決定が必要な項目 (blocker candidates)
 
-| ID  | 項目                          | 選択肢                                                       | 影響                              |
-| --- | ----------------------------- | ------------------------------------------------------------ | --------------------------------- |
-| D1  | STT 実プロバイダ              | Google Cloud Speech-to-Text / OpenAI Realtime / Azure Speech | IMPL-444 ブロック。MVP の翻訳品質 |
-| D2  | 翻訳 実プロバイダ             | Google Cloud Translation / DeepL / OpenAI                    | IMPL-445 ブロック                 |
-| D3  | 本番デプロイ先                | GCP Cloud Run / Fly.io / Render                              | Phase 7 IMPL-500 以降             |
-| D4  | E2E テストインフラ            | Playwright (拡張 + relay in-process) / Cypress / Puppeteer   | Phase 6                           |
-| D5  | Chrome Web Store リリース戦略 | 非公開テスト → 限定公開 → 一般公開                           | Phase 7                           |
-| D6  | 本番 HTTPS 証明書             | Cloud Run managed / Let's Encrypt                            | デプロイ時                        |
-| D7  | モニタリング / APM            | GCP Cloud Monitoring / Datadog / self-host                   | Phase 7 運用                      |
+| ID  | 項目                          | 選択肢                                                     | 状態 / 決定                                       |
+| --- | ----------------------------- | ---------------------------------------------------------- | ------------------------------------------------- |
+| D1  | STT 実プロバイダ              | Deepgram / Google Cloud Speech-to-Text / OpenAI Realtime   | ✅ **Deepgram** (PR #42 で実装済)                 |
+| D2  | 翻訳 実プロバイダ             | DeepL / Google Cloud Translation / OpenAI                  | ✅ **DeepL** (PR #42 で実装済)                    |
+| D3  | 本番デプロイ先                | GCP Cloud Run / Fly.io / Render                            | ⚪ **GCP Cloud Run** (設計書前提、Phase 7 で実装) |
+| D4  | E2E テストインフラ            | Playwright (拡張 + relay in-process) / Cypress / Puppeteer | ✅ **Playwright** (CLAUDE.md §テスト戦略)         |
+| D5  | Chrome Web Store リリース戦略 | 非公開テスト → 限定公開 → 一般公開                         | ⚪ Phase 7 で確定                                 |
+| D6  | 本番 HTTPS 証明書             | Cloud Run managed / Let's Encrypt                          | ⚪ Phase 7 デプロイ時                             |
+| D7  | モニタリング / APM            | GCP Cloud Monitoring / Datadog / self-host                 | ⚪ Phase 7 運用                                   |
 
-MVP 内で最も影響の大きい決定は D1 (STT) と D2 (翻訳)。いずれも APIキー管理・コスト・レイテンシで評価要。
+Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残 D3 / D5 / D6 / D7 は Phase 7 で順次決定する。
 
 ## 8. Phase 6 検証 (M3 に向けて)
 
@@ -184,14 +221,18 @@ MVP 内で最も影響の大きい決定は D1 (STT) と D2 (翻訳)。いずれ
 
 ## 10. 直近で閉じたい設計論点 (ロードマップ外の宿題)
 
-- [ ] `GET /sessions/:id` の動的 state 返却方針を確定 (IMPL-412 着手前)
-  - 候補 A: stateless のまま静的メタのみ (`state: 'capturing'` 固定)
-  - 候補 B: 接続中インスタンス限定 in-memory を復活 (本ロードマップ §3.1 と整合させる必要)
-- [ ] `session.stop` / `session.pause` / `session.resume` の server 側振る舞い確定 (IMPL-421 完成時)
-- [ ] Provider サーキットブレーカー発火時の `session.error(retryable, fatal)` 設計 (IMPL-446)
+- [x] `GET /sessions/:id` の動的 state 返却方針 — **stateless + `state: 'capturing'` 固定** で確定 (PR #39 / IMPL-412)
+- [x] `session.stop` / `session.pause` / `session.resume` の server 側振る舞い — PR #43 (IMPL-421/422) で確定。pause/resume は debug log 留め、stop は stream handle close
+- [x] Provider サーキットブレーカー発火時のエラー設計 — PR #41 (IMPL-446) で `invariantViolationError` を `session.error` envelope に変換
+- [ ] Phase 5 開始時の chrome.runtime messaging schema — Background と Popup/SidePanel 間の Command / Query / Event の Zod schema 設計 (§4 PR 次 #1 で確定)
+- [ ] Background 多重起動時のセッション継続 — Service Worker 再起動時に `SourceSessionRepository.findActiveSessions` で復元するか、capturing 中のみ offscreen keep-alive か。§4 PR 次 #1 で確定
+- [ ] AudioWorklet を offscreen document にホストする際の chrome.tabCapture との連携方式 — IMPL-303 + Offscreen の実装で確定
+- [ ] DB v2 schema migration の必要性 — MVP で同時 3 session 前提の full-scan が足りない場合のみ実施
 
 ## 11. 変更履歴
 
-| バージョン | 日付       | 変更内容                                              |
-| ---------- | ---------- | ----------------------------------------------------- |
-| 0.1.0      | 2026-04-21 | 初版作成。Phase 0〜3 完了、Phase 4 進行中時点の整理。 |
+| バージョン | 日付       | 変更内容                                                                                                                                                                                                                                  |
+| ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | 初版作成。Phase 0〜3 完了、Phase 4 進行中時点の整理。                                                                                                                                                                                     |
+| 0.2.0      | 2026-04-22 | Phase 4 完了を反映 (IMPL-400〜451)。直近 PR 優先順位を Phase 5 presentation 層へ更新。                                                                                                                                                    |
+| 0.3.0      | 2026-04-22 | Phase 3.5 Domain Repository Adapters (PR #45) 完了を反映。Phase 5 進行中へ遷移、§4 の PR 次優先順位を Background composition 起点に再構成。D1/D2/D4 決定を反映。§10 宿題の 3 件を Phase 4 成果でクローズ、Phase 5 固有の論点 3 件を追加。 |
