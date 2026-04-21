@@ -1,6 +1,10 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
 import {
+  canTransitionSessionState,
+  validateSessionStateTransition,
+} from '../services/session-state-transition-policy.js';
+import {
   type DomainError,
   sessionStateTransitionError,
   validationError,
@@ -20,8 +24,7 @@ import { parseSourceType, type SourceType } from './source-type.js';
  * 3. `degraded` は翻訳障害時のみ遷移可能 (transcribing / translating から)
  * 4. `stopped` 後は再開不可 (terminal state)
  *
- * NOTE: 状態遷移表は本ファイル内に inline で保持しているが、
- * IMPL-121 `SessionStateTransitionPolicy` 実装時にドメインサービスへ抽出する。
+ * 状態遷移表は `domain/services/session-state-transition-policy.ts` (DD-241) に集約する。
  */
 export type SourceSession = Readonly<{
   sessionIdentifier: SessionIdentifier;
@@ -41,48 +44,16 @@ type TransitionContext = Readonly<{
   stoppedAt?: string;
 }>;
 
-/**
- * 許容される状態遷移テーブル。キーは遷移前、値は遷移先の配列。
- * 状態機械の定義は detailed-design.md §7.1 / §7.2。
- * `stopped` はどの稼働状態からも到達可能 (terminal) なため `canTransition`
- * 側で特別扱いする (テーブルには列挙しない)。
- */
-const ALLOWED_TRANSITIONS: Readonly<Record<SessionState, readonly SessionState[]>> = {
-  idle: ['requesting_permission'],
-  requesting_permission: ['connecting', 'error'],
-  connecting: ['capturing', 'error'],
-  capturing: ['transcribing', 'paused', 'reconnecting'],
-  transcribing: ['translating', 'paused', 'reconnecting', 'degraded'],
-  translating: ['transcribing', 'paused', 'reconnecting', 'degraded'],
-  paused: ['capturing'],
-  reconnecting: ['capturing', 'error'],
-  degraded: ['transcribing'],
-  error: [],
-  stopped: [],
-};
-
-const canTransition = (from: SessionState, to: SessionState): boolean => {
-  if (from === 'stopped') return false;
-  if (to === 'stopped') return true;
-  return ALLOWED_TRANSITIONS[from].includes(to);
-};
-
 const transitionGuard = (
   current: SourceSession,
   to: SessionState,
   reason: string,
-): Result<SourceSession, DomainError> => {
-  if (!canTransition(current.state, to)) {
-    return err(
-      sessionStateTransitionError({
-        from: current.state,
-        to,
-        reason,
-      }),
-    );
-  }
-  return ok({ ...current, state: to, degradedReason: null });
-};
+): Result<SourceSession, DomainError> =>
+  validateSessionStateTransition(current.state, to, reason).map(() => ({
+    ...current,
+    state: to,
+    degradedReason: null,
+  }));
 
 export const createSourceSession = (params: {
   sessionIdentifier: string;
@@ -156,7 +127,7 @@ export const markSourceSessionDegraded = (
   session: SourceSession,
   reason: string,
 ): Result<SourceSession, DomainError> => {
-  if (!canTransition(session.state, 'degraded')) {
+  if (!canTransitionSessionState(session.state, 'degraded')) {
     return err(
       sessionStateTransitionError({
         from: session.state,
@@ -187,7 +158,7 @@ export const stopSourceSession = (
   session: SourceSession,
   context: TransitionContext & { stoppedAt: string },
 ): Result<SourceSession, DomainError> => {
-  if (!canTransition(session.state, 'stopped')) {
+  if (!canTransitionSessionState(session.state, 'stopped')) {
     return err(
       sessionStateTransitionError({
         from: session.state,
