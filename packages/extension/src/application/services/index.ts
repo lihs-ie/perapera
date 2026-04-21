@@ -9,6 +9,11 @@ export {
   type ExportService,
   type ExportServiceDependencies,
 } from './export-service';
+export {
+  createSessionCommandService,
+  type SessionCommandService,
+  type SessionCommandServiceDependencies,
+} from './session-command-service';
 export { createSessionRegistry, type SessionRegistry } from './session-registry';
 export {
   createTranscriptAssembler,
