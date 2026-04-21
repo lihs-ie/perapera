@@ -187,11 +187,16 @@ author: 'Codex'
 
 ### 5.2 ストレージ
 
-| ID       | タスク                                               | 関連 DD                |
-| -------- | ---------------------------------------------------- | ---------------------- |
-| IMPL-310 | `IndexedDbSessionStore` (`idb` 利用、4 object store) | DD-106, DB-001〜004    |
-| IMPL-311 | `ChromeLocalSettingsStore` (`chrome.storage.local`)  | DD-107, DB-005         |
-| IMPL-312 | Data Mapper 実装 (永続モデル ↔ ドメイン)             | infrastructure.md §3.3 |
+| ID       | タスク                                                                    | 関連 DD                | ステータス    |
+| -------- | ------------------------------------------------------------------------- | ---------------------- | ------------- |
+| IMPL-310 | `IndexedDbSessionStore` (`idb` 利用、4 object store)                      | DD-106, DB-001〜004    | ✅ 完了       |
+| IMPL-311 | `ChromeLocalSettingsStore` (`chrome.storage.local`)                       | DD-107, DB-005         | ✅ 完了       |
+| IMPL-312 | Data Mapper 実装 (永続モデル ↔ ドメイン)                                  | infrastructure.md §3.3 | ✅ 完了       |
+| IMPL-313 | `IndexedDbSourceSessionRepository` adapter                                | DD-260, DB-001         | ✅ 完了 (#45) |
+| IMPL-314 | `IndexedDbTranscriptStreamRepository` adapter (防御検証 2 種)             | DD-261, DB-002, DB-003 | ✅ 完了 (#45) |
+| IMPL-315 | `ChromeLocalExtensionProfileRepository` adapter (SettingsStore 共有)      | DD-262, DD-107, DB-005 | ✅ 完了 (#45) |
+| IMPL-316 | `IndexedDbExportRecordRepository` adapter                                 | DD-263, DB-004         | ✅ 完了 (#45) |
+| IMPL-317 | 共有 DB helper (`open-perapera-db.ts` / `transcript-stream-assembler.ts`) | infrastructure.md §3.3 | ✅ 完了 (#45) |
 
 ### 5.3 通信
 
