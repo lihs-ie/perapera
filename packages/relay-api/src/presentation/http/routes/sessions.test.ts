@@ -1,5 +1,6 @@
-import { errAsync, okAsync } from 'neverthrow';
+import { err, errAsync, ok, okAsync } from 'neverthrow';
 import { describe, expect, it, vi } from 'vitest';
+import { type AccessTokenVerifier } from '../../../application/ports/access-token-verifier';
 import { type JwtVerifier } from '../../../application/ports/jwt-verifier';
 import { type IssueStreamTokenOutput } from '../../../application/dto/issue-stream-token-dto';
 import { type IssueStreamTokenUseCase } from '../../../application/use-cases/issue-stream-token-use-case';
@@ -9,6 +10,8 @@ import {
   type DomainError,
 } from '../../../domain/shared/errors';
 import { buildApp } from '../server';
+
+const VALID_ACCESS_TOKEN = 'access-token-test-fixture-aaaa';
 
 const noopVerifier: JwtVerifier = {
   verify: () =>
@@ -21,8 +24,26 @@ const noopVerifier: JwtVerifier = {
     }),
 };
 
+const buildAccessTokenVerifier = (expected = VALID_ACCESS_TOKEN): AccessTokenVerifier => ({
+  verify: (bearer) =>
+    bearer === expected
+      ? ok<void, DomainError>(undefined)
+      : err<void, DomainError>(
+          invariantViolationError({
+            invariant: 'access-token-invalid',
+            details: 'mismatch',
+          }),
+        ),
+});
+
 const buildTestApp = (issueStreamTokenUseCase: IssueStreamTokenUseCase) =>
-  buildApp({ issueStreamTokenUseCase, jwtVerifier: noopVerifier });
+  buildApp({
+    issueStreamTokenUseCase,
+    jwtVerifier: noopVerifier,
+    accessTokenVerifier: buildAccessTokenVerifier(),
+  });
+
+const authHeaders = (token = VALID_ACCESS_TOKEN) => ({ authorization: `Bearer ${token}` });
 
 const successOutput: IssueStreamTokenOutput = {
   sessionId: '01HZX8Y1R8M7D3Q2P4T5V6W7A1',
@@ -63,6 +84,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/sessions',
+        headers: authHeaders(),
         payload: validBody,
       });
       expect(response.statusCode).toBe(201);
@@ -84,6 +106,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/sessions',
+        headers: authHeaders(),
         payload: validBody,
       });
       const parsed: unknown = response.json();
@@ -112,6 +135,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/sessions',
+        headers: authHeaders(),
         payload: { ...validBody, displayName: '' },
       });
       expect(response.statusCode).toBe(400);
@@ -132,11 +156,72 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/sessions',
+        headers: authHeaders(),
         payload: validBody,
       });
       expect(response.statusCode).toBe(400);
       const parsed: unknown = response.json();
       expect(parsed).toMatchObject({ error: { code: 'INVARIANT_VIOLATION' } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns 401 UNAUTHORIZED when Authorization is missing (IMPL-430)', async () => {
+    const useCase = vi.fn<IssueStreamTokenUseCase>(() =>
+      okAsync<IssueStreamTokenOutput, DomainError>(successOutput),
+    );
+    const app = buildTestApp(useCase);
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        payload: validBody,
+      });
+      expect(response.statusCode).toBe(401);
+      const parsed: unknown = response.json();
+      expect(parsed).toMatchObject({ error: { code: 'UNAUTHORIZED' } });
+      expect(useCase).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns 401 UNAUTHORIZED when access token is invalid (IMPL-430)', async () => {
+    const useCase = vi.fn<IssueStreamTokenUseCase>(() =>
+      okAsync<IssueStreamTokenOutput, DomainError>(successOutput),
+    );
+    const app = buildTestApp(useCase);
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        headers: authHeaders('wrong-token-xxxxxxxxxxxxxxxxx'),
+        payload: validBody,
+      });
+      expect(response.statusCode).toBe(401);
+      const parsed: unknown = response.json();
+      expect(parsed).toMatchObject({ error: { code: 'UNAUTHORIZED' } });
+      expect(useCase).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns 401 UNAUTHORIZED when Authorization scheme is not Bearer', async () => {
+    const useCase = vi.fn<IssueStreamTokenUseCase>(() =>
+      okAsync<IssueStreamTokenOutput, DomainError>(successOutput),
+    );
+    const app = buildTestApp(useCase);
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        headers: { authorization: `Basic ${VALID_ACCESS_TOKEN}` },
+        payload: validBody,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(useCase).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

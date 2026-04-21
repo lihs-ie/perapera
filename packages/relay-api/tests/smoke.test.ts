@@ -1,5 +1,6 @@
-import { okAsync } from 'neverthrow';
+import { ok, okAsync } from 'neverthrow';
 import { afterAll, describe, expect, it } from 'vitest';
+import { type AccessTokenVerifier } from '../src/application/ports/access-token-verifier';
 import { type JwtVerifier } from '../src/application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../src/application/use-cases/issue-stream-token-use-case';
 import { buildApp } from '../src/presentation/http/server';
@@ -32,7 +33,15 @@ const noopVerifier: JwtVerifier = {
     }),
 };
 
-const app = buildApp({ issueStreamTokenUseCase: noopUseCase, jwtVerifier: noopVerifier });
+const noopAccessTokenVerifier: AccessTokenVerifier = {
+  verify: () => ok(undefined),
+};
+
+const app = buildApp({
+  issueStreamTokenUseCase: noopUseCase,
+  jwtVerifier: noopVerifier,
+  accessTokenVerifier: noopAccessTokenVerifier,
+});
 
 afterAll(async () => {
   await app.close();

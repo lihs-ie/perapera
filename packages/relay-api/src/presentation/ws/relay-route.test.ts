@@ -1,8 +1,9 @@
 import fastifyWebsocket from '@fastify/websocket';
-import { errAsync, okAsync } from 'neverthrow';
+import { errAsync, ok, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
 import { type JwtVerifiedPayload, type JwtVerifier } from '../../application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../../application/use-cases/issue-stream-token-use-case';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
@@ -52,8 +53,16 @@ type AppHarness = Readonly<{
   port: number;
 }>;
 
+const noopAccessTokenVerifier: AccessTokenVerifier = {
+  verify: () => ok(undefined),
+};
+
 const startApp = async (verifier: JwtVerifier): Promise<AppHarness> => {
-  const app = buildApp({ issueStreamTokenUseCase: noopUseCase, jwtVerifier: verifier });
+  const app = buildApp({
+    issueStreamTokenUseCase: noopUseCase,
+    jwtVerifier: verifier,
+    accessTokenVerifier: noopAccessTokenVerifier,
+  });
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();
   const port = typeof address === 'object' && address !== null ? address.port : 0;
