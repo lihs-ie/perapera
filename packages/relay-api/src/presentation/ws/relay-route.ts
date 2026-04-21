@@ -15,8 +15,25 @@ import { authorizeRelayUpgrade, type RelayAuthorizedContext } from './relay-auth
 export type RelayRouteDependencies = Readonly<{
   jwtVerifier: JwtVerifier;
   clock: () => string;
+  /**
+   * クライアントに伝える `session.ready.payload.heartbeatIntervalSec`。
+   * クライアントはこの間隔で `session.ping` を送信する想定 (api-spec §6.2)。
+   */
   heartbeatIntervalSec: number;
+  /**
+   * サーバー側のハートビート監視スキャン間隔 (ミリ秒)。タイムアウト判定のため
+   * `setInterval` でポーリングする。既定 5 秒。
+   */
+  heartbeatCheckIntervalMs?: number;
+  /**
+   * `heartbeatIntervalSec` に対するタイムアウト倍率。既定 2 倍。
+   * 前回の受信からこの時間を超えたら接続を切断する (1001 Going Away)。
+   */
+  heartbeatTimeoutFactor?: number;
 }>;
+
+const DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS = 5000;
+const DEFAULT_HEARTBEAT_TIMEOUT_FACTOR = 2;
 
 type RelayQuery = Readonly<{
   sessionId?: string;
@@ -170,7 +187,33 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
         ),
       );
 
+      // IMPL-423 ハートビート監視。前回の受信から
+      // heartbeatIntervalSec * heartbeatTimeoutFactor を超えたら切断。
+      const timeoutMs =
+        deps.heartbeatIntervalSec *
+        (deps.heartbeatTimeoutFactor ?? DEFAULT_HEARTBEAT_TIMEOUT_FACTOR) *
+        1000;
+      const checkIntervalMs = deps.heartbeatCheckIntervalMs ?? DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS;
+      let lastActivityMs = Date.now();
+      const heartbeatTimer = setInterval(() => {
+        if (Date.now() - lastActivityMs > timeoutMs) {
+          request.log.info(
+            { sessionId: context.sessionId, lastActivityMs, timeoutMs },
+            'heartbeat timeout — closing connection',
+          );
+          socket.close(1001, 'heartbeat timeout');
+        }
+      }, checkIntervalMs);
+      heartbeatTimer.unref();
+
+      const cleanup = (): void => {
+        clearInterval(heartbeatTimer);
+      };
+      socket.on('close', cleanup);
+      socket.on('error', cleanup);
+
       socket.on('message', (raw: RawData) => {
+        lastActivityMs = Date.now();
         const text = decodeRawMessage(raw);
         const parsed = parseClientEvent(text);
         if (parsed.isErr()) {
