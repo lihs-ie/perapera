@@ -42,3 +42,6 @@ tmp/
 
 # actrun (local workflow runner) outputs
 _build/
+
+# Claude Code local permissions (個人環境依存)
+.claude/settings.local.json
