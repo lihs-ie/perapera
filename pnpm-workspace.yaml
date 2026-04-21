@@ -1,0 +1,15 @@
+packages:
+  - 'packages/*'
+
+# Allow postinstall scripts only for these packages (pnpm >= 10 default-deny)
+onlyBuiltDependencies:
+  - esbuild
+  - '@swc/core'
+  - '@swc/helpers'
+
+# Hoist dev tooling to root for uniform access
+public-hoist-pattern:
+  - '*eslint*'
+  - '*prettier*'
+  - '*typescript*'
+  - '@types/*'

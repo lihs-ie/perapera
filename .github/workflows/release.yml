@@ -1,0 +1,49 @@
+name: Release (scaffold)
+
+# このファイルはリリースパイプラインの雛形です。
+# 現時点では拡張 zip と Relay API Docker build のみを扱い、
+# Chrome Web Store アップロード / GAR push は後続イテレーションで追加します。
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-extension-zip:
+    name: Build extension zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @perapera/extension build
+      - run: pnpm --filter @perapera/extension zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-release-zip
+          path: packages/extension/.output/*.zip
+
+  build-relay-image:
+    name: Build Relay API Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # TODO(release): GAR 認証を追加する
+      #   - uses: google-github-actions/auth@v2 with workload_identity_provider ...
+      #   - uses: docker/login-action@v3 with registry ...
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/relay-api/Dockerfile
+          push: false
+          tags: perapera-relay-api:${{ github.ref_name }}
+          cache-from: type=gha,scope=relay-api
+          cache-to: type=gha,mode=max,scope=relay-api

@@ -1,0 +1,30 @@
+# actrun configuration file
+# ローカル環境で `.github/workflows/*.yml` を実行する際の共通設定
+
+# 実行モード: local (既存の worktree をそのまま使う、最速)
+workspace_mode = "local"
+
+# 第三者 action を trust する (ローカル実行時のみ対話プロンプトを抑止)
+trust_actions = true
+
+# ローカルでは不要な setup / artifact / cache 系 action を skip
+# - actions/checkout        : 既に worktree 内
+# - actions/setup-node      : ローカルの node を使う
+# - pnpm/action-setup       : corepack で packageManager を自動解決
+# - actions/upload-artifact : ローカル検証では成果物配布不要
+# - actions/download-artifact
+# - actions/cache           : ローカル検証では CI cache 不要
+# - docker/setup-buildx-action, docker/build-push-action : Docker job 専用
+local_skip_actions = [
+  "actions/checkout",
+  "actions/setup-node",
+  "pnpm/action-setup",
+  "actions/upload-artifact",
+  "actions/download-artifact",
+  "actions/cache",
+  "docker/setup-buildx-action",
+  "docker/build-push-action",
+]
+
+# 追加で監視したい workflow ファイルパターン
+includes = [".github/workflows/*.yml"]
