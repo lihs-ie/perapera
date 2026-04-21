@@ -1,6 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * 字幕セグメントのタイムスタンプ範囲 (DD-235)。

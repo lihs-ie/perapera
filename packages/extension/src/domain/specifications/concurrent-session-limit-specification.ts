@@ -1,5 +1,5 @@
-import { type SessionState } from '../session/session-state.js';
-import { type SourceSession } from '../session/source-session.js';
+import { type SessionState } from '../session/session-state';
+import { type SourceSession } from '../session/source-session';
 
 /**
  * 同時セッション数仕様 (DD-270)。

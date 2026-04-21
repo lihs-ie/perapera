@@ -6,8 +6,8 @@ import {
   finalizeSegment,
   getSegment,
   getTranslation,
-} from './transcript-stream.js';
-import { createTimestampRange } from './timestamp-range.js';
+} from './transcript-stream';
+import { createTimestampRange } from './timestamp-range';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const SEGMENT_A = '01HZX8Y2R8M7D3Q2P4T5V6W7X1';

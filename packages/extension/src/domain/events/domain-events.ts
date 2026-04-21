@@ -1,11 +1,11 @@
-import { type SessionIdentifier } from '../session/session-identifier.js';
-import { type SourceIdentifier } from '../session/source-identifier.js';
-import { type SourceSession } from '../session/source-session.js';
-import { type SourceType } from '../session/source-type.js';
-import { type SegmentIdentifier } from '../transcript/segment-identifier.js';
-import { type TranscriptSegment } from '../transcript/transcript-segment.js';
-import { type TranslationIdentifier } from '../transcript/translation-identifier.js';
-import { type TranslationSegment } from '../transcript/translation-segment.js';
+import { type SessionIdentifier } from '../session/session-identifier';
+import { type SourceIdentifier } from '../session/source-identifier';
+import { type SourceSession } from '../session/source-session';
+import { type SourceType } from '../session/source-type';
+import { type SegmentIdentifier } from '../transcript/segment-identifier';
+import { type TranscriptSegment } from '../transcript/transcript-segment';
+import { type TranslationIdentifier } from '../transcript/translation-identifier';
+import { type TranslationSegment } from '../transcript/translation-segment';
 
 /**
  * ドメインイベント (DD-250〜DD-255)。

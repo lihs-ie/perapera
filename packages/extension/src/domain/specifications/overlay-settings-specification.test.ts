@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createOverlaySettings } from '../profile/overlay-settings.js';
+import { createOverlaySettings } from '../profile/overlay-settings';
 import {
   OVERLAY_MIN_LINES,
   OVERLAY_OPACITY_BOUNDS,
@@ -9,7 +9,7 @@ import {
   isValidOverlayMaxLines,
   isValidOverlayOpacity,
   isValidOverlayPositionPreset,
-} from './overlay-settings-specification.js';
+} from './overlay-settings-specification';
 
 describe('OverlaySettingsSpecification (DD-272)', () => {
   describe('isValidOverlayPositionPreset', () => {

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { buildApp } from '../src/presentation/http/server.js';
+import { buildApp } from '../src/presentation/http/server';
 
 const app = buildApp();
 

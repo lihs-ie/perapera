@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidExportFormat } from './export-format-specification.js';
+import { isValidExportFormat } from './export-format-specification';
 
 describe('ExportFormatSpecification (DD-273)', () => {
   describe('isValidExportFormat', () => {

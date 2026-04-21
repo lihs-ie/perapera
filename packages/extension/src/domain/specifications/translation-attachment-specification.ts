@@ -1,5 +1,5 @@
-import { type SegmentIdentifier } from '../transcript/segment-identifier.js';
-import { type TranscriptStream } from '../transcript/transcript-stream.js';
+import { type SegmentIdentifier } from '../transcript/segment-identifier';
+import { type TranscriptStream } from '../transcript/transcript-stream';
 
 /**
  * 翻訳紐付け仕様 (DD-271)。

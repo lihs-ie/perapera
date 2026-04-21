@@ -1,18 +1,15 @@
 import { err, type Result } from 'neverthrow';
-import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier.js';
-import { type DomainError, invariantViolationError, notFoundError } from '../shared/errors.js';
-import { parseSegmentIdentifier } from './segment-identifier.js';
-import type { TimestampRange } from './timestamp-range.js';
+import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier';
+import { type DomainError, invariantViolationError, notFoundError } from '../shared/errors';
+import { parseSegmentIdentifier } from './segment-identifier';
+import type { TimestampRange } from './timestamp-range';
 import {
   createPartialTranscriptSegment,
   finalizeTranscriptSegment,
   updatePartialTranscriptSegment,
   type TranscriptSegment,
-} from './transcript-segment.js';
-import {
-  createCompletedTranslationSegment,
-  type TranslationSegment,
-} from './translation-segment.js';
+} from './transcript-segment';
+import { createCompletedTranslationSegment, type TranslationSegment } from './translation-segment';
 
 /**
  * 字幕ストリーム集約ルート (DD-211)。

@@ -1,7 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * 音声ソース (`AudioSource`) の識別子 (DD-231)。

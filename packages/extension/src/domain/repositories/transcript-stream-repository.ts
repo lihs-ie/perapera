@@ -1,9 +1,9 @@
 import { type ResultAsync } from 'neverthrow';
-import { type SessionIdentifier } from '../session/session-identifier.js';
-import { type DomainError } from '../shared/errors.js';
-import { type TranscriptSegment } from '../transcript/transcript-segment.js';
-import { type TranscriptStream } from '../transcript/transcript-stream.js';
-import { type TranslationSegment } from '../transcript/translation-segment.js';
+import { type SessionIdentifier } from '../session/session-identifier';
+import { type DomainError } from '../shared/errors';
+import { type TranscriptSegment } from '../transcript/transcript-segment';
+import { type TranscriptStream } from '../transcript/transcript-stream';
+import { type TranslationSegment } from '../transcript/translation-segment';
 
 /**
  * 字幕ストリームリポジトリ (DD-261)。

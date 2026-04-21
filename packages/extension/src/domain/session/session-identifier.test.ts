@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSessionIdentifier, parseSessionIdentifier } from './session-identifier.js';
+import { createSessionIdentifier, parseSessionIdentifier } from './session-identifier';
 
 const VALID_ULID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 

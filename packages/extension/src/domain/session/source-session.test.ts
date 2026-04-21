@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from './language-pair.js';
+import { createLanguagePair } from './language-pair';
 import {
   createSourceSession,
   markSourceSessionDegraded,
@@ -9,7 +9,7 @@ import {
   startSourceSession,
   stopSourceSession,
   transitionSourceSessionState,
-} from './source-session.js';
+} from './source-session';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const SOURCE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X9';

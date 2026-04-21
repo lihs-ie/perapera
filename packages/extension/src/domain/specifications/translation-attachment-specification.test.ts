@@ -1,16 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseSegmentIdentifier,
-  type SegmentIdentifier,
-} from '../transcript/segment-identifier.js';
-import { createTimestampRange } from '../transcript/timestamp-range.js';
+import { parseSegmentIdentifier, type SegmentIdentifier } from '../transcript/segment-identifier';
+import { createTimestampRange } from '../transcript/timestamp-range';
 import {
   appendPartialTranscriptSegment,
   createTranscriptStream,
   finalizeSegment,
   type TranscriptStream,
-} from '../transcript/transcript-stream.js';
-import { canAttachTranslation } from './translation-attachment-specification.js';
+} from '../transcript/transcript-stream';
+import { canAttachTranslation } from './translation-attachment-specification';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const SEGMENT_ID_1 = '01HZX8Y1R8M7D3Q2P4T5V6W7D1';

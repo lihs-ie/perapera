@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createTimestampRange } from './timestamp-range.js';
+import { createTimestampRange } from './timestamp-range';
 import {
   createPartialTranscriptSegment,
   finalizeTranscriptSegment,
   updatePartialTranscriptSegment,
-} from './transcript-segment.js';
+} from './transcript-segment';
 
 const VALID_ULID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const timeRange = createTimestampRange({ startMs: 0, endMs: 1000 })._unsafeUnwrap();

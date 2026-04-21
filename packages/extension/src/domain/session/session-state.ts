@@ -1,6 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * `SourceSession` 集約の状態値 (DD-233 / DD-210)。

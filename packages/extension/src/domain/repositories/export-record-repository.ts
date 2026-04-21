@@ -1,7 +1,7 @@
 import { type ResultAsync } from 'neverthrow';
-import { type ExportRecord } from '../export/export-record.js';
-import { type SessionIdentifier } from '../session/session-identifier.js';
-import { type DomainError } from '../shared/errors.js';
+import { type ExportRecord } from '../export/export-record';
+import { type SessionIdentifier } from '../session/session-identifier';
+import { type DomainError } from '../shared/errors';
 
 /**
  * エクスポート履歴リポジトリ (DD-263)。

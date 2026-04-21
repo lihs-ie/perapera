@@ -1,6 +1,6 @@
 import { type ResultAsync } from 'neverthrow';
-import { type ExtensionProfile } from '../profile/extension-profile.js';
-import { type DomainError } from '../shared/errors.js';
+import { type ExtensionProfile } from '../profile/extension-profile';
+import { type DomainError } from '../shared/errors';
 
 /**
  * 拡張プロファイルリポジトリ (DD-262)。

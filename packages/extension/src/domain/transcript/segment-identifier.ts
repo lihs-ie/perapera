@@ -1,7 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
 import { ulid } from 'ulid';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * 字幕セグメントの識別子 (CLAUDE.md §命名規則)。

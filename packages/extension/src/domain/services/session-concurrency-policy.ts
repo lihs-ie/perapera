@@ -1,11 +1,11 @@
 import { err, ok, type Result } from 'neverthrow';
-import { type SourceSession } from '../session/source-session.js';
-import { type DomainError, invariantViolationError } from '../shared/errors.js';
+import { type SourceSession } from '../session/source-session';
+import { type DomainError, invariantViolationError } from '../shared/errors';
 import {
   MAX_CONCURRENT_ACTIVE_SESSIONS,
   countActiveSessions,
   satisfiesConcurrentSessionLimit,
-} from '../specifications/concurrent-session-limit-specification.js';
+} from '../specifications/concurrent-session-limit-specification';
 
 /**
  * セッション並行度ポリシー (DD-240)。

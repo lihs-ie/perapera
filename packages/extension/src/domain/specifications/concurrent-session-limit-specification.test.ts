@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from '../session/language-pair.js';
+import { createLanguagePair } from '../session/language-pair';
 import {
   createSourceSession,
   markSourceSessionDegraded,
@@ -8,14 +8,14 @@ import {
   stopSourceSession,
   transitionSourceSessionState,
   type SourceSession,
-} from '../session/source-session.js';
-import { SESSION_STATES, type SessionState } from '../session/session-state.js';
+} from '../session/source-session';
+import { SESSION_STATES, type SessionState } from '../session/session-state';
 import {
   MAX_CONCURRENT_ACTIVE_SESSIONS,
   countActiveSessions,
   isActiveSession,
   satisfiesConcurrentSessionLimit,
-} from './concurrent-session-limit-specification.js';
+} from './concurrent-session-limit-specification';
 
 const SESSION_IDS = [
   '01HZX8Y1R8M7D3Q2P4T5V6W7A1',

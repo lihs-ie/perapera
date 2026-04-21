@@ -1,6 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
-import { type DomainError, validationError } from '../shared/errors.js';
+import { type DomainError, validationError } from '../shared/errors';
 
 /**
  * BCP-47 言語タグの簡易検証。言語コード (2-3 文字小文字) + 任意の地域コード

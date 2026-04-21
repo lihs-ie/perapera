@@ -1,8 +1,8 @@
 import { err, type Result } from 'neverthrow';
 import { z } from 'zod';
-import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier.js';
-import { type DomainError, validationError } from '../shared/errors.js';
-import { parseExportIdentifier, type ExportIdentifier } from './export-identifier.js';
+import { parseSessionIdentifier, type SessionIdentifier } from '../session/session-identifier';
+import { type DomainError, validationError } from '../shared/errors';
+import { parseExportIdentifier, type ExportIdentifier } from './export-identifier';
 
 /**
  * エクスポート形式の列挙 (DD-273 ExportFormatSpecification)。

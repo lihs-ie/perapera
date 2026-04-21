@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createExtensionProfile, type ExtensionProfile } from '../profile/extension-profile.js';
-import { createOverlaySettings } from '../profile/overlay-settings.js';
-import { createLanguagePair, type LanguagePair } from '../session/language-pair.js';
-import { resolveEffectiveLanguagePair } from './language-routing-policy.js';
+import { createExtensionProfile, type ExtensionProfile } from '../profile/extension-profile';
+import { createOverlaySettings } from '../profile/overlay-settings';
+import { createLanguagePair, type LanguagePair } from '../session/language-pair';
+import { resolveEffectiveLanguagePair } from './language-routing-policy';
 
 const PROFILE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7C1';
 

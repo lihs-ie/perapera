@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createExportIdentifier, parseExportIdentifier } from './export-identifier.js';
+import { createExportIdentifier, parseExportIdentifier } from './export-identifier';
 
 describe('ExportIdentifier', () => {
   it('creates a ULID-shaped identifier', () => {

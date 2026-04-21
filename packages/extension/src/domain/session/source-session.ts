@@ -3,17 +3,13 @@ import { z } from 'zod';
 import {
   canTransitionSessionState,
   validateSessionStateTransition,
-} from '../services/session-state-transition-policy.js';
-import {
-  type DomainError,
-  sessionStateTransitionError,
-  validationError,
-} from '../shared/errors.js';
-import { type LanguagePair } from './language-pair.js';
-import { parseSessionIdentifier, type SessionIdentifier } from './session-identifier.js';
-import { type SessionState } from './session-state.js';
-import { parseSourceIdentifier, type SourceIdentifier } from './source-identifier.js';
-import { parseSourceType, type SourceType } from './source-type.js';
+} from '../services/session-state-transition-policy';
+import { type DomainError, sessionStateTransitionError, validationError } from '../shared/errors';
+import { type LanguagePair } from './language-pair';
+import { parseSessionIdentifier, type SessionIdentifier } from './session-identifier';
+import { type SessionState } from './session-state';
+import { parseSourceIdentifier, type SourceIdentifier } from './source-identifier';
+import { parseSourceType, type SourceType } from './source-type';
 
 /**
  * ソースセッション集約ルート (DD-210 / DD-220)。

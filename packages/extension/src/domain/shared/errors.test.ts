@@ -6,7 +6,7 @@ import {
   sessionStateTransitionError,
   validationError,
   type DomainError,
-} from './errors.js';
+} from './errors';
 
 describe('DomainError factories', () => {
   it('creates a session-state-transition error', () => {

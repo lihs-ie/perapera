@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createTranslationIdentifier,
-  parseTranslationIdentifier,
-} from './translation-identifier.js';
+import { createTranslationIdentifier, parseTranslationIdentifier } from './translation-identifier';
 
 describe('TranslationIdentifier', () => {
   it('creates a ULID-shaped identifier', () => {

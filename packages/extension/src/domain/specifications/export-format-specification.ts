@@ -1,4 +1,4 @@
-import { EXPORT_FORMATS, type ExportFormat } from '../export/export-record.js';
+import { EXPORT_FORMATS, type ExportFormat } from '../export/export-record';
 
 /**
  * エクスポート形式仕様 (DD-273)。

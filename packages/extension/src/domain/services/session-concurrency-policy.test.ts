@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLanguagePair } from '../session/language-pair.js';
+import { createLanguagePair } from '../session/language-pair';
 import {
   createSourceSession,
   markSourceSessionDegraded,
@@ -8,9 +8,9 @@ import {
   stopSourceSession,
   transitionSourceSessionState,
   type SourceSession,
-} from '../session/source-session.js';
-import { type SessionState } from '../session/session-state.js';
-import { validateSessionConcurrency } from './session-concurrency-policy.js';
+} from '../session/source-session';
+import { type SessionState } from '../session/session-state';
+import { validateSessionConcurrency } from './session-concurrency-policy';
 
 const SESSION_IDS = [
   '01HZX8Y1R8M7D3Q2P4T5V6W7A1',

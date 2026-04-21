@@ -5,13 +5,13 @@ import {
   createTranscriptStream,
   finalizeSegment,
   type TranscriptStream,
-} from '../transcript/transcript-stream.js';
+} from '../transcript/transcript-stream';
 import {
   createFailedTranslationSegment,
   type TranslationSegment,
-} from '../transcript/translation-segment.js';
-import { createTimestampRange, type TimestampRange } from '../transcript/timestamp-range.js';
-import { assembleExport } from './export-assembly-service.js';
+} from '../transcript/translation-segment';
+import { createTimestampRange, type TimestampRange } from '../transcript/timestamp-range';
+import { assembleExport } from './export-assembly-service';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7C1';
 const SEGMENT_IDS = [

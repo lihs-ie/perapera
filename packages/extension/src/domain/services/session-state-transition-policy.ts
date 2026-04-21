@@ -1,6 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
-import { type SessionState } from '../session/session-state.js';
-import { type DomainError, sessionStateTransitionError } from '../shared/errors.js';
+import { type SessionState } from '../session/session-state';
+import { type DomainError, sessionStateTransitionError } from '../shared/errors';
 
 /**
  * ソースセッション状態遷移ポリシー (DD-241)。
