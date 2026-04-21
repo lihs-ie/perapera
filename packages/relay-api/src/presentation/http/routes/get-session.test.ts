@@ -5,6 +5,8 @@ import { type AccessTokenVerifier } from '../../../application/ports/access-toke
 import { type JwtVerifiedPayload, type JwtVerifier } from '../../../application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../../../application/use-cases/issue-stream-token-use-case';
 import { invariantViolationError, type DomainError } from '../../../domain/shared/errors';
+import { createMockSttProvider } from '../../../../tests/support/mock/mock-stt-provider';
+import { createMockTranslationProvider } from '../../../../tests/support/mock/mock-translation-provider';
 import { buildApp } from '../server';
 
 const ACCESS_TOKEN = 'access-token-test-fixture-xxxx';
@@ -65,6 +67,8 @@ const buildTestApp = (jwtVerifier: JwtVerifier) =>
     issueStreamTokenUseCase: noopUseCase,
     jwtVerifier,
     accessTokenVerifier,
+    sttPort: createMockSttProvider(),
+    translationPort: createMockTranslationProvider(),
   });
 
 describe('GET /sessions/:sessionId (IMPL-412 stateless)', () => {

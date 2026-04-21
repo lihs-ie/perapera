@@ -4,6 +4,8 @@ import { type AccessTokenVerifier } from '../src/application/ports/access-token-
 import { type JwtVerifier } from '../src/application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../src/application/use-cases/issue-stream-token-use-case';
 import { buildApp } from '../src/presentation/http/server';
+import { createMockSttProvider } from './support/mock/mock-stt-provider';
+import { createMockTranslationProvider } from './support/mock/mock-translation-provider';
 
 const noopUseCase: IssueStreamTokenUseCase = () =>
   okAsync({
@@ -41,6 +43,8 @@ const app = buildApp({
   issueStreamTokenUseCase: noopUseCase,
   jwtVerifier: noopVerifier,
   accessTokenVerifier: noopAccessTokenVerifier,
+  sttPort: createMockSttProvider(),
+  translationPort: createMockTranslationProvider(),
 });
 
 afterAll(async () => {

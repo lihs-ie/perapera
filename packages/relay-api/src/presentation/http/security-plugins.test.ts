@@ -1,10 +1,11 @@
-import { okAsync } from 'neverthrow';
+import { ok, okAsync } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ok } from 'neverthrow';
 import { type FastifyInstance } from 'fastify';
 import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
 import { type JwtVerifier } from '../../application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../../application/use-cases/issue-stream-token-use-case';
+import { createMockSttProvider } from '../../../tests/support/mock/mock-stt-provider';
+import { createMockTranslationProvider } from '../../../tests/support/mock/mock-translation-provider';
 import { buildApp, type AppDependencies } from './server';
 
 const VALID_ACCESS_TOKEN = 'access-token-test-fixture-aaaa';
@@ -46,6 +47,8 @@ const buildTestApp = (overrides: Partial<AppDependencies> = {}): FastifyInstance
     issueStreamTokenUseCase: noopUseCase,
     jwtVerifier: noopVerifier,
     accessTokenVerifier: fixedAccessTokenVerifier,
+    sttPort: createMockSttProvider(),
+    translationPort: createMockTranslationProvider(),
     ...overrides,
   });
 

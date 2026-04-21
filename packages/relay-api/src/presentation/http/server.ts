@@ -29,13 +29,15 @@ export type AppDependencies = Readonly<{
   accessTokenVerifier: AccessTokenVerifier;
   /**
    * STT プロバイダ。本番では Deepgram を配線する。test では mock-stt-provider
-   * を渡す (tests/support/mock)。PR G の WS wiring で使用する。
+   * を渡す (tests/support/mock)。WebSocket `/relay` の audio.frame → transcript
+   * 経路で使用するため必須。
    */
-  sttPort?: SttPort;
+  sttPort: SttPort;
   /**
-   * 翻訳プロバイダ。本番では DeepL を配線する。PR G の WS wiring で使用する。
+   * 翻訳プロバイダ。本番では DeepL を配線する。`transcript.final` → translation
+   * 経路で使用するため必須。
    */
-  translationPort?: TranslationPort;
+  translationPort: TranslationPort;
   security?: SecurityPluginConfig;
   postSessionsRateLimit?: Readonly<{ max: number; timeWindowMs: number }>;
 }>;
@@ -74,6 +76,8 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     await wsScope.register(fastifyWebsocket);
     registerRelayRoute(wsScope, {
       jwtVerifier: deps.jwtVerifier,
+      sttPort: deps.sttPort,
+      translationPort: deps.translationPort,
       clock: () => new Date().toISOString(),
       heartbeatIntervalSec: 15,
     });

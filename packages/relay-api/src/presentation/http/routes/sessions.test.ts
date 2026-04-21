@@ -9,6 +9,8 @@ import {
   validationError,
   type DomainError,
 } from '../../../domain/shared/errors';
+import { createMockSttProvider } from '../../../../tests/support/mock/mock-stt-provider';
+import { createMockTranslationProvider } from '../../../../tests/support/mock/mock-translation-provider';
 import { buildApp } from '../server';
 
 const VALID_ACCESS_TOKEN = 'access-token-test-fixture-aaaa';
@@ -41,6 +43,8 @@ const buildTestApp = (issueStreamTokenUseCase: IssueStreamTokenUseCase) =>
     issueStreamTokenUseCase,
     jwtVerifier: noopVerifier,
     accessTokenVerifier: buildAccessTokenVerifier(),
+    sttPort: createMockSttProvider(),
+    translationPort: createMockTranslationProvider(),
   });
 
 const authHeaders = (token = VALID_ACCESS_TOKEN) => ({ authorization: `Bearer ${token}` });
