@@ -1,6 +1,7 @@
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ulid } from 'ulid';
+import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
 import { type JwtVerifier } from '../../application/ports/jwt-verifier';
 import {
   createIssueStreamTokenUseCase,
@@ -8,6 +9,7 @@ import {
 } from '../../application/use-cases/issue-stream-token-use-case';
 import { createJoseJwtSigner } from '../../infrastructure/auth/jose-jwt-signer';
 import { createJoseJwtVerifier } from '../../infrastructure/auth/jose-jwt-verifier';
+import { createStaticAccessTokenVerifier } from '../../infrastructure/auth/static-access-token-verifier';
 import { loggerOptions } from '../../infrastructure/logging/logger';
 import { registerRelayRoute } from '../ws/relay-route';
 import { registerHealthRoute } from './routes/health';
@@ -16,6 +18,7 @@ import { registerSessionsRoute } from './routes/sessions';
 export type AppDependencies = Readonly<{
   issueStreamTokenUseCase: IssueStreamTokenUseCase;
   jwtVerifier: JwtVerifier;
+  accessTokenVerifier: AccessTokenVerifier;
 }>;
 
 export function buildApp(deps: AppDependencies): FastifyInstance {
@@ -32,7 +35,10 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
   void app.register(fastifyWebsocket);
 
   registerHealthRoute(app);
-  registerSessionsRoute(app, { issueStreamTokenUseCase: deps.issueStreamTokenUseCase });
+  registerSessionsRoute(app, {
+    issueStreamTokenUseCase: deps.issueStreamTokenUseCase,
+    accessTokenVerifier: deps.accessTokenVerifier,
+  });
   void app.register((instance, _opts, done) => {
     registerRelayRoute(instance, {
       jwtVerifier: deps.jwtVerifier,
@@ -59,6 +65,8 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
  * - STREAM_TOKEN_AUDIENCE: JWT aud (例: perapera-extension)
  * - RELAY_PUBLIC_URL: クライアントに返す WebSocket URL (wss://...)
  * - STREAM_TOKEN_TTL_SEC: 短命トークンの TTL 秒数 (既定 1800 = 30 分)
+ * - ACCESS_TOKENS: HTTP control API の Bearer トークン (カンマ区切り。
+ *   鍵ローテーション時は複数指定可)。各要素は 16 文字以上
  */
 const buildProductionDependencies = (): AppDependencies => {
   const secret = process.env['STREAM_TOKEN_SECRET'];
@@ -74,6 +82,17 @@ const buildProductionDependencies = (): AppDependencies => {
   const jwtSigner = createJoseJwtSigner({ secretKey, issuer, audience });
   const jwtVerifier = createJoseJwtVerifier({ secretKey, issuer, audience });
 
+  const rawAccessTokens = process.env['ACCESS_TOKENS'];
+  if (rawAccessTokens === undefined || rawAccessTokens.trim().length === 0) {
+    throw new Error('ACCESS_TOKENS env var is required (comma-separated, each >= 16 chars)');
+  }
+  const accessTokenVerifier = createStaticAccessTokenVerifier({
+    allowedTokens: rawAccessTokens
+      .split(',')
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0),
+  });
+
   const issueStreamTokenUseCase = createIssueStreamTokenUseCase({
     jwtSigner,
     clock: () => new Date().toISOString(),
@@ -86,7 +105,7 @@ const buildProductionDependencies = (): AppDependencies => {
     maxFrameRatePerSecond: 10,
   });
 
-  return { issueStreamTokenUseCase, jwtVerifier };
+  return { issueStreamTokenUseCase, jwtVerifier, accessTokenVerifier };
 };
 
 async function start(): Promise<void> {
