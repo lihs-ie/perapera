@@ -34,7 +34,11 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
   registerHealthRoute(app);
   registerSessionsRoute(app, { issueStreamTokenUseCase: deps.issueStreamTokenUseCase });
   void app.register((instance, _opts, done) => {
-    registerRelayRoute(instance, { jwtVerifier: deps.jwtVerifier });
+    registerRelayRoute(instance, {
+      jwtVerifier: deps.jwtVerifier,
+      clock: () => new Date().toISOString(),
+      heartbeatIntervalSec: 15,
+    });
     done();
   });
 
