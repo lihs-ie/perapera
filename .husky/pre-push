@@ -1,0 +1,9 @@
+branch=$(git rev-parse --abbrev-ref HEAD)
+pattern='^(main|develop|HEAD)$|^(feat|fix|refactor|chore|docs|test|perf|ci|deps|infra|release|hotfix)/[a-z0-9._-]+$'
+if ! printf '%s' "$branch" | grep -qE "$pattern"; then
+  printf 'Branch name "%s" does not match convention.\n' "$branch" >&2
+  printf 'Expected: main | develop | <type>/<description>\n' >&2
+  printf '  type = feat | fix | refactor | chore | docs | test | perf | ci | deps | infra | release | hotfix\n' >&2
+  printf '  description = [a-z0-9._-]+\n' >&2
+  exit 1
+fi

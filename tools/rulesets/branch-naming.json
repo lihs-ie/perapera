@@ -1,0 +1,23 @@
+{
+  "name": "Conventional branch naming",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/**"],
+      "exclude": ["refs/heads/main", "refs/heads/develop"]
+    }
+  },
+  "rules": [
+    {
+      "type": "branch_name_pattern",
+      "parameters": {
+        "operator": "regex",
+        "pattern": "^(feat|fix|refactor|chore|docs|test|perf|ci|deps|infra|release|hotfix)/[a-z0-9._-]+$",
+        "negate": false,
+        "name": "Conventional Commits compatible branch name"
+      }
+    }
+  ]
+}
