@@ -31,6 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `09-security-design/`                   | 脅威分析、認証認可、データ保護                   | -                                   |
 | `10-operations-design/`                 | SLA/SLO、インシデント対応                        | -                                   |
 | `11-persona-design/`                    | 利用者像と文脈                                   | `PER-xxx`                           |
+| `12-implementation-tasks/Task.md`       | 実装タスク一覧（Phase 0〜7）と進捗管理規約       | `IMPL-xxx`                          |
 
 ## アーキテクチャの要点
 
