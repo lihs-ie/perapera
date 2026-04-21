@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.output/
+.wxt/
+coverage/
+playwright-report/
+test-results/
+web-ext-artifacts/
+pnpm-lock.yaml
+*.min.*
+*.tsbuildinfo
+# actrun 成果物
+_build/

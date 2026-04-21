@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+pnpm-debug.log
+npm-debug.log*
+yarn-error.log
+
+# Build outputs
+dist/
+.output/
+.wxt/
+web-ext-artifacts/
+*.tsbuildinfo
+
+# Test / coverage outputs
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# VSCode: keep recommended settings / extensions, ignore everything else
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Cache / temp
+.cache/
+tmp/
+
+# actrun (local workflow runner) outputs
+_build/
