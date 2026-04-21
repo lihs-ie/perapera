@@ -1,0 +1,38 @@
+name: Branch Name Check
+
+# Ruleset `Conventional branch naming` が Public Personal Repo では API 経由で
+# 適用できない (branch_name_pattern rule が 422) ため、代替として workflow で
+# branch 命名規約を強制する。push 時と PR 時の両方で発火し、違反を CI エラーに
+# する。
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - develop
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: branch-name-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Validate branch naming convention
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name pattern
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          pattern='^(feat|fix|refactor|chore|docs|test|perf|ci|deps|infra|release|hotfix)/[a-z0-9._-]+$'
+          if [[ ! "$BRANCH" =~ $pattern ]]; then
+            echo "::error title=Invalid branch name::Branch '$BRANCH' does not match convention"
+            echo "Expected: <type>/<description> where"
+            echo "  type = feat | fix | refactor | chore | docs | test | perf | ci | deps | infra | release | hotfix"
+            echo "  description = [a-z0-9._-]+"
+            exit 1
+          fi
+          echo "Branch '$BRANCH' matches naming convention ✓"

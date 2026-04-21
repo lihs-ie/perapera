@@ -157,6 +157,28 @@ GitHub Actions で利用する第三者 action は **コミット SHA で pin �
 
 SHA は最新タグに追従させる。更新は `actrun lint .github/workflows/<file>.yml --update-hash` で自動化する。ローカル CI 検証は `actrun workflow run .github/workflows/ci.yml` で行える（`actrun.toml` に skip 設定済、e2e / docker-relay は step-level `if: ${{ !env.ACTRUN_LOCAL }}` で actrun 時のみ skip）。
 
+## ブランチ保護
+
+GitHub Ruleset で `main` / `develop` を保護し、規約を実体として強制する。設定は `tools/rulesets/*.json` に版管理する:
+
+| Ruleset                      | 対象                           | 主なルール                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Protect main`               | `refs/heads/main`              | deletion / force push 禁止、linear history 強制、PR 必須、required status check `All Green`、`strict_required_status_checks_policy: true`、review thread resolution 必須                                                       |
+| `Protect develop`            | `refs/heads/develop`           | deletion / force push 禁止、PR 必須、required status check `All Green`、`strict_required_status_checks_policy: true`                                                                                                           |
+| `Conventional branch naming` | 全ブランチ (main/develop 除く) | `^(feat\|fix\|refactor\|chore\|docs\|test\|perf\|ci\|deps\|infra\|release\|hotfix)/[a-z0-9._-]+$` パターンのみ許可 — **現在は workflow と husky で代替**（Public Personal Repo では `branch_name_pattern` rule が 422 のため） |
+
+**branch 命名の現運用**:
+
+- `.github/workflows/branch-name-check.yml` — push / PR 時に CI で validate、違反は CI fail
+- `.husky/pre-push` — ローカル push 前に reject
+
+**bypass**:
+
+- `Protect main`: Repository admin が `bypass_mode: always`（緊急時のみ、通常運用では使用しない）
+- `Protect develop`: Repository admin が `bypass_mode: pull_request`（PR 経由でのみ bypass 可）
+
+**更新手順**: `tools/rulesets/<name>.json` を編集 → PR → merge → `gh api --method PUT repos/lihs-ie/perapera/rulesets/<id> --input tools/rulesets/<name>.json` で反映。詳細は `tools/rulesets/README.md`。
+
 ## 命名規則（本プロジェクト固有）
 
 グローバル規約（ユーザー `~/.claude/CLAUDE.md`）に加え、本プロジェクトで固有の識別子は以下:
