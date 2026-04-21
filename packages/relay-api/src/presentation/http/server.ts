@@ -13,6 +13,7 @@ import { createStaticAccessTokenVerifier } from '../../infrastructure/auth/stati
 import { loggerOptions } from '../../infrastructure/logging/logger';
 import { registerRelayRoute } from '../ws/relay-route';
 import { registerRequestContextHook } from './request-context-hook';
+import { registerGetSessionRoute } from './routes/get-session';
 import { registerHealthRoute } from './routes/health';
 import { registerSessionsRoute } from './routes/sessions';
 import { registerSecurityPlugins, type SecurityPluginConfig } from './security-plugins';
@@ -45,6 +46,10 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
       issueStreamTokenUseCase: deps.issueStreamTokenUseCase,
       accessTokenVerifier: deps.accessTokenVerifier,
       rateLimit: deps.postSessionsRateLimit ?? { max: 30, timeWindowMs: 60_000 },
+    });
+    registerGetSessionRoute(httpScope, {
+      accessTokenVerifier: deps.accessTokenVerifier,
+      jwtVerifier: deps.jwtVerifier,
     });
   });
 
