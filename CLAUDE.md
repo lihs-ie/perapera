@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `perapera` は、任意の音声ソース（ブラウザタブ音声、マイク、画面共有音声）に対してリアルタイム文字起こし・翻訳を行い、翻訳結果を Chrome 上の閲覧対象にオーバーレイ表示する Chrome 拡張機能。
 
+**開発体制**: 本プロジェクトは **lihs-ie 単独開発** で進める。チーム化を前提とした承認・レビュー gate や、外部コントリビュータ向けの規約（`CONTRIBUTING.md` 等）は導入しない。将来体制が変わるまでこの前提を固定する。
+
 **現状**: 本リポジトリには実装コードは存在せず、`docs/in-progress/` 配下に設計文書のみが存在する。実装開始時は設計文書を正とする。
 
 ## ドキュメント構造
