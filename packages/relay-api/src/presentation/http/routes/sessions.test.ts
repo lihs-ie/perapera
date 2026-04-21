@@ -1,5 +1,6 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it, vi } from 'vitest';
+import { type JwtVerifier } from '../../../application/ports/jwt-verifier';
 import { type IssueStreamTokenOutput } from '../../../application/dto/issue-stream-token-dto';
 import { type IssueStreamTokenUseCase } from '../../../application/use-cases/issue-stream-token-use-case';
 import {
@@ -8,6 +9,20 @@ import {
   type DomainError,
 } from '../../../domain/shared/errors';
 import { buildApp } from '../server';
+
+const noopVerifier: JwtVerifier = {
+  verify: () =>
+    okAsync({
+      jti: 'strm_xxx',
+      sub: '01HZX8Y1R8M7D3Q2P4T5V6W7A1',
+      expiresAtEpochSec: Math.floor(Date.now() / 1000) + 600,
+      issuedAtEpochSec: Math.floor(Date.now() / 1000),
+      claims: {},
+    }),
+};
+
+const buildTestApp = (issueStreamTokenUseCase: IssueStreamTokenUseCase) =>
+  buildApp({ issueStreamTokenUseCase, jwtVerifier: noopVerifier });
 
 const successOutput: IssueStreamTokenOutput = {
   sessionId: '01HZX8Y1R8M7D3Q2P4T5V6W7A1',
@@ -43,7 +58,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
     const useCase: IssueStreamTokenUseCase = vi.fn(() =>
       okAsync<IssueStreamTokenOutput, DomainError>(successOutput),
     );
-    const app = buildApp({ issueStreamTokenUseCase: useCase });
+    const app = buildTestApp(useCase);
     try {
       const response = await app.inject({
         method: 'POST',
@@ -64,7 +79,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
   it('returns requestId in meta with req_ prefix', async () => {
     const useCase: IssueStreamTokenUseCase = () =>
       okAsync<IssueStreamTokenOutput, DomainError>(successOutput);
-    const app = buildApp({ issueStreamTokenUseCase: useCase });
+    const app = buildTestApp(useCase);
     try {
       const response = await app.inject({
         method: 'POST',
@@ -92,7 +107,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
       errAsync<IssueStreamTokenOutput, DomainError>(
         validationError({ field: 'displayName', message: 'must be non-empty' }),
       );
-    const app = buildApp({ issueStreamTokenUseCase: useCase });
+    const app = buildTestApp(useCase);
     try {
       const response = await app.inject({
         method: 'POST',
@@ -112,7 +127,7 @@ describe('POST /sessions route (IMPL-411, stateless)', () => {
       errAsync<IssueStreamTokenOutput, DomainError>(
         invariantViolationError({ invariant: 'x', details: 'y' }),
       );
-    const app = buildApp({ issueStreamTokenUseCase: useCase });
+    const app = buildTestApp(useCase);
     try {
       const response = await app.inject({
         method: 'POST',

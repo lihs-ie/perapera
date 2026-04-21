@@ -1,5 +1,6 @@
 import { okAsync } from 'neverthrow';
 import { afterAll, describe, expect, it } from 'vitest';
+import { type JwtVerifier } from '../src/application/ports/jwt-verifier';
 import { type IssueStreamTokenUseCase } from '../src/application/use-cases/issue-stream-token-use-case';
 import { buildApp } from '../src/presentation/http/server';
 
@@ -20,7 +21,18 @@ const noopUseCase: IssueStreamTokenUseCase = () =>
     limits: { maxConcurrentSessions: 3, maxFrameRatePerSecond: 10 },
   });
 
-const app = buildApp({ issueStreamTokenUseCase: noopUseCase });
+const noopVerifier: JwtVerifier = {
+  verify: () =>
+    okAsync({
+      jti: 'strm_xxx',
+      sub: '01HZX8Y1R8M7D3Q2P4T5V6W7A1',
+      expiresAtEpochSec: Math.floor(Date.now() / 1000) + 600,
+      issuedAtEpochSec: Math.floor(Date.now() / 1000),
+      claims: {},
+    }),
+};
+
+const app = buildApp({ issueStreamTokenUseCase: noopUseCase, jwtVerifier: noopVerifier });
 
 afterAll(async () => {
   await app.close();

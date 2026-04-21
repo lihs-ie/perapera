@@ -1,16 +1,21 @@
+import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ulid } from 'ulid';
+import { type JwtVerifier } from '../../application/ports/jwt-verifier';
 import {
   createIssueStreamTokenUseCase,
   type IssueStreamTokenUseCase,
 } from '../../application/use-cases/issue-stream-token-use-case';
 import { createJoseJwtSigner } from '../../infrastructure/auth/jose-jwt-signer';
+import { createJoseJwtVerifier } from '../../infrastructure/auth/jose-jwt-verifier';
 import { loggerOptions } from '../../infrastructure/logging/logger';
+import { registerRelayRoute } from '../ws/relay-route';
 import { registerHealthRoute } from './routes/health';
 import { registerSessionsRoute } from './routes/sessions';
 
 export type AppDependencies = Readonly<{
   issueStreamTokenUseCase: IssueStreamTokenUseCase;
+  jwtVerifier: JwtVerifier;
 }>;
 
 export function buildApp(deps: AppDependencies): FastifyInstance {
@@ -21,8 +26,17 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     genReqId: () => `req_${ulid()}`,
   });
 
+  // @fastify/websocket は onRoute hook で `{ websocket: true }` 経路を変換する。
+  // hook は plugin load 後にしか有効にならないため、WebSocket route は本 plugin
+  // 登録の "後" に load されるネスト plugin 内で宣言する必要がある。
+  void app.register(fastifyWebsocket);
+
   registerHealthRoute(app);
   registerSessionsRoute(app, { issueStreamTokenUseCase: deps.issueStreamTokenUseCase });
+  void app.register((instance, _opts, done) => {
+    registerRelayRoute(instance, { jwtVerifier: deps.jwtVerifier });
+    done();
+  });
 
   return app;
 }
@@ -52,11 +66,9 @@ const buildProductionDependencies = (): AppDependencies => {
   const relayUrl = process.env['RELAY_PUBLIC_URL'] ?? 'wss://relay.local/api/v1/relay';
   const ttlSec = Number.parseInt(process.env['STREAM_TOKEN_TTL_SEC'] ?? '1800', 10);
 
-  const jwtSigner = createJoseJwtSigner({
-    secretKey: new TextEncoder().encode(secret),
-    issuer,
-    audience,
-  });
+  const secretKey = new TextEncoder().encode(secret);
+  const jwtSigner = createJoseJwtSigner({ secretKey, issuer, audience });
+  const jwtVerifier = createJoseJwtVerifier({ secretKey, issuer, audience });
 
   const issueStreamTokenUseCase = createIssueStreamTokenUseCase({
     jwtSigner,
@@ -70,7 +82,7 @@ const buildProductionDependencies = (): AppDependencies => {
     maxFrameRatePerSecond: 10,
   });
 
-  return { issueStreamTokenUseCase };
+  return { issueStreamTokenUseCase, jwtVerifier };
 };
 
 async function start(): Promise<void> {
