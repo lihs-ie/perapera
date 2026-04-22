@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.14'
+version: '0.5.15'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -412,10 +412,11 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 - IMPL-600 Playwright E2E (拡張 unpacked + Relay mock provider で翻訳ループを閉じる) — 🟡 進行中 (page render smoke 4/5 完了, golden path / permission denied 未)
 - IMPL-610 k6 負荷試験 (Relay 同時 3 接続、SLO 計測) — ⚪ 未着手
 - IMPL-620 脅威モデル最終確認 (security-design §3 threat matrix と実装の突き合わせ) — ⚪ 未着手
-- IMPL-630 `pnpm audit` + dependabot 定期化 — ✅ 完了 (本 PR):
+- IMPL-630 `pnpm audit` + dependabot 定期化 — ✅ 完了:
   - `.github/dependabot.yml` — npm / github-actions / docker の 3 ecosystem を weekly monday 09:00 JST で回す。npm は production / development で group 化 (major bump は個別 PR)。target は `develop`
   - `.github/workflows/audit.yml` — `pnpm audit --audit-level moderate` を weekly + 依存ファイル変更 PR + workflow_dispatch で実行
   - `branch-name-check.yml` / `.husky/pre-push` の pattern に `^dependabot/.+$` を OR 追加 (Dependabot 生成 branch の命名規約適合)
+  - `package.json > pnpm.overrides` で検出された 8 件の transitive vuln (tar x6 high / vite moderate / esbuild moderate) を patched version (`tar ^7.5.13` / `vite ^6.4.2` / `esbuild ^0.25.0`) に強制し `pnpm audit` 0 件化
 
 ## 9. Phase 7 リリース (M4)
 
@@ -463,3 +464,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.12     | 2026-04-22 | IMPL-617 で Phase 5+ Step 2d-3 (worklet port.onmessage で frame 受信 + SW 転送) を完了。`AudioWorkletNodeLike.port` を mutable 化し、`OffscreenAudioHost` に `onAudioFrame` callback 依存を追加、`connectWorklet` 内で `port.onmessage` listener を設定。callback throw は try/catch で吸収。`offscreen/main.ts` で `chrome.runtime.sendMessage({type:'audio.frame.forward',...})` を転送として注入。2 新規 tests。§2 Phase 5+ を ~95% → ~98% に。                                                                                                                          |
 | 0.5.13     | 2026-04-22 | **IMPL-618 で Phase 5+ Step 2d-4 (SW で audio.frame.forward 受信 → relayGateway.sendAudioFrame) を完了、Phase 5+ 完結**。新規 `AudioFrameForwardReceiver` + zod schema validation + `background.ts` onMessage listener で配線。10 unit tests + composition smoke。実 audio data が SW → offscreen → worklet → SW → Relay API までフル接続 (端到端での audio routing foundation 完成)。§2 Phase 5+ を ~98% → ✅ 完了 に。                                                                                                                                                    |
 | 0.5.14     | 2026-04-22 | IMPL-630 (`pnpm audit` + dependabot 定期化) を完了。`.github/dependabot.yml` で npm / github-actions / docker の 3 ecosystem を weekly monday 09:00 JST・`target-branch: develop` でスケジュール (npm は production/development で group 化、major は個別 PR)。`.github/workflows/audit.yml` で `pnpm audit --audit-level moderate` を weekly + 依存ファイル変更 PR + workflow_dispatch で実行。`branch-name-check.yml` / `.husky/pre-push` に `^dependabot/.+$` を OR 追加し、Dependabot 生成 branch が命名規約 CI を通るようにした。§8 Phase 6 の IMPL-630 を ✅ に更新。 |
+| 0.5.15     | 2026-04-22 | IMPL-630 初回実行で検出された transitive 脆弱性 8 件 (`wxt>giget>tar` x6 high / `vitest>vite` moderate / `vitest>vite>esbuild` moderate) を `package.json > pnpm.overrides` で解消。`tar ^7.5.13` / `vite ^6.4.2` / `esbuild ^0.25.0` に強制し、`pnpm audit --audit-level moderate` が 0 件を返すことを確認。extension (898) / relay-api (184) tests / typecheck / wxt build いずれも override 後に通過。                                                                                                                                                                   |
