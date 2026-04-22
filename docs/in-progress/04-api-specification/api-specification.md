@@ -64,6 +64,8 @@ Authorization: Bearer <access_token>
 Authorization: Bearer <stream_token>
 ```
 
+browser WebSocket API (`new WebSocket(url, protocols)`) は custom header を設定できないため、browser client は同等の代替として query parameter `?token=<stream_token>` を使う。Relay は header を優先し、未指定なら query にフォールバックする。server-to-server クライアントは header を使うこと。
+
 ### 2.4 レートリミット
 
 | 対象                        | 制限                            | 超過時                     |

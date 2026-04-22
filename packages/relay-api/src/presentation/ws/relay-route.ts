@@ -43,6 +43,11 @@ const DEFAULT_AUDIO_FRAME_LIMIT_PER_SEC = 10;
 type RelayQuery = Readonly<{
   sessionId?: string;
   protocolVersion?: string;
+  /**
+   * browser WebSocket client は `Authorization` header を設定できないため
+   * `?token=<stream_token>` 形式で受け付ける fallback (relay-auth.ts 参照)。
+   */
+  token?: string;
 }>;
 
 const contextMap = new WeakMap<FastifyRequest, RelayAuthorizedContext>();
@@ -229,6 +234,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
         const result = await authorizeRelayUpgrade(
           {
             authorizationHeader: request.headers.authorization,
+            tokenQuery: request.query.token,
             sessionIdQuery: request.query.sessionId,
             protocolVersionQuery: request.query.protocolVersion,
           },

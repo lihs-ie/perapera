@@ -10,13 +10,17 @@ import { invariantViolationError, type DomainError } from '../../domain/shared/e
  * から呼び出し、失敗時は 401 で upgrade を拒否する。
  *
  * 検証項目 (api-specification §6.1):
- * 1. `Authorization: Bearer <stream_token>` ヘッダが存在する
+ * 1. `Authorization: Bearer <stream_token>` ヘッダ **または** `?token=<stream_token>`
+ *    query parameter が存在する (browser WebSocket API は custom header を
+ *    設定できないため、browser client は query を使う。server-to-server は
+ *    header を推奨)
  * 2. stream token が JwtVerifier で verify される
  * 3. クエリの `sessionId` が JWT の `sub` と一致する
  * 4. クエリの `protocolVersion` が既知バージョン ('1.0') と一致する
  */
 export type ExtractAuthInput = Readonly<{
   authorizationHeader: string | undefined;
+  tokenQuery: string | undefined;
   sessionIdQuery: string | undefined;
   protocolVersionQuery: string | undefined;
 }>;
@@ -25,25 +29,34 @@ export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = ['1.0'] as const;
 
 const BEARER_PREFIX = 'Bearer ';
 
-const extractBearerToken = (header: string | undefined): Result<string, DomainError> => {
-  if (!header?.startsWith(BEARER_PREFIX)) {
-    return err(
-      invariantViolationError({
-        invariant: 'relay-missing-authorization',
-        details: 'Authorization header with Bearer scheme is required',
-      }),
-    );
+const extractBearerToken = (
+  header: string | undefined,
+  tokenQuery: string | undefined,
+): Result<string, DomainError> => {
+  // Prefer Authorization header (server-to-server / API-spec default)
+  if (header?.startsWith(BEARER_PREFIX)) {
+    const token = header.slice(BEARER_PREFIX.length).trim();
+    if (token.length === 0) {
+      return err(
+        invariantViolationError({
+          invariant: 'relay-empty-authorization',
+          details: 'Bearer token is empty',
+        }),
+      );
+    }
+    return ok(token);
   }
-  const token = header.slice(BEARER_PREFIX.length).trim();
-  if (token.length === 0) {
-    return err(
-      invariantViolationError({
-        invariant: 'relay-empty-authorization',
-        details: 'Bearer token is empty',
-      }),
-    );
+  // Fallback to ?token= query param (browser WebSocket client path)
+  if (tokenQuery !== undefined && tokenQuery.length > 0) {
+    return ok(tokenQuery);
   }
-  return ok(token);
+  return err(
+    invariantViolationError({
+      invariant: 'relay-missing-authorization',
+      details:
+        'Authorization: Bearer header or ?token= query parameter is required for stream token auth',
+    }),
+  );
 };
 
 const validateProtocolVersion = (version: string | undefined): Result<string, DomainError> => {
@@ -104,7 +117,7 @@ export const authorizeRelayUpgrade = (
   input: ExtractAuthInput,
   verifier: JwtVerifier,
 ): ResultAsync<RelayAuthorizedContext, DomainError> =>
-  extractBearerToken(input.authorizationHeader)
+  extractBearerToken(input.authorizationHeader, input.tokenQuery)
     .asyncAndThen((token) => verifier.verify(token))
     .andThen((tokenPayload) =>
       validateProtocolVersion(input.protocolVersionQuery).andThen((protocolVersion) =>

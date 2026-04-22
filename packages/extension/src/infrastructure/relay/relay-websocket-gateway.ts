@@ -43,14 +43,22 @@ export type RelayWebSocketGatewayDependencies = Readonly<{
   tokenIssuer: StreamTokenIssuer;
   clock: () => number;
   /**
-   * Relay から返された `relayUrl` (ws:// or wss://) と streamToken / sessionId
-   * から実 WebSocket URL を組み立てる。default は `${relayUrl}?token=<jwt>&sessionId=<ulid>`
-   * で、相対 path や追加 query を本番で override したい場合のみ注入する。
+   * api-specification.md §4.1 `client.protocolVersion`。WS upgrade の query
+   * parameter として Relay に送信する。Relay 側は `SUPPORTED_PROTOCOL_VERSIONS`
+   * と照合 (相違時は 401 upgrade reject)。
+   */
+  protocolVersion: string;
+  /**
+   * Relay から返された `relayUrl` (ws:// or wss://) と streamToken / sessionId /
+   * protocolVersion から実 WebSocket URL を組み立てる。default は
+   * `${relayUrl}?token=<jwt>&sessionId=<ulid>&protocolVersion=<ver>` で、
+   * 相対 path や追加 query を本番で override したい場合のみ注入する。
    */
   wsEndpointBuilder?: (params: {
     relayUrl: string;
     sessionIdentifier: SessionIdentifier;
     streamToken: string;
+    protocolVersion: string;
   }) => string;
   /**
    * ハートビート間隔 (ms)。default 15000 (api-specification.md §2.6 準拠)。
@@ -63,9 +71,10 @@ const defaultWsEndpointBuilder = (params: {
   relayUrl: string;
   sessionIdentifier: SessionIdentifier;
   streamToken: string;
+  protocolVersion: string;
 }): string => {
   const separator = params.relayUrl.includes('?') ? '&' : '?';
-  return `${params.relayUrl}${separator}token=${encodeURIComponent(params.streamToken)}&sessionId=${encodeURIComponent(params.sessionIdentifier)}`;
+  return `${params.relayUrl}${separator}token=${encodeURIComponent(params.streamToken)}&sessionId=${encodeURIComponent(params.sessionIdentifier)}&protocolVersion=${encodeURIComponent(params.protocolVersion)}`;
 };
 
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000 as const;
@@ -166,6 +175,7 @@ export const createRelayWebSocketGateway = (
                 relayUrl,
                 sessionIdentifier: session.sessionIdentifier,
                 streamToken,
+                protocolVersion: deps.protocolVersion,
               });
               const socket = deps.webSocketFactory(url);
 
