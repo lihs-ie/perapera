@@ -8,14 +8,17 @@ import {
 } from '../../domain/profile/extension-profile';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
 import { createLanguagePair } from '../../domain/session/language-pair';
+import { parseSessionIdentifier } from '../../domain/session/session-identifier';
 import { createSourceSession, type SourceSession } from '../../domain/session/source-session';
 import {
   invariantViolationError,
   notFoundError,
   type DomainError,
 } from '../../domain/shared/errors';
+import { type AudioFrameEnvelope } from '../ports/audio-preprocessor';
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
+import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
 import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 import {
@@ -93,6 +96,12 @@ const buildDependencies = (
     stopAll: vi.fn(),
     activeCount: vi.fn(() => 0),
   };
+  const audioFramePump: AudioFramePump = {
+    start: vi.fn(),
+    stop: vi.fn(),
+    stopAll: vi.fn(),
+    activeCount: vi.fn(() => 0),
+  };
   return {
     sourceSessionRepository,
     extensionProfileRepository,
@@ -100,6 +109,7 @@ const buildDependencies = (
     permissionCoordinator,
     captureOrchestrator,
     relaySessionSubscriber,
+    audioFramePump,
     clock: () => STARTED_AT,
     idFactory: {
       session: () => SESSION_ID,
@@ -147,6 +157,49 @@ describe('createStartSourceSessionUseCase (IMPL-210, DD-301)', () => {
     }
     expect(deps.sourceSessionRepository.save).toHaveBeenCalledTimes(2);
     expect(deps.relayGateway.openSession).toHaveBeenCalledTimes(1);
+    expect(deps.audioFramePump.start).toHaveBeenCalledTimes(1);
+    const startCalls = vi.mocked(deps.audioFramePump.start).mock.calls;
+    const firstCall = startCalls[0];
+    expect(firstCall).toBeDefined();
+    if (firstCall !== undefined) {
+      const [sessionArg, channelArg, sendFrameArg] = firstCall;
+      expect(sessionArg).toBe(SESSION_ID);
+      expect(channelArg).toHaveProperty('frames');
+      expect(channelArg).toHaveProperty('close');
+      expect(typeof sendFrameArg).toBe('function');
+    }
+    expect(deps.relaySessionSubscriber.start).toHaveBeenCalledWith(SESSION_ID);
+  });
+
+  it('wires sendFrame callback to relayGateway.sendAudioFrame', async () => {
+    const deps = buildDependencies();
+    const useCase = createStartSourceSessionUseCase(deps);
+    const result = await useCase({
+      sourceType: 'tab',
+      displayName: 'Example tab',
+      sourceLanguage: 'en-US',
+      autoDetectLanguage: false,
+      targetLanguage: 'ja-JP',
+      overlayTarget: { kind: 'tab', tabId: 1 },
+    });
+    expect(result.isOk()).toBe(true);
+    const pumpStartMock = vi.mocked(deps.audioFramePump.start);
+    expect(pumpStartMock).toHaveBeenCalledTimes(1);
+    const sendFrameCallback = pumpStartMock.mock.calls[0]?.[2];
+    expect(typeof sendFrameCallback).toBe('function');
+    const frame: AudioFrameEnvelope = {
+      sessionIdentifier: parseSessionIdentifier(SESSION_ID)._unsafeUnwrap(),
+      sequenceNumber: 1,
+      sampleRate: 16000,
+      channels: 1,
+      pcm16Base64: 'AAAA',
+      capturedAt: STARTED_AT,
+      durationMs: 100,
+    };
+    if (sendFrameCallback !== undefined) {
+      await sendFrameCallback(frame);
+    }
+    expect(deps.relayGateway.sendAudioFrame).toHaveBeenCalledWith(frame);
   });
 
   it('rejects when concurrent session limit is reached', async () => {
@@ -200,6 +253,7 @@ describe('createStartSourceSessionUseCase (IMPL-210, DD-301)', () => {
     // Session is persisted in error state before returning permission-required
     expect(deps.sourceSessionRepository.save).toHaveBeenCalledTimes(2);
     expect(deps.relayGateway.openSession).not.toHaveBeenCalled();
+    expect(deps.audioFramePump.start).not.toHaveBeenCalled();
   });
 
   it('falls back to profile defaults when sourceLanguage is null', async () => {
