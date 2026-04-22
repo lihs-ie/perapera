@@ -1,0 +1,153 @@
+name: Publish Extension to Chrome Web Store
+
+# IMPL-710 Step 1 — Chrome Web Store 公開パイプラインの雛形。
+#
+# infrastructure-design.md §4.2 (拡張は Relay API と独立して段階公開) に準拠。
+#
+# trigger:
+#   - tag push (v*.*.* / Chrome Web Store 公開は `release/` ブランチ発行後の
+#     semver tag を基準にする)
+#   - workflow_dispatch (手動上書き用)
+#
+# flow:
+#   1. wxt build + zip (既存 ci.yml / release.yml と同じ手順)
+#   2. Chrome Web Store API (OAuth2 refresh token) で新バージョンをアップロード
+#   3. 公開 (`--publish` フラグ付き) は input で選択。初期運用では未公開
+#      アップロード → 手動レビューで publish
+#
+# 必要な GitHub configuration (Step 2 で config):
+#   vars:
+#     CHROME_EXTENSION_ID = Chrome Web Store で割り当てられる拡張 ID
+#   secrets:
+#     CHROME_CLIENT_ID     = OAuth2 Client ID (Google Cloud Console)
+#     CHROME_CLIENT_SECRET = OAuth2 Client Secret
+#     CHROME_REFRESH_TOKEN = OAuth2 refresh token (手動で取得した長期 token)
+#
+# guard: CHROME_EXTENSION_ID / secrets のいずれかが未設定なら job 全体を skip。
+#
+# third-party action: `chrome-webstore-upload/publish` は upstream 提供が
+# 薄いため、`chrome-webstore-upload-cli` を直接 npm install して CLI から
+# 呼ぶ方式を採用 (supply chain 面で信頼できる chrome-webstore-upload-cli は
+# >10 年運用実績あり)。
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish immediately after upload
+        type: boolean
+        default: false
+      target:
+        description: Publish target (default / trustedTesters)
+        type: choice
+        options:
+          - default
+          - trustedTesters
+        default: trustedTesters
+
+concurrency:
+  group: publish-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+
+jobs:
+  publish:
+    name: Upload + publish (${{ github.event.inputs.target || 'trustedTesters' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Guard — require Chrome Web Store configuration
+        id: guard
+        run: |
+          if [ -z "${EXTENSION_ID}" ]; then
+            echo "::warning::CHROME_EXTENSION_ID variable is not configured; skipping publish."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${{ secrets.CHROME_CLIENT_ID }}" ] || [ -z "${{ secrets.CHROME_CLIENT_SECRET }}" ] || [ -z "${{ secrets.CHROME_REFRESH_TOKEN }}" ]; then
+            echo "::warning::CHROME_CLIENT_ID / CHROME_CLIENT_SECRET / CHROME_REFRESH_TOKEN secrets are not configured; skipping publish."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        if: steps.guard.outputs.ready == 'true'
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        if: steps.guard.outputs.ready == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + zip extension
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          pnpm --filter @perapera/extension build
+          pnpm --filter @perapera/extension zip
+
+      - name: Resolve zip artifact path
+        if: steps.guard.outputs.ready == 'true'
+        id: zip
+        run: |
+          ZIP_PATH=$(ls packages/extension/.output/*.zip | head -n 1)
+          if [ -z "${ZIP_PATH}" ]; then
+            echo "::error::wxt zip produced no artifact"
+            exit 1
+          fi
+          echo "path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "Uploading ${ZIP_PATH}"
+
+      - name: Upload to Chrome Web Store
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          npx --yes chrome-webstore-upload-cli@3 upload \
+            --source "${{ steps.zip.outputs.path }}" \
+            --extension-id "${EXTENSION_ID}" \
+            --client-id "${CLIENT_ID}" \
+            --client-secret "${CLIENT_SECRET}" \
+            --refresh-token "${REFRESH_TOKEN}"
+
+      - name: Publish to Chrome Web Store
+        # `publish: true` のときだけ publish step を実行。
+        # 初期運用 (β / 限定公開) は upload のみで手動レビューに委ねる想定。
+        if: >
+          steps.guard.outputs.ready == 'true' &&
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          npx --yes chrome-webstore-upload-cli@3 publish \
+            --extension-id "${EXTENSION_ID}" \
+            --client-id "${CLIENT_ID}" \
+            --client-secret "${CLIENT_SECRET}" \
+            --refresh-token "${REFRESH_TOKEN}" \
+            --target "${{ github.event.inputs.target || 'trustedTesters' }}"
+
+      - name: Upload zip artifact
+        if: always() && steps.guard.outputs.ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: extension-release-zip
+          path: packages/extension/.output/*.zip
+          retention-days: 30
