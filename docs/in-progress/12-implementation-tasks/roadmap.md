@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.12'
+version: '0.5.13'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -22,18 +22,18 @@ author: 'Codex'
 
 ## 2. 現状サマリ (2026-04-22)
 
-| Phase | 範囲                                                      | 状態                                                  |
-| ----- | --------------------------------------------------------- | ----------------------------------------------------- |
-| 0     | 着手前合意 (IMPL-001〜005)                                | ✅ 完了                                               |
-| 1     | ドメイン層 (IMPL-101〜153)                                | ✅ 完了                                               |
-| 2     | アプリケーション層 (IMPL-200〜230)                        | ✅ 完了                                               |
-| 3     | 拡張 infrastructure (IMPL-300〜344)                       | ✅ 完了                                               |
-| 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                         |
-| 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                               |
-| 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)     |
-| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~98% (offscreen→SW frame 転送完了、残 SW receiver) |
-| 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未)  |
-| 7     | リリース / 運用整備                                       | ⚪ 未着手                                             |
+| Phase | 範囲                                                      | 状態                                                   |
+| ----- | --------------------------------------------------------- | ------------------------------------------------------ |
+| 0     | 着手前合意 (IMPL-001〜005)                                | ✅ 完了                                                |
+| 1     | ドメイン層 (IMPL-101〜153)                                | ✅ 完了                                                |
+| 2     | アプリケーション層 (IMPL-200〜230)                        | ✅ 完了                                                |
+| 3     | 拡張 infrastructure (IMPL-300〜344)                       | ✅ 完了                                                |
+| 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                          |
+| 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                                |
+| 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)      |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | ✅ 完了 (SW → offscreen → worklet → SW → relay 全結線) |
+| 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未)   |
+| 7     | リリース / 運用整備                                       | ⚪ 未着手                                              |
 
 ### Phase 5 拡張 presentation 層 内訳 (PR #47〜#53, 2026-04-22 時点)
 
@@ -311,7 +311,7 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - 2 新規 tests (MediaStream + WorkletNode 接続 / close で disconnect)
 - 残 Step 2d-3: worklet port.onmessage で frame を受信 → chrome.runtime.sendMessage で SW へ転送
 
-#### Phase 5+ Step 2d-3: worklet port.onmessage で frame 受信 + SW 転送 (✅ 完了, IMPL-617, 本 PR)
+#### Phase 5+ Step 2d-3: worklet port.onmessage で frame 受信 + SW 転送 (✅ 完了, IMPL-617, PR #70)
 
 - `AudioWorkletNodeLike.port` を mutable に (port 自体は readonly、`port.onmessage` は代入可)
 - `OffscreenAudioHostDependencies` に optional `onAudioFrame(sessionId, data)` callback を追加
@@ -320,6 +320,18 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - `offscreen/main.ts` で `chrome.runtime.sendMessage({ type: 'audio.frame.forward', sessionIdentifier, data })` に転送する callback を注入
 - 2 新規 tests (frame forward / callback throw catching)
 - 残 Step 2d-4: SW で `audio.frame.forward` を受信 → audioFramePump に流す receiver を実装
+
+#### Phase 5+ Step 2d-4: SW で audio.frame.forward 受信 → relayGateway.sendAudioFrame (✅ 完了, IMPL-618, 本 PR)
+
+- 新規 `application/services/audio-frame-forward-receiver.ts`
+- zod schema で `{ type: 'audio.frame.forward', sessionIdentifier, data: { pcm16Base64, sequenceNumber, ... } }` を validate
+- parse 成功 → `AudioFrameEnvelope` に変換 → `relayGateway.sendAudioFrame(envelope)` を直接呼ぶ
+- 非該当 message は silent ignore、malformed は ignore + sendAudioFrame 呼ばず
+- composition: `audioFrameForwardReceiver` を `ExtensionApp` に公開
+- `background.ts` の `chrome.runtime.onMessage` listener で `app.audioFrameForwardReceiver.receive(message)` を先に呼び、続けて既存 `dispatch` (silent ignore で他 message type と共存)
+- 10 unit tests + composition smoke
+
+**Phase 5+ 完了**: SW → offscreen の `audio.open` (streamId 付き) → offscreen で MediaStream 取得 + AudioWorkletNode 接続 → worklet processor が 100ms PCM16 フレーム生成 → port.onmessage で offscreen 受信 → `chrome.runtime.sendMessage('audio.frame.forward', ...)` で SW へ → `audioFrameForwardReceiver` が `relayGateway.sendAudioFrame` に流す。**実 audio data が Relay API まで到達可能**
 
 #### Phase 5+ Step 2: Offscreen MediaStream 受け取り + AudioPreprocessor 移管 (未着手, 規模大)
 
@@ -446,3 +458,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.10     | 2026-04-22 | IMPL-615 で Phase 5+ Step 2d-2a (WorkletNodeFactory port + adapter) を完了。`AudioWorkletNodeLike` 型 (port.onmessage / connect / disconnect) + `WorkletNodeFactory` port + `defaultWorkletNodeFactory` (`new AudioWorkletNode` wrap) を追加。3 unit tests。本 PR 時点では offscreen-audio-host から未配線 (Step 2d-2b で MediaStream 接続と同時に接続)。§2 Phase 5+ を ~88% → ~90% に。                                                                                                                       |
 | 0.5.11     | 2026-04-22 | IMPL-616 で Phase 5+ Step 2d-2b (offscreen-audio-host で MediaStream + AudioWorkletNode 接続) を完了。`workletNodeFactory` 依存追加、`createMediaStreamSource(mediaStream)` + `workletNodeFactory(ctx, name)` + `source.connect(worklet)` の audio graph 構築を実装。addModule 失敗時は Promise<boolean> で resolve (unhandled rejection 回避)。close 時に disconnect → tracks stop → context close。`offscreen/main.ts` で `defaultWorkletNodeFactory` を注入。2 新規 tests。§2 Phase 5+ を ~90% → ~95% に。  |
 | 0.5.12     | 2026-04-22 | IMPL-617 で Phase 5+ Step 2d-3 (worklet port.onmessage で frame 受信 + SW 転送) を完了。`AudioWorkletNodeLike.port` を mutable 化し、`OffscreenAudioHost` に `onAudioFrame` callback 依存を追加、`connectWorklet` 内で `port.onmessage` listener を設定。callback throw は try/catch で吸収。`offscreen/main.ts` で `chrome.runtime.sendMessage({type:'audio.frame.forward',...})` を転送として注入。2 新規 tests。§2 Phase 5+ を ~95% → ~98% に。                                                             |
+| 0.5.13     | 2026-04-22 | **IMPL-618 で Phase 5+ Step 2d-4 (SW で audio.frame.forward 受信 → relayGateway.sendAudioFrame) を完了、Phase 5+ 完結**。新規 `AudioFrameForwardReceiver` + zod schema validation + `background.ts` onMessage listener で配線。10 unit tests + composition smoke。実 audio data が SW → offscreen → worklet → SW → Relay API までフル接続 (端到端での audio routing foundation 完成)。§2 Phase 5+ を ~98% → ✅ 完了 に。                                                                                       |

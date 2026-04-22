@@ -110,8 +110,21 @@ export default defineBackground(() => {
    * chrome.runtime.onMessage listener。`sendResponse` は Promise 連携のため
    * `return true` で非同期応答を宣言し、dispatcher の Promise を解決したら
    * `sendResponse` に渡す (Chrome の仕様)。
+   *
+   * IMPL-618: offscreen document から転送された `audio.frame.forward` を
+   * audioFrameForwardReceiver に先に渡す。receiver は該当しない message を
+   * silent ignore するため、続けて dispatcher にも同じ message を流す。
    */
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    void app.audioFrameForwardReceiver.receive(message).match(
+      () => undefined,
+      (error) => {
+        console.warn(
+          '[perapera] audio-frame-forward-receiver failed:',
+          'kind' in error ? error.kind : String(error),
+        );
+      },
+    );
     void dispatch(message)
       .then((response) => {
         sendResponse(response);

@@ -15,6 +15,10 @@ import {
   createCaptureOrchestrator,
   type CaptureOrchestrator,
 } from '../application/services/capture-orchestrator';
+import {
+  createAudioFrameForwardReceiver,
+  type AudioFrameForwardReceiver,
+} from '../application/services/audio-frame-forward-receiver';
 import { createExportService, type ExportService } from '../application/services/export-service';
 import {
   createOffscreenCommandSender,
@@ -210,6 +214,7 @@ export type ExtensionApp = Readonly<{
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
   offscreenCommandSender: OffscreenCommandSender;
+  audioFrameForwardReceiver: AudioFrameForwardReceiver;
   orphanSessionCleanup: OrphanSessionCleanupService;
   transcriptAssembler: TranscriptAssembler;
   close: () => Promise<void>;
@@ -323,6 +328,9 @@ export const createExtensionApp = (
     bridge: runtimeMessageBridge,
   });
   const tabStreamIdResolver = createChromeTabStreamIdResolver(ports.tabCaptureApi);
+  const audioFrameForwardReceiver: AudioFrameForwardReceiver = createAudioFrameForwardReceiver({
+    relayGateway,
+  });
   const orphanSessionCleanup: OrphanSessionCleanupService = createOrphanSessionCleanupService({
     sourceSessionRepository,
     clock: ports.clockIso,
@@ -410,6 +418,7 @@ export const createExtensionApp = (
     captureOrchestrator,
     audioFramePump,
     offscreenCommandSender,
+    audioFrameForwardReceiver,
     orphanSessionCleanup,
     transcriptAssembler,
     close: async () => {
