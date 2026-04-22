@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.4.2'
+version: '0.4.3'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -189,9 +189,10 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 > 段階的に追加していく:
 >
 > 1. (済) `smoke.spec.ts` — Service Worker 登録確認 (PR #47 時点で配線)
-> 2. (済) `popup.spec.ts` / `sidepanel.spec.ts` — Popup / SidePanel ページの React render 確認 (本 PR, IMPL-604)
-> 3. (未) `tab-capture-translation.spec.ts` — golden path: Popup から start → Relay mock → translation overlay 描画
-> 4. (未) `permission-denied.spec.ts` — permission denied → error state 表示
+> 2. (済) `popup.spec.ts` / `sidepanel.spec.ts` — Popup / SidePanel ページの React render 確認 (PR #56, IMPL-604)
+> 3. (済) `monitor.spec.ts` — Monitor ページ (web_accessible_resources) の React render 確認 (本 PR, IMPL-605)
+> 4. (未) `tab-capture-translation.spec.ts` — golden path: Popup から start → Relay mock → translation overlay 描画
+> 5. (未) `permission-denied.spec.ts` — permission denied → error state 表示
 
 - 範囲: `packages/extension/e2e/specs/`
 - 依存: なし (各 spec 独立)
@@ -289,3 +290,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.4.0      | 2026-04-22 | Phase 5 拡張 presentation 層の PR #47〜#53 (Background composition / Popup UI / Side Panel UI / Content overlay / Offscreen+Monitor / Design tokens / Phase 5 integration gap 埋め) 完了を反映。Phase 5 進捗 ~85% へ。§4 の PR 次優先順位を残タスク (audio frame pipeline / SW→Offscreen command / session recovery / WXT zip / Phase 6 E2E) に再構成。§6 M2 チェックリスト 7/8 完了、§10 messaging schema 論点をクローズ。 |
 | 0.4.1      | 2026-04-22 | IMPL-602 Audio frame pipeline (PR #54) と IMPL-603 Orphan session cleanup (PR #55) の完了を反映。§10 "Background 多重起動時のセッション継続" 論点を "stopped 遷移" 方針でクローズ (full restore は MV3 permission 制約で MVP 外)。                                                                                                                                                                                          |
 | 0.4.2      | 2026-04-22 | IMPL-604 で Phase 6 E2E に `popup.spec.ts` / `sidepanel.spec.ts` を追加 (chrome-extension URL 直接 load → React root render 確認)。§6 M2 checklist 8 (WXT zip 配布) は実は PR #47 で達成済だったため認識を更新し M2 完了。Phase 5 残作業は SW→Offscreen audio command + AudioWorklet 実装のみ。                                                                                                                             |
+| 0.4.3      | 2026-04-22 | IMPL-605 で Phase 6 E2E に `monitor.spec.ts` を追加 (Monitor page も `web_accessible_resources` 経由で render smoke 検証)。これで chrome-extension URL 直接 load 可能な全 entrypoint (popup / sidepanel / monitor) を E2E で網羅。                                                                                                                                                                                          |
