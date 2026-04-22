@@ -1,3 +1,4 @@
+import { okAsync } from 'neverthrow';
 import { ulid } from 'ulid';
 import { createExportSessionResultUseCase } from '../application/use-cases/export-session-result-use-case';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
@@ -11,6 +12,11 @@ import {
   type CaptureOrchestrator,
 } from '../application/services/capture-orchestrator';
 import { createExportService, type ExportService } from '../application/services/export-service';
+import {
+  createRelaySessionSubscriber,
+  type RelayEventHandler,
+  type RelaySessionSubscriber,
+} from '../application/services/relay-session-subscriber';
 import {
   createSessionCommandService,
   type SessionCommandService,
@@ -263,12 +269,37 @@ export const createExtensionApp = (
     bridge: ports.overlayMessagingBridge,
   });
 
+  // --------------- Application services (先に構築: circular dep 回避) ---------------
+  const captureOrchestrator = createCaptureOrchestrator({
+    sourceAdapterFactory,
+    audioPreprocessor,
+  });
+
+  // relaySessionSubscriber は handleEvent を late-bind する形で参照する。
+  // SessionCommandService を先に構築したいが、sessionCommandService は
+  // startSourceSessionUseCase 経由で subscriber に依存するため、mutable holder で
+  // 後から設定する。
+  let sessionCommandServiceRef: SessionCommandService | null = null;
+  const handleRelayEventLate: RelayEventHandler = (event) => {
+    if (sessionCommandServiceRef === null) {
+      // SW 起動直後に event が届くことはないが、安全のため no-op を返す
+      return okAsync<void, never>(undefined);
+    }
+    return sessionCommandServiceRef.handleRelayEvent(event);
+  };
+  const relaySessionSubscriber: RelaySessionSubscriber = createRelaySessionSubscriber({
+    relayGateway,
+    handleEvent: handleRelayEventLate,
+  });
+
   // --------------- UseCases (Phase 2) ---------------
   const startSourceSessionUseCase = createStartSourceSessionUseCase({
     sourceSessionRepository,
     extensionProfileRepository,
     relayGateway,
     permissionCoordinator,
+    captureOrchestrator,
+    relaySessionSubscriber,
     clock: ports.clockIso,
     idFactory: {
       session: ports.sessionIdFactory,
@@ -279,6 +310,8 @@ export const createExtensionApp = (
     sourceSessionRepository,
     relayGateway,
     overlayPresenter,
+    captureOrchestrator,
+    relaySessionSubscriber,
     clock: ports.clockIso,
   });
   const updateSourceSettingsUseCase = createUpdateSourceSettingsUseCase({
@@ -311,7 +344,7 @@ export const createExtensionApp = (
     settingsStore,
   });
 
-  // --------------- Application services (Phase 3) ---------------
+  // --------------- Application services (Phase 3 facades) ---------------
   const sessionCommandService = createSessionCommandService({
     startSourceSessionUseCase,
     stopSourceSessionUseCase,
@@ -320,12 +353,12 @@ export const createExtensionApp = (
     handleTranscriptFinalUseCase,
     clock: ports.clockMs,
   });
+  // 構築完了後に late-bind 用 ref に保存。以降 relaySessionSubscriber の
+  // dispatch が handleRelayEvent を呼べるようになる。
+  sessionCommandServiceRef = sessionCommandService;
+
   const exportService = createExportService({ exportSessionResultUseCase });
   const sessionRegistry = createSessionRegistry();
-  const captureOrchestrator = createCaptureOrchestrator({
-    sourceAdapterFactory,
-    audioPreprocessor,
-  });
   const transcriptAssembler = createTranscriptAssembler();
 
   return {
@@ -336,6 +369,7 @@ export const createExtensionApp = (
     captureOrchestrator,
     transcriptAssembler,
     close: async () => {
+      relaySessionSubscriber.stopAll();
       await sessionStore.close();
       await sourceSessionRepository.close();
       await transcriptStreamRepository.close();

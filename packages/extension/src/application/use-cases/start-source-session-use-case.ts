@@ -22,12 +22,17 @@ import {
 } from '../errors/application-errors';
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
+import { type StartSourceCommand } from '../ports/source-adapter';
+import { type CaptureOrchestrator } from '../services/capture-orchestrator';
+import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 
 export type StartSourceSessionDependencies = Readonly<{
   sourceSessionRepository: SourceSessionRepository;
   extensionProfileRepository: ExtensionProfileRepository;
   relayGateway: RelayGateway;
   permissionCoordinator: PermissionCoordinator;
+  captureOrchestrator: CaptureOrchestrator;
+  relaySessionSubscriber: RelaySessionSubscriber;
   clock: () => string;
   idFactory: Readonly<{
     session: () => string;
@@ -50,6 +55,17 @@ const normalizeChainError = (error: ChainError): ApplicationError => {
   return toApplicationError(error);
 };
 
+const toStartSourceCommand = (session: SourceSession): StartSourceCommand => {
+  switch (session.sourceType) {
+    case 'tab':
+      return { sourceType: 'tab', sessionIdentifier: session.sessionIdentifier };
+    case 'microphone':
+      return { sourceType: 'microphone', sessionIdentifier: session.sessionIdentifier };
+    case 'desktop':
+      return { sourceType: 'desktop', sessionIdentifier: session.sessionIdentifier };
+  }
+};
+
 /**
  * IMPL-210 StartSourceSessionUseCase (DD-301)。
  *
@@ -60,9 +76,16 @@ const normalizeChainError = (error: ChainError): ApplicationError => {
  * 4. `createSourceSession` → `startSourceSession` (idle → requesting_permission)
  * 5. `save` (1st: requesting_permission state)
  * 6. `permissionCoordinator.requestFor` → granted / denied 分岐
- *    - granted: `transitionSourceSessionState('connecting')` → `relayGateway.openSession` → `save` (2nd)
- *    - denied: `transitionSourceSessionState('error')` → `save` (2nd) → errAsync(permissionRequiredAppError)
+ *    - granted: `transitionSourceSessionState('connecting')` →
+ *      `captureOrchestrator.connect` → `relayGateway.openSession` →
+ *      `relaySessionSubscriber.start(sessionId)` → `save` (2nd)
+ *    - denied: `transitionSourceSessionState('error')` → `save` (2nd) →
+ *      errAsync(permissionRequiredAppError)
  * 7. 出力 DTO: `{ sessionId, state, startedAt }`
+ *
+ * IMPL-600 (Phase 5 integration): capture 接続と relay subscribe を
+ * connect フェーズで配線し、以降の `RelayEvent` (transcript / translation) が
+ * `SessionCommandService.handleRelayEvent` に流れるようにする。
  */
 export const createStartSourceSessionUseCase = (
   deps: StartSourceSessionDependencies,
@@ -102,11 +125,15 @@ export const createStartSourceSessionUseCase = (
                           savedSession,
                           'connecting',
                         ).asyncAndThen((connecting) =>
-                          deps.relayGateway
-                            .openSession(connecting)
-                            .andThen(() =>
-                              deps.sourceSessionRepository.save(connecting).map(() => connecting),
-                            ),
+                          deps.captureOrchestrator
+                            .connect(toStartSourceCommand(connecting))
+                            .andThen(() => deps.relayGateway.openSession(connecting))
+                            .andThen(() => {
+                              deps.relaySessionSubscriber.start(connecting.sessionIdentifier);
+                              return deps.sourceSessionRepository
+                                .save(connecting)
+                                .map(() => connecting);
+                            }),
                         );
                       }
                       return transitionSourceSessionState(savedSession, 'error').asyncAndThen(

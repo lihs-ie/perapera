@@ -14,6 +14,12 @@ type ChromeStub = {
   runtime: { id: string; sendMessage: ReturnType<typeof vi.fn> };
   storage: { local: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> } };
   tabs: { query: ReturnType<typeof vi.fn> };
+  offscreen: {
+    Reason: Readonly<Record<string, string>>;
+    hasDocument: ReturnType<typeof vi.fn>;
+    createDocument: ReturnType<typeof vi.fn>;
+    closeDocument: ReturnType<typeof vi.fn>;
+  };
 };
 
 const chromeStub: ChromeStub = {
@@ -29,6 +35,31 @@ const chromeStub: ChromeStub = {
   },
   tabs: {
     query: vi.fn(),
+  },
+  offscreen: {
+    // `chrome.offscreen.Reason` is a string enum in `@types/chrome`. The stub
+    // mirrors the string-value shape so modules that reference
+    // `chrome.offscreen.Reason.X` don't fail at import time in jsdom.
+    Reason: Object.freeze({
+      TESTING: 'TESTING',
+      AUDIO_PLAYBACK: 'AUDIO_PLAYBACK',
+      IFRAME_SCRIPTING: 'IFRAME_SCRIPTING',
+      DOM_SCRAPING: 'DOM_SCRAPING',
+      BLOBS: 'BLOBS',
+      DOM_PARSER: 'DOM_PARSER',
+      USER_MEDIA: 'USER_MEDIA',
+      DISPLAY_MEDIA: 'DISPLAY_MEDIA',
+      WEB_RTC: 'WEB_RTC',
+      CLIPBOARD: 'CLIPBOARD',
+      LOCAL_STORAGE: 'LOCAL_STORAGE',
+      WORKERS: 'WORKERS',
+      BATTERY_STATUS: 'BATTERY_STATUS',
+      MATCH_MEDIA: 'MATCH_MEDIA',
+      GEOLOCATION: 'GEOLOCATION',
+    }),
+    hasDocument: vi.fn(),
+    createDocument: vi.fn(),
+    closeDocument: vi.fn(),
   },
 };
 

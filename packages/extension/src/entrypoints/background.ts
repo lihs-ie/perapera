@@ -4,6 +4,7 @@ import {
   type ExtensionApp,
   type ExtensionRuntimeConfig,
 } from '../composition/extension-composition';
+import { createOffscreenLifecycle, defaultOffscreenApi } from '../composition/offscreen-lifecycle';
 import { createRuntimeDispatcher, type RuntimeDispatcher } from '../composition/runtime-dispatcher';
 
 /**
@@ -62,6 +63,17 @@ export default defineBackground(() => {
     );
   }
 
+  // Offscreen document を SW 起動時に ensure。MV3 SW は AudioContext を直接
+  // 扱えないため、offscreen document 側で確保する必要がある (IMPL-562)。
+  // 既に存在する場合は no-op。失敗しても SW 自体は継続する (手動 smoke で確認)。
+  const offscreen = createOffscreenLifecycle({
+    offscreenApi: defaultOffscreenApi,
+    documentUrl: chrome.runtime.getURL('/offscreen.html'),
+  });
+  void offscreen.ensure().catch((cause: unknown) => {
+    console.error('[perapera] offscreen ensure failed:', cause);
+  });
+
   const config: ExtensionRuntimeConfig = {
     relayApiBaseUrl: RELAY_API_BASE_URL,
     relayAccessToken: RELAY_ACCESS_TOKEN,
@@ -107,6 +119,9 @@ export default defineBackground(() => {
   chrome.runtime.onSuspend.addListener(() => {
     void app.close().catch((cause) => {
       console.warn('[perapera] ExtensionApp.close failed during onSuspend:', cause);
+    });
+    void offscreen.close().catch((cause) => {
+      console.warn('[perapera] OffscreenLifecycle.close failed during onSuspend:', cause);
     });
   });
 });
