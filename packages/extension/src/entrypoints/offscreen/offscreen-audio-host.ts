@@ -69,6 +69,13 @@ export type OffscreenAudioHostDependencies = Readonly<{
   workletNodeFactory?: WorkletNodeFactory;
   /** Worklet processor 名 (default `'perapera-audio-processor'`) */
   workletProcessorName?: string;
+  /**
+   * Optional。AudioWorkletNode.port.onmessage で受信した frame data を上位層
+   * (通常は chrome.runtime.sendMessage 経由で SW へ転送) に引き渡す callback
+   * (IMPL-617)。`data` は worklet processor が `port.postMessage` で送る任意
+   * object (通常 `{ type: 'audio.frame', pcm16Base64, sequenceNumber, ... }`)。
+   */
+  onAudioFrame?: (sessionIdentifier: SessionIdentifier, data: unknown) => void;
   /** 操作のログ sink。既定は console */
   logger?: Readonly<{
     debug: (message: string) => void;
@@ -161,6 +168,23 @@ export const createOffscreenAudioHost = (
         deps.workletProcessorName ?? DEFAULT_WORKLET_PROCESSOR_NAME,
       );
       sourceNode.connect(workletNode);
+      // IMPL-617: worklet processor から送られてくる frame を上位層 (SW) に
+      // 転送する。onAudioFrame callback が注入されているときのみ listener を
+      // 設定。callback 例外で listener が外れないよう try/catch で囲む。
+      if (deps.onAudioFrame !== undefined) {
+        const forward = deps.onAudioFrame;
+        workletNode.port.onmessage = (event): void => {
+          try {
+            forward(sessionIdentifier, event.data);
+          } catch (cause) {
+            logger.warn(
+              `[perapera] offscreen-audio-host onAudioFrame threw for ${sessionIdentifier}: ${
+                cause instanceof Error ? cause.message : String(cause)
+              }`,
+            );
+          }
+        };
+      }
       entries.set(sessionIdentifier, { ...entry, sourceNode, workletNode });
       logger.debug(
         `[perapera] offscreen-audio-host connected MediaStreamAudioSourceNode → AudioWorkletNode for ${sessionIdentifier}`,

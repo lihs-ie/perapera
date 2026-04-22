@@ -13,9 +13,14 @@ import { type AudioContextLike } from './audio-preprocessor';
  * 接続は offscreen-audio-host 内の安全な wrapper (`unknown` 経由) で行う。
  */
 export type AudioWorkletNodeLike = {
-  readonly port: Readonly<{
+  /**
+   * port 自体は readonly (一度作られたら差し替え不可) だが、`port.onmessage` は
+   * worklet processor からの postMessage を listen するため mutable に
+   * (`workletNode.port.onmessage = listener` で代入可能)。
+   */
+  readonly port: {
     onmessage: ((event: MessageEvent<unknown>) => void) | null;
-  }>;
+  };
   connect: (destination: AudioNode) => void;
   disconnect: () => void;
 };

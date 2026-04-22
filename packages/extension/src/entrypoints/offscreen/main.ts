@@ -33,6 +33,22 @@ const host = createOffscreenAudioHost({
   tabStreamApi: defaultTabStreamApi,
   workletModuleUrl: WORKLET_MODULE_URL,
   workletNodeFactory: defaultWorkletNodeFactory,
+  // IMPL-617: worklet frame を SW へ転送。chrome.runtime.sendMessage で
+  // broadcast し、SW の audio.frame.forward listener が audioFramePump に流す。
+  onAudioFrame: (sessionIdentifier, data) => {
+    void chrome.runtime
+      .sendMessage({
+        type: 'audio.frame.forward',
+        sessionIdentifier,
+        data,
+      })
+      .catch((cause: unknown) => {
+        console.warn(
+          '[perapera] offscreen audio.frame.forward sendMessage failed:',
+          cause instanceof Error ? cause.message : String(cause),
+        );
+      });
+  },
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
