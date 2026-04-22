@@ -1,26 +1,11 @@
 /*
- * Monitor page CSS。popup / sidepanel と同じ palette を共有。
+ * Monitor page CSS。tokens.css + fonts.css を popup / sidepanel と共有。
  * 単一単語 className (CLAUDE.md §React ルール)。overlay 自体は Shadow DOM で
  * 独立描画されるため、本 CSS は Monitor ページの「説明 UI」にのみ適用される。
  */
 
-:root {
-  color-scheme: light dark;
-  --color-text: #1a1a1a;
-  --color-muted: #666;
-  --color-bg: #ffffff;
-  --color-border: #e0e0e0;
-  --color-accent: #2563eb;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-text: #f5f5f5;
-    --color-muted: #a0a0a0;
-    --color-bg: #111111;
-    --color-border: #333333;
-  }
-}
+@import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/fonts.css');
 
 * {
   box-sizing: border-box;
@@ -29,17 +14,11 @@
 body {
   margin: 0;
   padding: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Hiragino Sans',
-    'Yu Gothic UI',
-    sans-serif;
-  font-size: 14px;
-  color: var(--color-text);
-  background: var(--color-bg);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  background: var(--color-background);
   min-height: 100vh;
 }
 
@@ -48,35 +27,36 @@ body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 32px 24px;
+  gap: var(--space-lg);
+  padding: var(--space-2xl) var(--space-xl);
 }
 
 .header {
   border-bottom: 1px solid var(--color-border);
-  padding-bottom: 12px;
+  padding-bottom: var(--space-md);
 }
 
 .title {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-heading);
+  line-height: var(--line-height-heading);
   margin: 0;
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-sm);
 }
 
 .message {
-  font-size: 13px;
-  color: var(--color-text);
-  line-height: 1.6;
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-body);
   margin: 0;
 }
 
 .message[data-variant='muted'] {
-  color: var(--color-muted);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
 }

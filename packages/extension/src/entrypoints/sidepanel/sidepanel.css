@@ -1,26 +1,11 @@
 /*
- * SidePanel CSS。popup.css とトークンを共有するが Side Panel は幅を画面幅に
- * 合わせて伸ばす (Chrome の side panel は可変幅)。単一単語 className のみ使用。
- * Design system tokens は Phase 5 PR 次 #6 で置換予定。
+ * SidePanel CSS。tokens.css + fonts.css を popup と共有し、Side Panel 特有の
+ * 幅可変レイアウト (`container` に height:100vh) を追加。
+ * 単一単語 className (CLAUDE.md §React ルール)。
  */
 
-:root {
-  color-scheme: light;
-  --color-text: #1a1a1a;
-  --color-muted: #666;
-  --color-bg: #ffffff;
-  --color-border: #e0e0e0;
-  --color-accent: #2563eb;
-  --color-accent-fg: #ffffff;
-  --color-danger: #dc2626;
-  --color-danger-fg: #ffffff;
-  --color-active: #10b981;
-  --color-pending: #f59e0b;
-  --color-degraded: #c2410c;
-  --color-error: #dc2626;
-  --color-stopped: #6b7280;
-  --color-neutral: #9ca3af;
-}
+@import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/fonts.css');
 
 * {
   box-sizing: border-box;
@@ -29,25 +14,19 @@
 body {
   margin: 0;
   padding: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Hiragino Sans',
-    'Yu Gothic UI',
-    sans-serif;
-  font-size: 13px;
-  color: var(--color-text);
-  background: var(--color-bg);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  background: var(--color-background);
   min-height: 100vh;
 }
 
 .container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-md);
+  padding: var(--space-md);
   height: 100vh;
   overflow: hidden;
 }
@@ -57,25 +36,28 @@ body {
   align-items: baseline;
   justify-content: space-between;
   border-bottom: 1px solid var(--color-border);
-  padding-bottom: 8px;
+  padding-bottom: var(--space-sm);
   flex-shrink: 0;
 }
 
 .title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-h3);
+  line-height: var(--line-height-heading);
   margin: 0;
 }
 
 .version {
-  font-size: 11px;
-  color: var(--color-muted);
+  font-family: var(--font-family-numeric);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-numeric);
+  color: var(--color-text-muted);
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-sm);
   overflow-y: auto;
   flex: 1;
 }
@@ -83,17 +65,17 @@ body {
 .list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-sm);
 }
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 .card > .header {
@@ -130,11 +112,12 @@ body {
   display: inline-flex;
   align-items: center;
   padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-accent-fg);
-  background: var(--color-neutral);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-family-numeric);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-numeric);
+  color: var(--color-text-inverse);
+  background: var(--color-state-neutral);
 }
 
 .badge[data-variant='active'] {
