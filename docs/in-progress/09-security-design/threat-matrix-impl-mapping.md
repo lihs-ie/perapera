@@ -72,15 +72,15 @@ Phase 4 完了後の相対位置: Relay API 側の認証・認可・レートリ
 
 ## 6. Elevation of Privilege（権限昇格）
 
-| 対策                 | 実装                                                                                                                                                                                                   | 状態                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
-| MV3 最小権限         | `wxt.config.ts` の manifest permissions: `['tabCapture', 'storage', 'sidePanel', 'offscreen', 'scripting', 'activeTab']`。security-design §6.5 と一致。desktopCapture は optional (必要時のみ request) | ✅ 実装済             |
-| host_permissions     | `http://localhost:3001/*` のみ (dev 用)。production では `PERAPERA_RELAY_API_BASE_URL` define で置換される構成 (`wxt.config.ts` 配布時更新前提)                                                        | ⚠️ note C             |
-| MV3 CSP              | WXT 既定の MV3 manifest CSP `script-src 'self'; object-src 'self'` を継承。`dangerouslySetInnerHTML` は src で未使用                                                                                   | ✅ 実装済             |
-| 運用者 RBAC          | Cloud Run IAM (Phase 7)                                                                                                                                                                                | ⚪ Phase 7 で完了予定 |
-| Secrets 参照権限分離 | GCP Secret Manager (Phase 7)                                                                                                                                                                           | ⚪ Phase 7 で完了予定 |
+| 対策                 | 実装                                                                                                                                                                                                                             | 状態                  |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| MV3 最小権限         | `wxt.config.ts` の manifest permissions: `['tabCapture', 'storage', 'sidePanel', 'offscreen', 'scripting', 'activeTab']`。security-design §6.5 と一致。desktopCapture は optional (必要時のみ request)                           | ✅ 実装済             |
+| host_permissions     | build 時に `PERAPERA_RELAY_API_BASE_URL` の origin から自動導出 (`wxt.config.ts` L7-10, `new URL(baseUrl).origin + '/*'`)。dev (localhost:3001) / staging / production を同一 config + env で切替 (IMPL-710 env-driven manifest) | ✅ 実装済             |
+| MV3 CSP              | WXT 既定の MV3 manifest CSP `script-src 'self'; object-src 'self'` を継承。`dangerouslySetInnerHTML` は src で未使用                                                                                                             | ✅ 実装済             |
+| 運用者 RBAC          | Cloud Run IAM (Phase 7)                                                                                                                                                                                                          | ⚪ Phase 7 で完了予定 |
+| Secrets 参照権限分離 | GCP Secret Manager (Phase 7)                                                                                                                                                                                                     | ⚪ Phase 7 で完了予定 |
 
-**note C**: production manifest の `host_permissions` を release 時に本番 Relay URL に差し替える手順が未確立。Phase 7 の Chrome Web Store packaging (IMPL-710) で wxt の env-specific manifest 生成を config 化する。
+**note C**: ~~production manifest の `host_permissions` を release 時に本番 Relay URL に差し替える手順が未確立~~ ✅ 解消 (2026-04-23 IMPL-710 env-driven manifest)。`wxt.config.ts` で `PERAPERA_RELAY_API_BASE_URL` から origin を導出しビルド時に inject。
 
 ## 7. XSS / CORS / Secrets (§6 一般対策)
 
@@ -95,11 +95,11 @@ Phase 4 完了後の相対位置: Relay API 側の認証・認可・レートリ
 
 ## 8. Gap サマリ (残対応)
 
-| Gap                                  | 対象 note | 優先度 | 対応 Phase / PR                                                        |
-| ------------------------------------ | --------- | ------ | ---------------------------------------------------------------------- |
-| client event sequence 検証           | §2 note A | 低     | Phase 7 以降で必要性評価 (MVP は単一 connection で実害なし)            |
-| IndexedDB TTL / retention policy     | §4 note B | 低     | Phase 7 以降。ユーザー主導 clean-up で当面代替                         |
-| 本番 manifest host_permissions 切替  | §6 note C | 中     | Phase 7 IMPL-710 Chrome Web Store packaging 時に wxt env manifest 生成 |
-| TLS / Cloud Run IAM / Secret Manager | §1/§3/§6  | 高     | Phase 7 IMPL-700 Cloud Run deploy pipeline                             |
+| Gap                                     | 対象 note     | 優先度 | 対応 Phase / PR                                             |
+| --------------------------------------- | ------------- | ------ | ----------------------------------------------------------- |
+| client event sequence 検証              | §2 note A     | 低     | Phase 7 以降で必要性評価 (MVP は単一 connection で実害なし) |
+| IndexedDB TTL / retention policy        | §4 note B     | 低     | Phase 7 以降。ユーザー主導 clean-up で当面代替              |
+| ~~本番 manifest host_permissions 切替~~ | ~~§6 note C~~ | ~~中~~ | ✅ 解消 (2026-04-23 IMPL-710 env-driven manifest)           |
+| TLS / Cloud Run IAM / Secret Manager    | §1/§3/§6      | 高     | Phase 7 IMPL-700 Cloud Run deploy pipeline                  |
 
 Phase 6 時点で security-design §3-§6 の主対策は全て実装済み、残は Phase 7 デプロイ時の運用面 (TLS 終端、IAM、Secret Manager) と低優先 gap のみ。
