@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.3'
+version: '0.5.4'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -31,7 +31,7 @@ author: 'Codex'
 | 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                        |
 | 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                              |
 | 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)    |
-| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~50% (sender + AudioWorklet processor 配置完了)   |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~60% (sender + worklet + tabCapture streamId API) |
 | 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未) |
 | 7     | リリース / 運用整備                                       | ⚪ 未着手                                            |
 
@@ -228,12 +228,20 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - 機能: multi-channel mono 化 + 16kHz 再サンプル + 100ms バッファ + Float32→Int16 PCM + base64 → port.postMessage
 - まだ呼び出し元なし (next step で offscreen 側 AudioPreprocessor が `audioWorklet.addModule(chrome.runtime.getURL('/perapera-audio-processor.js'))` で読み込む)
 
-#### Phase 5+ Step 1.6: PCM utility extract + unit test (✅ 完了, IMPL-608, 本 PR)
+#### Phase 5+ Step 1.6: PCM utility extract + unit test (✅ 完了, IMPL-608, PR #61)
 
 - `packages/extension/src/infrastructure/audio/pcm-utils.ts` に worklet と等価な
   pure function (`floatToPcm16` / `int16ToBase64` / `downsampleStep` / `monoMix`) を extract
 - 17 tests で Int16 full scale / clamp / base64 round-trip / downsample step / mono mix を検証
 - 将来 offscreen 側 AudioPreprocessor や別の tool から再利用可能
+
+#### Phase 5+ Step 2a: TabCaptureApi.getMediaStreamId 追加 (✅ 完了, IMPL-609, 本 PR)
+
+- `TabCaptureApi` 型に `getMediaStreamId(options): Promise<string>` を追加
+- `defaultTabCaptureApi` に `chrome.tabCapture.getMediaStreamId` の Promise wrap 実装
+  (callback + lastError + empty id の防御検査を含む)
+- まだ SourceAdapter からは呼ばれない (Step 2b で offscreen 側配線と同時に接続)
+- test contract: getMediaStreamId が非空文字列を返すことを assert
 
 #### Phase 5+ Step 2: Offscreen MediaStream 受け取り + AudioPreprocessor 移管 (未着手, 規模大)
 
@@ -351,3 +359,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.1      | 2026-04-22 | IMPL-606 で Phase 5+ Step 1 (SW → Offscreen audio command sender) を実装。`OffscreenCommandSender` (application service) + `ChromeRuntimeMessageBridge` (infrastructure adapter) + start/stop UseCase 配線 + composition wiring を完了。§2 Phase 5+ ステータスを ⚪ → 🟡 ~30% に更新。Step 2 (AudioWorklet + offscreen MediaStream) は次 PR で続行。                                                                             |
 | 0.5.2      | 2026-04-22 | IMPL-607 で Phase 5+ Step 1.5 (AudioWorklet processor JS の単体配置) を完了。`packages/extension/src/public/perapera-audio-processor.js` を追加し、WXT build / zip の output ルートに含まれることを確認。worklet 自身は呼び出し元なし (offscreen 側 AudioPreprocessor 移管が次 step)。§2 Phase 5+ ステータスを ~30% → ~50% に更新。eslint config で `src/public/**` を ignore に追加 (W3C worklet global は ts で扱えないため)。 |
 | 0.5.3      | 2026-04-22 | IMPL-608 で Phase 5+ Step 1.6 (PCM utility extract + unit test) を完了。worklet 内 PCM 変換ロジックを `packages/extension/src/infrastructure/audio/pcm-utils.ts` に pure function として extract し、vitest で 17 tests を追加 (Int16 full scale / clamp / base64 round-trip / downsample step / mono mix)。worklet 側コメントで ts 側との同期ルールを明記。                                                                     |
+| 0.5.4      | 2026-04-22 | IMPL-609 で Phase 5+ Step 2a (TabCaptureApi.getMediaStreamId 追加) を完了。`chrome.tabCapture.getMediaStreamId` を Promise wrap した production adapter と test contract を追加。まだ SourceAdapter からは呼ばれない (Step 2b で offscreen 側 MediaStream 受け取り配線と同時に接続)。§2 Phase 5+ ステータスを ~50% → ~60% に更新。                                                                                               |
