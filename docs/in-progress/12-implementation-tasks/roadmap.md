@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.17'
+version: '0.5.18'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -414,7 +414,10 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
   - Step 1 (PR #74): `perf/scenarios/ws-relay.js` 新規 (`POST /sessions` → WS `/relay` → `session.ready` を同時 3 VU × 30s で計測、SLO: ws_connecting p95 < 3000ms / session_ready_latency p95 < 1000ms / http_req_duration p95 < 500ms)。`create-session.js` path fix、`justfile` / `perf/README.md` 更新
   - Step 2 (本 PR): `.github/workflows/k6-smoke.yml` を新設。weekly monday 11:00 UTC + perf/src 変更 PR + workflow_dispatch で trigger。relay-api を bg 起動し Docker `grafana/k6:latest` で 2 シナリオを実行。provider factory は dummy API key で length check を通過し、scenarios が stream を start しないため real provider に到達しない (mock を production entrypoint に配線せずに済む)
   - 残: `translation-hotpath.js` で transcript.final → translation.final p95 800ms の end-to-end 検証 (別 PR、mock provider を entrypoint 設計として組み込む必要あるため規模中)
-- IMPL-620 脅威モデル最終確認 (security-design §3 threat matrix と実装の突き合わせ) — ⚪ 未着手
+- IMPL-620 脅威モデル最終確認 (security-design §3 threat matrix と実装の突き合わせ) — ✅ 完了:
+  - `docs/09-security-design/threat-matrix-impl-mapping.md` を新設。STRIDE 6 カテゴリ別に対策実装を IMPL 番号 / ファイルパスで trace。生音声非永続化 / ログマスキング / Bearer + JWT 認証 / レートリミット / circuit breaker / `degraded` 遷移 / MV3 最小権限 / CORS / helmet / dependabot + audit 等の主対策が既に全て実装されていることを確認
+  - 3 つの低優先 gap を note として記録: (A) client event sequence 検証未実装 (単一 connection で実害なし), (B) IndexedDB TTL/retention 未実装, (C) 本番 manifest `host_permissions` 切替は Phase 7 IMPL-710 で解決予定
+  - Phase 7 残タスクとして TLS / Cloud Run IAM / Secret Manager の運用面を IMPL-700 に委譲
 - IMPL-630 `pnpm audit` + dependabot 定期化 — ✅ 完了:
   - `.github/dependabot.yml` — npm / github-actions / docker の 3 ecosystem を weekly monday 09:00 JST で回す。npm は production / development で group 化 (major bump は個別 PR)。target は `develop`
   - `.github/workflows/audit.yml` — `pnpm audit --audit-level moderate` を weekly + 依存ファイル変更 PR + workflow_dispatch で実行
@@ -470,3 +473,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.15     | 2026-04-22 | IMPL-630 初回実行で検出された transitive 脆弱性 8 件 (`wxt>giget>tar` x6 high / `vitest>vite` moderate / `vitest>vite>esbuild` moderate) を `package.json > pnpm.overrides` で解消。`tar ^7.5.13` / `vite ^6.4.2` / `esbuild ^0.25.0` に強制し、`pnpm audit --audit-level moderate` が 0 件を返すことを確認。extension (898) / relay-api (184) tests / typecheck / wxt build いずれも override 後に通過。                                                                                                                                                                   |
 | 0.5.16     | 2026-04-22 | IMPL-610 Step 1 として WebSocket ホットパスの k6 scenario を追加。`perf/scenarios/ws-relay.js` で `POST /sessions` → WS `/relay` → `session.ready` 受信までを同時 3 VU × 30s で計測し、ws_connecting p95 < 3000ms / session_ready_latency p95 < 1000ms / http_req_duration p95 < 500ms を閾値化。既存 `create-session.js` の誤 path (`/api/v1/sessions`) を実装 Fastify route の `/sessions` に合わせて修正、`justfile` / `perf/README.md` も更新。CI 連携と translation-hotpath scenario は後続 PR で扱う。                                                                |
 | 0.5.17     | 2026-04-22 | IMPL-610 Step 2 として k6 smoke を CI に統合。`.github/workflows/k6-smoke.yml` で weekly monday 11:00 UTC + perf/src 変更 PR + workflow_dispatch を trigger に、relay-api を bg 起動 (build → start) → `/health` 待機 → Docker `grafana/k6:latest` で create-session / ws-relay scenarios 実行 → relay.log artifact を upload。provider factory は length>0 check のみで stream 起動しない限り real provider に到達しないため、dummy API key で初期化し mock を production entrypoint に混ぜない構成。IMPL-610 を ✅ 完了に更新。                                           |
+| 0.5.18     | 2026-04-22 | IMPL-620 (脅威モデル最終確認) を完了。`docs/09-security-design/threat-matrix-impl-mapping.md` を新設し、security-design §2 STRIDE 6 カテゴリ × 実装 IMPL 番号 / ファイルパスを trace。主対策 (短命 JWT / Bearer + JWT 認証 / 生音声非永続化 / ログマスキング / レートリミット / circuit breaker / degraded / MV3 最小権限 / CORS / helmet / dependabot+audit) は全て実装済を確認。3 件の低優先 gap (client event sequence / IndexedDB TTL / 本番 manifest host_permissions 切替) を note として記録、Phase 7 IMPL-700/710 に委譲。                                          |
