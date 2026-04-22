@@ -19,9 +19,18 @@ import { parseOffscreenCommand } from './offscreen-commands';
  */
 console.log('[perapera] offscreen document loaded');
 
+const WORKLET_MODULE_URL = (() => {
+  try {
+    return chrome.runtime.getURL('/perapera-audio-processor.js');
+  } catch {
+    return '/perapera-audio-processor.js';
+  }
+})();
+
 const host = createOffscreenAudioHost({
   audioContextFactory: defaultAudioContextFactory,
   tabStreamApi: defaultTabStreamApi,
+  workletModuleUrl: WORKLET_MODULE_URL,
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

@@ -233,4 +233,71 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
     expect(host.hasStream(identifierA)).toBe(false);
     expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('tabStreamApi not injected'));
   });
+
+  // IMPL-614: workletModuleUrl が注入されると addModule を呼ぶ
+  it('calls audioWorklet.addModule when workletModuleUrl is provided', async () => {
+    const addModule = vi.fn(() => Promise.resolve());
+    const context: AudioContextLike & { closeFn: ReturnType<typeof vi.fn> } = {
+      sampleRate: 16000,
+      audioWorklet: { addModule },
+      close: vi.fn(() => Promise.resolve()),
+      createMediaStreamSource: vi.fn(() => ({})),
+      closeFn: vi.fn(),
+    };
+    const factory = vi.fn<AudioContextFactory>(() => context);
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      workletModuleUrl: 'chrome-extension://xxx/perapera-audio-processor.js',
+    });
+
+    host.dispatch({ type: 'offscreen.audio.open', sessionIdentifier: identifierA });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+
+    expect(addModule).toHaveBeenCalledWith('chrome-extension://xxx/perapera-audio-processor.js');
+  });
+
+  it('logs warn when audioWorklet.addModule rejects', async () => {
+    const logger = buildLogger();
+    const addModule = vi.fn(() => Promise.reject(new Error('worklet load failed')));
+    const context: AudioContextLike & { closeFn: ReturnType<typeof vi.fn> } = {
+      sampleRate: 16000,
+      audioWorklet: { addModule },
+      close: vi.fn(() => Promise.resolve()),
+      createMediaStreamSource: vi.fn(() => ({})),
+      closeFn: vi.fn(),
+    };
+    const factory = vi.fn<AudioContextFactory>(() => context);
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      workletModuleUrl: '/perapera-audio-processor.js',
+      logger,
+    });
+
+    host.dispatch({ type: 'offscreen.audio.open', sessionIdentifier: identifierA });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+
+    expect(host.has(identifierA)).toBe(true); // context は保持される
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('worklet load failed'));
+  });
+
+  it('skips addModule when workletModuleUrl is not provided (backward-compatible)', () => {
+    const addModule = vi.fn(() => Promise.resolve());
+    const context: AudioContextLike & { closeFn: ReturnType<typeof vi.fn> } = {
+      sampleRate: 16000,
+      audioWorklet: { addModule },
+      close: vi.fn(() => Promise.resolve()),
+      createMediaStreamSource: vi.fn(() => ({})),
+      closeFn: vi.fn(),
+    };
+    const factory = vi.fn<AudioContextFactory>(() => context);
+    const host = createOffscreenAudioHost({ audioContextFactory: factory });
+
+    host.dispatch({ type: 'offscreen.audio.open', sessionIdentifier: identifierA });
+
+    expect(addModule).not.toHaveBeenCalled();
+  });
 });

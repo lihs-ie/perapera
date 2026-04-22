@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.8'
+version: '0.5.9'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -31,7 +31,7 @@ author: 'Codex'
 | 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                        |
 | 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                              |
 | 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)    |
-| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~85% (SW→offscreen streamId 転送まで end-to-end)  |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~88% (AudioWorklet module 読込配線完了)           |
 | 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未) |
 | 7     | リリース / 運用整備                                       | ⚪ 未着手                                            |
 
@@ -271,7 +271,7 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
   tabStreamApi 未注入時の backward-compatible 動作
 - `hasStream(sessionId)` API を追加 (test / smoke 用)
 
-#### Phase 5+ Step 2c: SW UseCase で streamId 解決 → offscreen に転送 (✅ 完了, IMPL-613, 本 PR)
+#### Phase 5+ Step 2c: SW UseCase で streamId 解決 → offscreen に転送 (✅ 完了, IMPL-613, PR #66)
 
 - 新規 application port: `TabStreamIdResolver.resolve(targetTabId): ResultAsync<string, DomainError>`
 - 新規 infrastructure adapter: `createChromeTabStreamIdResolver(tabCaptureApi)` (IMPL-609 の getMediaStreamId を wrap)
@@ -282,6 +282,14 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
   3. 失敗: warn して streamId なしで openAudioContext を継続 (後方互換)
 - composition で `createChromeTabStreamIdResolver(ports.tabCaptureApi)` を注入
 - 既存 test mock に resolver を追加 + 新規 contract (resolve 呼び出し + tabStreamId 付き openAudioContext)
+
+#### Phase 5+ Step 2d-1: offscreen-audio-host で AudioWorklet module 読込 (✅ 完了, IMPL-614, 本 PR)
+
+- `OffscreenAudioHostDependencies` に optional `workletModuleUrl` を追加
+- `openEntry` 時に `context.audioWorklet.addModule(workletModuleUrl)` を呼び出し、成功/失敗をログ
+- `offscreen/main.ts` で `chrome.runtime.getURL('/perapera-audio-processor.js')` を注入
+- 3 新規 tests (addModule 呼び出し / rejection で warn + context 維持 / workletModuleUrl 未注入で skip)
+- 次の Step 2d-2 で MediaStream と AudioWorkletNode を接続 (MediaStreamAudioSourceNode 作成)
 
 #### Phase 5+ Step 2: Offscreen MediaStream 受け取り + AudioPreprocessor 移管 (未着手, 規模大)
 
@@ -404,3 +412,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.6      | 2026-04-22 | IMPL-611 で Phase 5+ Step 2b-2a (TabStreamApi port + adapter) を完了。`packages/extension/src/infrastructure/audio/tab-stream-api.ts` に `navigator.mediaDevices.getUserMedia({chromeMediaSource: 'tab'})` を wrap した port / production adapter / 4 tests を追加。legacy Chrome constraint (TS 標準型にない) の構築は adapter 内部に閉じる。本 PR 時点では未配線 (Step 2b-2b で offscreen-audio-host に配線)。§2 Phase 5+ を ~65% → ~70% に。                                                                |
 | 0.5.7      | 2026-04-22 | IMPL-612 で Phase 5+ Step 2b-2b (offscreen-audio-host に TabStreamApi 配線) を完了。`offscreen-audio-host.ts` に optional `tabStreamApi` 依存を追加し、tabStreamId 付き `audio.open` 受信時に MediaStream を取得・保持、close で tracks stop。`offscreen/main.ts` で `defaultTabStreamApi` を注入。race condition guard + 4 新規 tests (acquire / close tracks stop / acquire Err で context 維持 / tabStreamApi 未注入で後方互換)。§2 Phase 5+ を ~70% → ~80% に。                                            |
 | 0.5.8      | 2026-04-22 | IMPL-613 で Phase 5+ Step 2c (SW UseCase で streamId 解決 → offscreen に転送) を完了。`TabStreamIdResolver` port + `createChromeTabStreamIdResolver` adapter を追加し、`StartSourceSessionUseCase` の granted path で tab source のとき `overlayTarget.tabId` を使って streamId を解決、`offscreenCommandSender.openAudioContext` の `tabStreamId` に乗せる。失敗時は warn して streamId なしで継続 (後方互換)。composition で wiring、既存 test mock + 2 新規 contract tests。§2 Phase 5+ を ~80% → ~85% に。 |
+| 0.5.9      | 2026-04-22 | IMPL-614 で Phase 5+ Step 2d-1 (offscreen-audio-host で AudioWorklet module 読込) を完了。`OffscreenAudioHostDependencies` に optional `workletModuleUrl` を追加し、`audio.open` 受信で `context.audioWorklet.addModule(workletModuleUrl)` を呼ぶ。`offscreen/main.ts` で `chrome.runtime.getURL('/perapera-audio-processor.js')` を注入。3 新規 tests。§2 Phase 5+ を ~85% → ~88% に。                                                                                                                        |
