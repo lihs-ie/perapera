@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.20'
+version: '0.5.21'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -437,7 +437,11 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
   - guard step で `CHROME_EXTENSION_ID` / `CHROME_CLIENT_ID` / `CHROME_CLIENT_SECRET` / `CHROME_REFRESH_TOKEN` が未設定なら skip (develop merge 後も副作用なし)
   - 初期運用 (β / 限定公開) は upload 止まりで手動レビューに委ね、`publish: true` input のときだけ publish step が走る設計
   - Step 2 (実運用設定): Chrome Developer Dashboard での拡張登録、OAuth2 client + refresh token 取得、GitHub vars/secrets 配置、`wxt.config.ts` に環境別 manifest 生成設定追加
-- IMPL-720 ランブック / インシデント対応手順 — ⚪ 未着手
+- IMPL-720 ランブック / インシデント対応手順 — ✅ 完了:
+  - `docs/10-operations-design/runbook.md` を新設。6 scenarios の step-by-step playbook: (1) Relay 5xx 急増、(2) WebSocket 切断多発、(3) Provider outage (Deepgram/DeepL)、(4) Cloud Run 前リビジョンへ rollback、(5) Chrome Web Store 緊急 takedown、(6) Secret rotation (access token / JWT secret / provider API key)
+  - 単独開発の前提を冒頭に明記 (複数人 escalation fan-out ではなく同一人物のチェックリストとして使う)
+  - operations-design §3 / infrastructure-design §4.3 / security-design §5.2 と相互参照
+  - TODO 節で Cloud Monitoring alert policy YAML 化 / ポストモーテムテンプレート / on-call 通知チャンネル設定を Phase 7 Step 2 の宿題として列挙
 - IMPL-730 ベータ配布 → 一般公開 — ⚪ 未着手
 
 ## 10. 直近で閉じたい設計論点 (ロードマップ外の宿題)
@@ -483,3 +487,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.18     | 2026-04-22 | IMPL-620 (脅威モデル最終確認) を完了。`docs/09-security-design/threat-matrix-impl-mapping.md` を新設し、security-design §2 STRIDE 6 カテゴリ × 実装 IMPL 番号 / ファイルパスを trace。主対策 (短命 JWT / Bearer + JWT 認証 / 生音声非永続化 / ログマスキング / レートリミット / circuit breaker / degraded / MV3 最小権限 / CORS / helmet / dependabot+audit) は全て実装済を確認。3 件の低優先 gap (client event sequence / IndexedDB TTL / 本番 manifest host_permissions 切替) を note として記録、Phase 7 IMPL-700/710 に委譲。                                          |
 | 0.5.19     | 2026-04-22 | Phase 7 IMPL-700 Step 1 として Cloud Run deploy workflow 雛形を追加。`.github/workflows/deploy-relay.yml` で workflow_dispatch only trigger、WIF (`google-github-actions/auth@v2` SHA pin) → Artifact Registry push → `deploy-cloudrun@v2` → `/health` smoke の骨組み。GCP vars/secrets 未設定時は guard step で no-op (develop merge 後も副作用なし)。実運用設定 (GCP プロジェクト / WIF / GAR / SA / vars/secrets 配置) は Step 2 へ委譲。§9 Phase 7 の IMPL-700 を 🟡 Step 1 完了に更新。                                                                                |
 | 0.5.20     | 2026-04-22 | Phase 7 IMPL-710 Step 1 として Chrome Web Store publish workflow 雛形を追加。`.github/workflows/publish-extension.yml` で tag push (`v*.*.*`) + workflow_dispatch trigger、wxt build + zip → `chrome-webstore-upload-cli@3` で upload → `publish: true` のときだけ publish step (target: default / trustedTesters)。guard で `CHROME_EXTENSION_ID` / OAuth2 secrets 未設定時は skip。実運用 (Chrome Developer Dashboard 登録 / refresh token 取得 / vars+secrets 配置 / env 別 manifest 生成) は Step 2 へ委譲。§9 Phase 7 の IMPL-710 を 🟡 Step 1 完了に更新。            |
+| 0.5.21     | 2026-04-22 | Phase 7 IMPL-720 (ランブック / インシデント対応手順) を完了。`docs/10-operations-design/runbook.md` を新設し、6 scenarios (Relay 5xx 急増 / WS 切断多発 / Provider outage / Cloud Run rollback / Chrome Web Store takedown / Secret rotation) の step-by-step playbook を固定。単独開発前提を冒頭で明記 (複数人 escalation ではなく同一人物のチェックリスト)。operations-design §3 / infrastructure-design §4.3 / security-design §5.2 と相互参照。§9 Phase 7 の IMPL-720 を ✅ に更新。                                                                                    |
