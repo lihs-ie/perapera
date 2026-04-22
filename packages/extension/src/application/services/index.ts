@@ -2,7 +2,6 @@ export {
   createCaptureOrchestrator,
   type ActiveCapture,
   type CaptureOrchestrator,
-  type CaptureOrchestratorDependencies,
 } from './capture-orchestrator';
 export {
   createExportService,
