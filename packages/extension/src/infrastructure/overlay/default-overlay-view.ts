@@ -67,9 +67,17 @@ const BASE_STYLE = `
 .perapera-overlay-translated { font-weight: 500; }
 `;
 
-const renderLines = (root: HTMLElement, model: OverlayRenderModel): void => {
+const renderLines = (
+  root: HTMLElement,
+  model: OverlayRenderModel,
+  settings: OverlaySettings | null,
+): void => {
   root.replaceChildren();
-  for (const line of model.lines) {
+  const displayLines =
+    settings !== null && settings.maxLines > 0
+      ? model.lines.slice(Math.max(0, model.lines.length - settings.maxLines))
+      : model.lines;
+  for (const line of displayLines) {
     const lineEl = document.createElement('div');
     lineEl.className = 'perapera-overlay-line';
     lineEl.setAttribute('data-segment-identifier', line.segmentIdentifier);
@@ -87,6 +95,40 @@ const renderLines = (root: HTMLElement, model: OverlayRenderModel): void => {
       lineEl.append(translated);
     }
     root.append(lineEl);
+  }
+};
+
+/**
+ * `positionPreset` を host (Shadow DOM を抱える fixed 要素) の inline style に
+ * 反映する。`settings === null` の場合は初期値 (bottom 配置) に復帰する。
+ */
+const applyPositionPreset = (host: HTMLElement, settings: OverlaySettings | null): void => {
+  if (settings === null) {
+    host.style.top = 'auto';
+    host.style.bottom = '0';
+    host.style.transform = '';
+    host.style.justifyContent = 'flex-end';
+    return;
+  }
+  switch (settings.positionPreset) {
+    case 'top':
+      host.style.top = '0';
+      host.style.bottom = 'auto';
+      host.style.transform = '';
+      host.style.justifyContent = 'flex-start';
+      break;
+    case 'bottom':
+      host.style.top = 'auto';
+      host.style.bottom = '0';
+      host.style.transform = '';
+      host.style.justifyContent = 'flex-end';
+      break;
+    case 'floating':
+      host.style.top = '50%';
+      host.style.bottom = 'auto';
+      host.style.transform = 'translateY(-50%)';
+      host.style.justifyContent = 'center';
+      break;
   }
 };
 
@@ -132,7 +174,8 @@ export const createDefaultOverlayViewFactory = (
       update: (model, settings) => {
         if (rootElement === null) return;
         applySettings(rootElement, settings);
-        renderLines(rootElement, model);
+        if (hostElement !== null) applyPositionPreset(hostElement, settings);
+        renderLines(rootElement, model, settings);
       },
       unmount: () => {
         if (hostElement !== null) {
