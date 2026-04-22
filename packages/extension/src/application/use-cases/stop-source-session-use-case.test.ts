@@ -13,6 +13,7 @@ import type { SourceSessionRepository } from '../../domain/repositories/source-s
 import type { SourceSession } from '../../domain/session/source-session';
 import type { AudioFramePump } from '../services/audio-frame-pump';
 import type { CaptureOrchestrator } from '../services/capture-orchestrator';
+import type { OffscreenCommandSender } from '../services/offscreen-command-sender';
 import type { RelaySessionSubscriber } from '../services/relay-session-subscriber';
 import {
   createStopSourceSessionUseCase,
@@ -87,6 +88,11 @@ const buildDependencies = (
     stopAll: vi.fn(),
     activeCount: vi.fn(() => 0),
   };
+  const offscreenCommandSender: OffscreenCommandSender = {
+    openAudioContext: vi.fn(() => okAsync(undefined)),
+    closeAudioContext: vi.fn(() => okAsync(undefined)),
+    ping: vi.fn(() => okAsync(undefined)),
+  };
   return {
     sourceSessionRepository,
     relayGateway,
@@ -94,6 +100,7 @@ const buildDependencies = (
     captureOrchestrator,
     relaySessionSubscriber,
     audioFramePump,
+    offscreenCommandSender,
     clock: () => STOPPED_AT,
     ...overrides,
   };
@@ -121,6 +128,7 @@ describe('createStopSourceSessionUseCase (IMPL-215, DD-306)', () => {
     expect(deps.overlayPresenter.unmount).toHaveBeenCalledTimes(1);
     expect(deps.audioFramePump.stop).toHaveBeenCalledWith(SESSION_ID);
     expect(deps.relaySessionSubscriber.stop).toHaveBeenCalledWith(SESSION_ID);
+    expect(deps.offscreenCommandSender.closeAudioContext).toHaveBeenCalledWith(SESSION_ID);
   });
 
   it('returns validation error when input is invalid', async () => {

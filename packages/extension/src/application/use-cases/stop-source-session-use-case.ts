@@ -13,6 +13,7 @@ import { type OverlayPresenter } from '../ports/overlay-presenter';
 import { type RelayGateway } from '../ports/relay-gateway';
 import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
+import { type OffscreenCommandSender } from '../services/offscreen-command-sender';
 import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 
 export type StopSourceSessionDependencies = Readonly<{
@@ -22,6 +23,7 @@ export type StopSourceSessionDependencies = Readonly<{
   captureOrchestrator: CaptureOrchestrator;
   relaySessionSubscriber: RelaySessionSubscriber;
   audioFramePump: AudioFramePump;
+  offscreenCommandSender: OffscreenCommandSender;
   clock: () => string;
 }>;
 
@@ -88,6 +90,9 @@ export const createStopSourceSessionUseCase = (
               void deps.overlayPresenter
                 .unmount(sessionIdentifier)
                 .match(() => undefined, logWarn('overlayPresenter.unmount'));
+              void deps.offscreenCommandSender
+                .closeAudioContext(sessionIdentifier)
+                .match(() => undefined, logWarn('offscreenCommandSender.closeAudioContext'));
               return {
                 sessionId: stopped.sessionIdentifier,
                 state: stopped.state,

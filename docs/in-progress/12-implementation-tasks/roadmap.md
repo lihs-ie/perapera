@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.0'
+version: '0.5.1'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -31,7 +31,7 @@ author: 'Codex'
 | 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                        |
 | 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                              |
 | 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)    |
-| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | ⚪ 未着手 (§4 PR 次 #12)                             |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~30% (SW→Offscreen audio command sender 完了)     |
 | 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未) |
 | 7     | リリース / 運用整備                                       | ⚪ 未着手                                            |
 
@@ -212,19 +212,22 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 
 > Phase 5+ の本丸。MV3 Service Worker は `MediaStream` / `AudioContext` を直接扱えないため、
 > capture と前処理を offscreen 側に移し、実 PCM16 フレームを `audioFramePump` 経由で
-> Relay まで流す。Plan mode で設計した上で着手する。
+> Relay まで流す。段階的に進めている:
 
-- **新規実装**:
-  - `packages/extension/public/audio-worklet.js` — AudioWorklet processor (mono 化 + 16kHz 再サンプル + 100ms バッファ → postMessage)
-  - `application/services/offscreen-command-sender.ts` — SW → offscreen `audio.open` / `audio.close` 送信
-  - `infrastructure/audio/offscreen-audio-preprocessor.ts` — offscreen 側で `getUserMedia({chromeMediaSource: 'tab'})` + AudioWorklet 起動 + AsyncIterable<AudioFrameEnvelope> を SW へ転送
-- **既存改修**:
-  - `infrastructure/capture/tab-capture-source-adapter.ts` — `chrome.tabCapture.getMediaStreamId({targetTabId})` を返す形に変更 (実 MediaStream は offscreen 側で確保)
-  - `application/services/capture-orchestrator.ts` — SourceAdapter から streamId を受け取り offscreen に audio.open 送信
-  - `entrypoints/offscreen/main.ts` — audio.open ハンドラで MediaStream + Worklet を起動、frame を SW に postMessage
-  - `extension-composition.ts` — offscreen-command-sender wiring
+#### Phase 5+ Step 1: SW → Offscreen audio command sender (✅ 完了, IMPL-606, 本 PR)
+
+- `application/services/offscreen-command-sender.ts` — SW → offscreen `audio.open` / `audio.close` / `ping` 送信 service
+- `infrastructure/messaging/chrome-runtime-message-bridge.ts` — `chrome.runtime.sendMessage` の port wrap (production adapter)
+- start/stop UseCase 配線 + composition wiring
+- offscreen 側受信ロジック (IMPL-562) は既に存在するため、**SW → offscreen の往復が成立**
+
+#### Phase 5+ Step 2: Offscreen MediaStream 受け取り + AudioWorklet 実装 (未着手, 規模大)
+
+- **新規**: `packages/extension/public/audio-worklet.js` (mono 化 + 16kHz 再サンプル + 100ms バッファ → postMessage)
+- **新規**: `infrastructure/audio/offscreen-audio-preprocessor.ts` — offscreen 側で `getUserMedia({chromeMediaSource: 'tab'})` + AudioWorklet 起動 + 配信
+- **改修**: `infrastructure/capture/tab-capture-source-adapter.ts` — `chrome.tabCapture.getMediaStreamId({targetTabId})` を返す形に変更
+- **改修**: `entrypoints/offscreen/main.ts` — audio.open ハンドラで MediaStream + Worklet を起動、frame を SW に postMessage
 - **検証**: vitest + 手動 unpacked smoke
-- **依存**: なし (PR #54 frame pump が既に SW 側で受信側を持っている)
 - **複雑性**: Plan mode で MV3 制約・MediaStream 受け渡し方式・worklet ビルド設定を慎重に設計する必要
 
 ## 5. Phase 4 完了基準 (M1) — 2026-04-22 達成
@@ -331,3 +334,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.4.2      | 2026-04-22 | IMPL-604 で Phase 6 E2E に `popup.spec.ts` / `sidepanel.spec.ts` を追加 (chrome-extension URL 直接 load → React root render 確認)。§6 M2 checklist 8 (WXT zip 配布) は実は PR #47 で達成済だったため認識を更新し M2 完了。Phase 5 残作業は SW→Offscreen audio command + AudioWorklet 実装のみ。                                                                                                                             |
 | 0.4.3      | 2026-04-22 | IMPL-605 で Phase 6 E2E に `monitor.spec.ts` を追加 (Monitor page も `web_accessible_resources` 経由で render smoke 検証)。これで chrome-extension URL 直接 load 可能な全 entrypoint (popup / sidepanel / monitor) を E2E で網羅。                                                                                                                                                                                          |
 | 0.5.0      | 2026-04-22 | Phase 5 を **M2 完了** として正式にクローズし、実 audio data routing を **Phase 5+ として分離**。§1 に IMPL 番号運用方針 (Task.md 予約番号との衝突を本 roadmap で吸収する旨) を追記。§4 に PR 次 #12 (AudioWorklet + Offscreen MediaStream) を追加し、Plan mode で慎重設計する旨を明記。§2 状態表に Phase 5+ 行を追加。                                                                                                     |
+| 0.5.1      | 2026-04-22 | IMPL-606 で Phase 5+ Step 1 (SW → Offscreen audio command sender) を実装。`OffscreenCommandSender` (application service) + `ChromeRuntimeMessageBridge` (infrastructure adapter) + start/stop UseCase 配線 + composition wiring を完了。§2 Phase 5+ ステータスを ⚪ → 🟡 ~30% に更新。Step 2 (AudioWorklet + offscreen MediaStream) は次 PR で続行。                                                                        |
