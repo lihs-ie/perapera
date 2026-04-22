@@ -138,6 +138,8 @@ describe('createExtensionApp (IMPL-500)', () => {
     expect(app.audioFrameForwardReceiver.receive).toBeTypeOf('function');
     expect(app.orphanSessionCleanup).toBeDefined();
     expect(app.orphanSessionCleanup.cleanup).toBeTypeOf('function');
+    expect(app.ensureDefaultProfile).toBeDefined();
+    expect(app.ensureDefaultProfile.ensure).toBeTypeOf('function');
     expect(app.transcriptAssembler).toBeDefined();
     expect(app.close).toBeTypeOf('function');
   });

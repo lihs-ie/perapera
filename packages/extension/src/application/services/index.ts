@@ -4,6 +4,11 @@ export {
   type CaptureOrchestrator,
 } from './capture-orchestrator';
 export {
+  createEnsureDefaultProfile,
+  type EnsureDefaultProfile,
+  type EnsureDefaultProfileDependencies,
+} from './ensure-default-profile';
+export {
   createExportService,
   type ExportService,
   type ExportServiceDependencies,

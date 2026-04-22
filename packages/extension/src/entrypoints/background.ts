@@ -100,6 +100,20 @@ export default defineBackground(() => {
     },
   );
 
+  // 初回起動時は chrome.storage.local に default profile が存在せず、Popup の
+  // 「開始」押下時に `ExtensionProfile not found: default` が返っていた。
+  // SW 起動時に ensure して欠落していれば既定値を seed する (fire-and-forget)。
+  void app.ensureDefaultProfile.ensure().match(
+    (profile) => {
+      console.log(
+        `[perapera] default extension profile ready (identifier=${profile.profileIdentifier})`,
+      );
+    },
+    (error) => {
+      console.warn('[perapera] ensureDefaultProfile failed:', error);
+    },
+  );
+
   const dispatch: RuntimeDispatcher = createRuntimeDispatcher({
     sessionCommandService: app.sessionCommandService,
     exportService: app.exportService,
