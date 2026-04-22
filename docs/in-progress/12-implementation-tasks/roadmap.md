@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.15'
+version: '0.5.16'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -410,7 +410,11 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 **範囲:**
 
 - IMPL-600 Playwright E2E (拡張 unpacked + Relay mock provider で翻訳ループを閉じる) — 🟡 進行中 (page render smoke 4/5 完了, golden path / permission denied 未)
-- IMPL-610 k6 負荷試験 (Relay 同時 3 接続、SLO 計測) — ⚪ 未着手
+- IMPL-610 k6 負荷試験 (Relay 同時 3 接続、SLO 計測) — 🟡 Step 1 完了:
+  - `perf/scenarios/ws-relay.js` を新規追加。`POST /sessions` → WebSocket `/relay` → `session.ready` 受信までを同時 3 VU (SessionConcurrencyPolicy 準拠) で 30 秒維持。SLO 閾値: ws_connecting p95 < 3000ms / session_ready_latency p95 < 1000ms / http_req_duration p95 < 500ms
+  - `perf/scenarios/create-session.js` の誤った `/api/v1/sessions` を実装 Fastify route の `/sessions` に fix (`relayUrl` announce path と Fastify route は別レイヤーの命名)
+  - `justfile` に `perf-ws` エイリアス追加、`perf/README.md` に scenario 表と CI 未連携の注記を更新
+  - 残: `.github/workflows/k6-smoke.yml` による weekly + dispatch の自動実行 (次 PR)、`translation-hotpath.js` で transcript.final → translation.final p95 800ms end-to-end 検証 (別 PR)
 - IMPL-620 脅威モデル最終確認 (security-design §3 threat matrix と実装の突き合わせ) — ⚪ 未着手
 - IMPL-630 `pnpm audit` + dependabot 定期化 — ✅ 完了:
   - `.github/dependabot.yml` — npm / github-actions / docker の 3 ecosystem を weekly monday 09:00 JST で回す。npm は production / development で group 化 (major bump は個別 PR)。target は `develop`
@@ -465,3 +469,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.13     | 2026-04-22 | **IMPL-618 で Phase 5+ Step 2d-4 (SW で audio.frame.forward 受信 → relayGateway.sendAudioFrame) を完了、Phase 5+ 完結**。新規 `AudioFrameForwardReceiver` + zod schema validation + `background.ts` onMessage listener で配線。10 unit tests + composition smoke。実 audio data が SW → offscreen → worklet → SW → Relay API までフル接続 (端到端での audio routing foundation 完成)。§2 Phase 5+ を ~98% → ✅ 完了 に。                                                                                                                                                    |
 | 0.5.14     | 2026-04-22 | IMPL-630 (`pnpm audit` + dependabot 定期化) を完了。`.github/dependabot.yml` で npm / github-actions / docker の 3 ecosystem を weekly monday 09:00 JST・`target-branch: develop` でスケジュール (npm は production/development で group 化、major は個別 PR)。`.github/workflows/audit.yml` で `pnpm audit --audit-level moderate` を weekly + 依存ファイル変更 PR + workflow_dispatch で実行。`branch-name-check.yml` / `.husky/pre-push` に `^dependabot/.+$` を OR 追加し、Dependabot 生成 branch が命名規約 CI を通るようにした。§8 Phase 6 の IMPL-630 を ✅ に更新。 |
 | 0.5.15     | 2026-04-22 | IMPL-630 初回実行で検出された transitive 脆弱性 8 件 (`wxt>giget>tar` x6 high / `vitest>vite` moderate / `vitest>vite>esbuild` moderate) を `package.json > pnpm.overrides` で解消。`tar ^7.5.13` / `vite ^6.4.2` / `esbuild ^0.25.0` に強制し、`pnpm audit --audit-level moderate` が 0 件を返すことを確認。extension (898) / relay-api (184) tests / typecheck / wxt build いずれも override 後に通過。                                                                                                                                                                   |
+| 0.5.16     | 2026-04-22 | IMPL-610 Step 1 として WebSocket ホットパスの k6 scenario を追加。`perf/scenarios/ws-relay.js` で `POST /sessions` → WS `/relay` → `session.ready` 受信までを同時 3 VU × 30s で計測し、ws_connecting p95 < 3000ms / session_ready_latency p95 < 1000ms / http_req_duration p95 < 500ms を閾値化。既存 `create-session.js` の誤 path (`/api/v1/sessions`) を実装 Fastify route の `/sessions` に合わせて修正、`justfile` / `perf/README.md` も更新。CI 連携と translation-hotpath scenario は後続 PR で扱う。                                                                |
