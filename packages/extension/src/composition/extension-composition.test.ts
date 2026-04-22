@@ -81,7 +81,10 @@ const createTestPorts = (overrides: Partial<ExtensionRuntimePorts> = {}): Extens
     ),
     overlayMessagingBridge: { send: vi.fn(() => Promise.resolve()) },
     chromeRuntimeApi: { sendMessage: vi.fn(() => Promise.resolve(undefined)) },
-    tabCaptureApi: { capture: vi.fn(() => Promise.resolve(null)) },
+    tabCaptureApi: {
+      capture: vi.fn(() => Promise.resolve(null)),
+      getMediaStreamId: vi.fn(() => Promise.resolve('stream-id-fixture')),
+    },
     userMediaApi: { getUserMedia: vi.fn(() => Promise.reject(new Error('not implemented'))) },
     desktopCaptureApi: {
       getDisplayMedia: vi.fn(() => Promise.reject(new Error('not implemented'))),
