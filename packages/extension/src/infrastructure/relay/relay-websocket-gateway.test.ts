@@ -127,6 +127,7 @@ const buildDependencies = (
       webSocketFactory,
       tokenIssuer,
       clock,
+      protocolVersion: '1.0',
       ...overrides,
     },
     { createdSockets, createdUrls },
@@ -153,12 +154,18 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       expect(urlArg).toContain(RELAY_URL);
       expect(urlArg).toContain(`token=${STREAM_TOKEN}`);
       expect(urlArg).toContain(`sessionId=${SESSION_ID}`);
+      expect(urlArg).toContain('protocolVersion=1.0');
     });
 
     it('supports a custom wsEndpointBuilder override', async () => {
       const customBuilder = vi.fn(
-        (params: { relayUrl: string; sessionIdentifier: string; streamToken: string }) =>
-          `${params.relayUrl}/custom?t=${params.streamToken}&s=${params.sessionIdentifier}`,
+        (params: {
+          relayUrl: string;
+          sessionIdentifier: string;
+          streamToken: string;
+          protocolVersion: string;
+        }) =>
+          `${params.relayUrl}/custom?t=${params.streamToken}&s=${params.sessionIdentifier}&v=${params.protocolVersion}`,
       );
       const deps = buildDependencies({ wsEndpointBuilder: customBuilder });
       const gateway = createRelayWebSocketGateway(deps);
@@ -170,8 +177,11 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
         relayUrl: RELAY_URL,
         sessionIdentifier: sessionIdentifier,
         streamToken: STREAM_TOKEN,
+        protocolVersion: '1.0',
       });
-      expect(deps.createdUrls[0]).toBe(`${RELAY_URL}/custom?t=${STREAM_TOKEN}&s=${SESSION_ID}`);
+      expect(deps.createdUrls[0]).toBe(
+        `${RELAY_URL}/custom?t=${STREAM_TOKEN}&s=${SESSION_ID}&v=1.0`,
+      );
     });
 
     it('sends session.start envelope on open', async () => {

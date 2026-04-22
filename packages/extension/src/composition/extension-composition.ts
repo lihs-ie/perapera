@@ -272,6 +272,7 @@ export const createExtensionApp = (
     webSocketFactory: ports.webSocketFactory,
     tokenIssuer,
     clock: ports.clockMs,
+    protocolVersion: config.protocolVersion,
   });
 
   // --------------- Overlay / presenter ---------------
