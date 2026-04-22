@@ -133,32 +133,9 @@ curl -sS http://localhost:3001/health
 
 ## 5. Chrome 拡張のローカルビルド
 
-### 5.1 拡張側の環境変数配線 (要初回パッチ)
+### 5.1 拡張側の環境変数配線
 
-`packages/extension/src/entrypoints/background.ts` は `import.meta.env.PERAPERA_RELAY_ACCESS_TOKEN` を参照するが、WXT (Vite) はこの識別子を**明示の `define` が無いと undefined にする**ため、以下のいずれかで注入する必要がある:
-
-**Option A: wxt.config.ts を編集 (推奨、再ビルド永続)**
-
-```ts
-// packages/extension/wxt.config.ts
-import { defineConfig } from 'wxt';
-
-const relayBaseUrl = process.env.PERAPERA_RELAY_API_BASE_URL ?? 'http://localhost:3001';
-const relayAccessToken = process.env.PERAPERA_RELAY_ACCESS_TOKEN ?? '';
-
-export default defineConfig({
-  // ...既存 config
-  vite: () => ({
-    resolve: { alias: { '@': '/src' } },
-    define: {
-      'import.meta.env.PERAPERA_RELAY_API_BASE_URL': JSON.stringify(relayBaseUrl),
-      'import.meta.env.PERAPERA_RELAY_ACCESS_TOKEN': JSON.stringify(relayAccessToken),
-    },
-  }),
-});
-```
-
-起動時に env を渡す:
+`wxt.config.ts` は `PERAPERA_RELAY_API_BASE_URL` と `PERAPERA_RELAY_ACCESS_TOKEN` を build 時に `import.meta.env` へ inject 済 (§IMPL-710)。`host_permissions` も `PERAPERA_RELAY_API_BASE_URL` の origin から自動導出されるので dev / staging / production を同一 config で切替できる。build / dev 起動前に env を export するだけでよい:
 
 ```sh
 export PERAPERA_RELAY_API_BASE_URL=http://localhost:3001
@@ -166,17 +143,15 @@ export PERAPERA_RELAY_ACCESS_TOKEN=dev-access-token
 pnpm --filter @perapera/extension dev
 ```
 
-**Option B: chrome.storage.local 経由 (再インストール毎に設定要、patch 不要)**
+env を変えたら再 build が必要 (build 時 inline)。本番 build 例:
 
-拡張 build 後、Chrome で拡張を load し、Service Worker の DevTools を開いて:
-
-```js
-await chrome.storage.local.set({
-  PERAPERA_RELAY_ACCESS_TOKEN: 'dev-access-token',
-});
+```sh
+export PERAPERA_RELAY_API_BASE_URL=https://relay.example.com
+export PERAPERA_RELAY_ACCESS_TOKEN=<production access token>
+pnpm --filter @perapera/extension build
+# .output/chrome-mv3/manifest.json の host_permissions に
+# "https://relay.example.com/*" が記述されていることを確認
 ```
-
-ただし現状 background.ts は `chrome.storage` 読み込みを実装していないため、追加実装が必要。**Option A を推奨**。
 
 ### 5.2 開発ビルド (watch モード)
 
@@ -233,16 +208,16 @@ pnpm --filter @perapera/extension dev
 
 ## 8. よくあるハマり所 (Troubleshooting)
 
-| 症状                                                            | 原因                                    | 対応                                                                                   |
-| --------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| SW コンソールに `PERAPERA_RELAY_ACCESS_TOKEN is not configured` | wxt.config.ts に define が無い          | 5.1 Option A を適用し、env set して再 build                                            |
-| Popup で「開始」後に `relay: 401 Unauthorized`                  | relay-api の `ACCESS_TOKENS` と不一致   | 両側を同じ値に揃える (`dev-access-token` 既定)                                         |
-| WebSocket が即 1006 で切断される                                | `STREAM_TOKEN_SECRET` が 32 文字未満    | 32+ chars に修正して relay 再起動                                                      |
-| `Failed to register service worker`                             | 既存 unpacked が衝突                    | chrome://extensions で旧版を削除 → 再 load                                             |
-| 翻訳が出ず transcript だけ表示                                  | DeepL API Key が無効 or 無料枠超過      | DeepL console でキー確認、DEEPL_BASE_URL が Free 用になっているか確認                  |
-| `CORS: chrome-extension://<id> blocked`                         | 本番 manifest で host_permissions 不足  | dev では wxt.config.ts の `host_permissions` に `http://localhost:3001/*` 既配置       |
-| tab capture で「このタブは対象外」                              | `activeTab` パーミッションの tab でない | 拡張アイコンをクリックしてから Popup で開始 (activeTab は user gesture で grant)       |
-| 翻訳が遅い / タイムアウト                                       | Provider 応答遅延                       | `pino` SW コンソールで `STT-*` / `TRANSLATION-*` エラーコードを確認、degraded 遷移発生 |
+| 症状                                                            | 原因                                                     | 対応                                                                                                 |
+| --------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| SW コンソールに `PERAPERA_RELAY_ACCESS_TOKEN is not configured` | wxt.config.ts に define が無い                           | 5.1 Option A を適用し、env set して再 build                                                          |
+| Popup で「開始」後に `relay: 401 Unauthorized`                  | relay-api の `ACCESS_TOKENS` と不一致                    | 両側を同じ値に揃える (`dev-access-token` 既定)                                                       |
+| WebSocket が即 1006 で切断される                                | `STREAM_TOKEN_SECRET` が 32 文字未満                     | 32+ chars に修正して relay 再起動                                                                    |
+| `Failed to register service worker`                             | 既存 unpacked が衝突                                     | chrome://extensions で旧版を削除 → 再 load                                                           |
+| 翻訳が出ず transcript だけ表示                                  | DeepL API Key が無効 or 無料枠超過                       | DeepL console でキー確認、DEEPL_BASE_URL が Free 用になっているか確認                                |
+| `CORS: chrome-extension://<id> blocked`                         | `PERAPERA_RELAY_API_BASE_URL` が build 時 env と食い違い | build 時に export した origin と実 Relay URL を揃え再 build (`host_permissions` は env から自動導出) |
+| tab capture で「このタブは対象外」                              | `activeTab` パーミッションの tab でない                  | 拡張アイコンをクリックしてから Popup で開始 (activeTab は user gesture で grant)                     |
+| 翻訳が遅い / タイムアウト                                       | Provider 応答遅延                                        | `pino` SW コンソールで `STT-*` / `TRANSLATION-*` エラーコードを確認、degraded 遷移発生               |
 
 ## 9. 開発中の繰り返し workflow
 
