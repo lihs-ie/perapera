@@ -30,9 +30,15 @@ const postSessionsResponseSchema = z.object({
   }),
 });
 
+/**
+ * api-specification.md §4.2 と整合する overlayTarget discriminated union。
+ * Relay 側 `issue-stream-token-dto.ts` の zod schema と shape を揃える必要がある:
+ * - `{ kind: 'tab', tabId }` — 対象タブに overlay を描画
+ * - `{ kind: 'extension-monitor', pageId }` — 拡張内 monitor page (`monitor.html` 等) に描画
+ */
 export type OverlayTargetDescriptor =
   | Readonly<{ kind: 'tab'; tabId: number }>
-  | Readonly<{ kind: 'monitor' }>;
+  | Readonly<{ kind: 'extension-monitor'; pageId: string }>;
 
 export type FetchStreamTokenIssuerConfig = Readonly<{
   /** Relay API base URL (http:// or https://、末尾 / なし) */
