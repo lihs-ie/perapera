@@ -1,0 +1,76 @@
+# Dependabot configuration
+#
+# IMPL-630 の一環として、依存関係の定期更新を Dependabot にオフロードする。
+#
+# - pnpm workspaces は root `pnpm-lock.yaml` 単一管理のため npm ecosystem は
+#   root directory のみで十分 (各 package.json は dependabot が自動で辿る)。
+# - GitHub Actions は SHA pin を前提とする (CLAUDE.md §CI/CD)。Dependabot は
+#   major/minor/patch update に対し SHA とコメントの両方を書き換える。
+# - docker は `packages/relay-api/Dockerfile` のみ。
+#
+# 共通方針:
+# - target-branch は `develop`。`main` への直接 PR を防ぎ、リリースフローを維持。
+# - commit-message prefix は CLAUDE.md の conventional commits に合わせる
+#   (`deps` / `ci`)。`include: "scope"` で package 名を scope に出す。
+# - major bump はグルーピングから外し個別 PR とする (破壊的変更は 1 件ずつ確認)。
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    labels:
+      - dependencies
+    commit-message:
+      prefix: deps
+      include: scope
+    open-pull-requests-limit: 5
+    target-branch: develop
+    groups:
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - patch
+          - minor
+      development-dependencies:
+        dependency-type: development
+        update-types:
+          - patch
+          - minor
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: ci
+      include: scope
+    open-pull-requests-limit: 3
+    target-branch: develop
+
+  - package-ecosystem: docker
+    directory: /packages/relay-api
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    labels:
+      - dependencies
+      - relay-api
+      - docker
+    commit-message:
+      prefix: deps
+      include: scope
+    open-pull-requests-limit: 2
+    target-branch: develop
