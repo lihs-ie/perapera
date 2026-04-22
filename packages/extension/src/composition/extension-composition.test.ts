@@ -125,6 +125,8 @@ describe('createExtensionApp (IMPL-500)', () => {
     expect(app.getSessionMonitorStateQuery).toBeDefined();
     expect(app.sessionRegistry).toBeDefined();
     expect(app.captureOrchestrator).toBeDefined();
+    expect(app.audioFramePump).toBeDefined();
+    expect(app.audioFramePump.activeCount()).toBe(0);
     expect(app.transcriptAssembler).toBeDefined();
     expect(app.close).toBeTypeOf('function');
   });

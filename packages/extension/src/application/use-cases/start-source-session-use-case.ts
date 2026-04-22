@@ -23,6 +23,7 @@ import {
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
 import { type StartSourceCommand } from '../ports/source-adapter';
+import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
 import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 
@@ -33,6 +34,7 @@ export type StartSourceSessionDependencies = Readonly<{
   permissionCoordinator: PermissionCoordinator;
   captureOrchestrator: CaptureOrchestrator;
   relaySessionSubscriber: RelaySessionSubscriber;
+  audioFramePump: AudioFramePump;
   clock: () => string;
   idFactory: Readonly<{
     session: () => string;
@@ -86,6 +88,10 @@ const toStartSourceCommand = (session: SourceSession): StartSourceCommand => {
  * IMPL-600 (Phase 5 integration): capture 接続と relay subscribe を
  * connect フェーズで配線し、以降の `RelayEvent` (transcript / translation) が
  * `SessionCommandService.handleRelayEvent` に流れるようにする。
+ *
+ * IMPL-602 (audio frame pipeline): `captureOrchestrator.connect` が返す
+ * `ActiveCapture.frameChannel` を `audioFramePump.start` に引き渡し、以降
+ * 100ms PCM16 フレームが `relayGateway.sendAudioFrame` へ自動 drain される。
  */
 export const createStartSourceSessionUseCase = (
   deps: StartSourceSessionDependencies,
@@ -127,8 +133,15 @@ export const createStartSourceSessionUseCase = (
                         ).asyncAndThen((connecting) =>
                           deps.captureOrchestrator
                             .connect(toStartSourceCommand(connecting))
-                            .andThen(() => deps.relayGateway.openSession(connecting))
-                            .andThen(() => {
+                            .andThen((activeCapture) =>
+                              deps.relayGateway.openSession(connecting).map(() => activeCapture),
+                            )
+                            .andThen((activeCapture) => {
+                              deps.audioFramePump.start(
+                                connecting.sessionIdentifier,
+                                activeCapture.frameChannel,
+                                (frame) => deps.relayGateway.sendAudioFrame(frame),
+                              );
                               deps.relaySessionSubscriber.start(connecting.sessionIdentifier);
                               return deps.sourceSessionRepository
                                 .save(connecting)

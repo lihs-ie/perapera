@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.3.0'
+version: '0.4.0'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -15,17 +15,43 @@ author: 'Codex'
 
 ## 2. 現状サマリ (2026-04-22)
 
-| Phase | 範囲                                       | 状態           |
-| ----- | ------------------------------------------ | -------------- |
-| 0     | 着手前合意 (IMPL-001〜005)                 | ✅ 完了        |
-| 1     | ドメイン層 (IMPL-101〜153)                 | ✅ 完了        |
-| 2     | アプリケーション層 (IMPL-200〜230)         | ✅ 完了        |
-| 3     | 拡張 infrastructure (IMPL-300〜344)        | ✅ 完了        |
-| 3.5   | Domain Repository Adapters (IMPL-140〜143) | ✅ 完了 (#45)  |
-| 4     | Relay API (IMPL-400〜451)                  | ✅ 完了        |
-| 5     | 拡張 presentation 層                       | 🟡 進行中 ~10% |
-| 6     | E2E / 性能 / 品質検証                      | ⚪ 未着手      |
-| 7     | リリース / 運用整備                        | ⚪ 未着手      |
+| Phase | 範囲                                       | 状態                                   |
+| ----- | ------------------------------------------ | -------------------------------------- |
+| 0     | 着手前合意 (IMPL-001〜005)                 | ✅ 完了                                |
+| 1     | ドメイン層 (IMPL-101〜153)                 | ✅ 完了                                |
+| 2     | アプリケーション層 (IMPL-200〜230)         | ✅ 完了                                |
+| 3     | 拡張 infrastructure (IMPL-300〜344)        | ✅ 完了                                |
+| 3.5   | Domain Repository Adapters (IMPL-140〜143) | ✅ 完了 (#45)                          |
+| 4     | Relay API (IMPL-400〜451)                  | ✅ 完了                                |
+| 5     | 拡張 presentation 層 (IMPL-500〜601)       | 🟡 ~85% (残 audio pipeline / zip 配布) |
+| 6     | E2E / 性能 / 品質検証                      | ⚪ 未着手                              |
+| 7     | リリース / 運用整備                        | ⚪ 未着手                              |
+
+### Phase 5 拡張 presentation 層 内訳 (PR #47〜#53, 2026-04-22 時点)
+
+UI 層 (Popup / SidePanel / Content Script / Monitor) と SW 統合配線が完了。
+Phase 5 M2 (unpacked 拡張で実機動作) の foundation が揃った。
+
+**完了:**
+
+- IMPL-500〜502 Background SW composition root + runtime dispatcher + 3 新 adapter
+  (ChromePermissionCoordinator / FetchStreamTokenIssuer / ChromeMessagingOverlayPresenter) (PR #47)
+- IMPL-510〜551 Popup UI (BackgroundClient + hooks + atoms 6 種 + molecules 3 種 + organisms 2 種 + PopupTemplate) (PR #48)
+- IMPL-533/534/542/543/552/553 Side Panel UI (ExportControls + TranscriptPreview + SessionDetailCard + ActiveSessionDetailList + SidePanelTemplate) (PR #49)
+- IMPL-554〜558 Content script overlay (OverlayCommand parser + dispatcher + positionPreset/maxLines CSS 反映) (PR #50)
+- IMPL-560〜564 Offscreen document + Monitor page (AudioContext host + OverlayListener) (PR #51)
+- IMPL-590/591 Design system tokens + fonts (ui-ux-design §3 準拠、dark mode 対応) (PR #52)
+- IMPL-600/601 Phase 5 integration (RelaySessionSubscriber + OffscreenLifecycle + UseCase 配線) (PR #53)
+
+**ホットパス完全接続**: Popup → SW → Relay WebSocket → SessionCommandService →
+HandleTranscript UseCase → OverlayPresenter → Shadow DOM 描画
+
+**残タスク** (Phase 5 完了へ):
+
+- Audio frame pipeline (`captureOrchestrator.frames` → `relayGateway.sendAudioFrame` の実データ転送)
+- SW → offscreen audio.open / audio.close コマンド送信
+- WXT zip 配布 smoke (`pnpm --filter @perapera/extension zip`)
+- Session recovery on SW restart (IndexedDB から active session を読み戻して再 subscribe)
 
 ### Phase 3.5 Domain Repository Adapters 内訳 (PR #45, 完了 2026-04-22)
 
@@ -106,60 +132,69 @@ Cloud Run 複数インスタンス要件 ([`infrastructure-design.md` §7](../08
 - env 変数欠落は factory で fail-fast (`throw`)
 - 起動時の redact テスト (IMPL-450) で secret がログに漏れないことを契約として固定
 
-## 4. 直近の PR 優先順位 (Phase 5 進行中)
+## 4. 直近の PR 優先順位 (Phase 5 残作業 → Phase 6)
 
-Domain Repository adapter (PR #45) が develop に揃ったため、Background service
-worker composition root から Phase 3 infrastructure を DI 注入できるようになった。
-次は以下の順で進める。
+PR 次 #1〜#6 (背景 composition / Popup / SidePanel / Content overlay / Offscreen+Monitor / Design tokens) と
+integration gap 埋め (PR #53) が完了し、Phase 5 M2 foundation は揃った。残りは
+**audio frame を Relay まで流し切る pipeline** と **実機 smoke 準備**。
 
-### PR (次) #1 — Background service worker composition root (L)
+### PR (次) #7 — Audio frame pipeline (M)
 
-> `packages/extension/src/entrypoints/background.ts` で `SessionCommandService` /
-> `SessionRegistry` / `CaptureOrchestrator` を DI 組立し、chrome.runtime.onMessage /
-> onConnect でポップアップ・側パネルからのコマンドを受けて UseCase に dispatch する。
+> `captureOrchestrator.frames` (AudioPreprocessor の 100ms フレーム Stream) を
+> `relayGateway.sendAudioFrame` に転送する backend pipeline。start use case で
+> subscribe、stop / disconnect で unsubscribe。encoding は `pcm_s16le` mono 16kHz +
+> Base64 (API 仕様 §3)。
 
-- 範囲: `src/composition/extension-composition.ts` (新規) + `entrypoints/background.ts` 差し替え + runtime message schema + DI テスト
-- 依存: PR #45 の repository adapter (完了)、Phase 3 の `IndexedDbSessionStore` / `ChromeLocalSettingsStore` / relay gateway 等 (完了)
-- 検証: vitest で composition factory の DI 契約を確認 (chrome.\* を stub)、手動 smoke は `wxt dev` で unpacked 起動し、chrome://extensions 上での起動ログ確認
+- 範囲: `application/services/audio-frame-pump.ts` (新規) or
+  `relay-session-subscriber.ts` の責務拡張 / `start-source-session-use-case.ts` と
+  `stop-source-session-use-case.ts` の配線 / `capture-orchestrator.ts` frame stream
+  exposure 確認
+- 依存: PR #53 (integration gap 埋め完了), IMPL-303 AudioPreprocessor (Phase 3 完了)
+- 検証: vitest で frame stream → sendAudioFrame 変換契約 + back-pressure / frame 欠落時の挙動テスト
 
-### PR (次) #2 — Popup UI 最小実装 (M)
+### PR (次) #8 — SW → Offscreen audio command 送信 (S)
 
-> ソース追加 (tab / mic / desktop) → 開始 → 停止の単純導線。Atomic Design: atoms + molecules + template。
+> Background SW が tab / desktop / mic ソース開始時に Offscreen document へ
+> `audio.open` / `audio.close` を `chrome.runtime.sendMessage` で送信し、Offscreen
+> 側の AudioContext ホストを駆動する。現状 Offscreen 側 (IMPL-562) は受信できる
+> が SW 側送信が未配線。
 
-- 範囲: `entrypoints/popup/` + `src/presentation/{atoms,molecules,organisms,templates}/popup/`
-- 依存: (次) #1 の background composition (messaging API 越しに UseCase 呼び出し)
-- 検証: vitest + @testing-library/react で component test
+- 範囲: `application/services/offscreen-command-sender.ts` (新規) +
+  use case 配線 (capture connect 直後に audio.open、stop で audio.close)
+- 依存: PR (次) #7 (frame pump)
+- 検証: runtime message contract テスト (既存 Offscreen 受信契約と往復成立)
 
-### PR (次) #3 — Side Panel UI (M)
+### PR (次) #9 — Session recovery on SW restart (M)
 
-> アクティブセッション一覧 / 状態表示 / 停止 / エクスポート導線。
+> Service Worker は MV3 で 30 秒 idle 後 shutdown される。再起動時に
+> `SourceSessionRepository.findActiveSessions` から capturing / transcribing /
+> translating の session を読み戻し、subscribe / capture を再開する。
+> 設計論点 §10 (Background 多重起動) の確定版。
 
-- 範囲: `entrypoints/sidepanel/` + 対応 presentation 層
-- 依存: (次) #1
+- 範囲: `composition/extension-composition.ts` 起動時 recovery hook +
+  `application/services/session-recovery-service.ts` (新規)
+- 依存: PR (次) #7, #8
+- 検証: SW 再起動シミュレート (chrome.runtime.onStartup vs onInstalled の分岐)、
+  idempotent 性 (既存 active session にも安全)
 
-### PR (次) #4 — Content script overlay (M)
+### PR (次) #10 — WXT zip 配布 smoke (S)
 
-> 対象ページへの `ContentScriptOverlayPresenter` 注入 + Shadow DOM 実装 + 字幕描画の
-> hotpath 確認 (partial / final / translation final の再描画)。
+> `pnpm --filter @perapera/extension zip` で Chrome Web Store 提出用 zip を生成し、
+> Chrome unpacked でも manifest v3 validation を通す。Phase 6 Playwright の前段。
 
-- 範囲: `entrypoints/content/` + injection 条件 + overlay view の React 化
-- 依存: (次) #1
+- 範囲: `wxt.config.ts` zip target + `.output/` 生成物を package scripts に配線 +
+  CI job (zip 出力を artifact として upload)
+- 依存: PR (次) #7, #8, #9 (起動ループが閉じていること)
+- 検証: local で zip 展開 → chrome://extensions に load → service worker ログ確認
 
-### PR (次) #5 — Offscreen document + Monitor page (S)
+### PR (次) #11 — Phase 6 Playwright E2E 最小シナリオ (L)
 
-> AudioContext 維持用の offscreen 文書と、タブ以外のソース向け monitor page。
+> unpacked 拡張 + Relay in-process (mock provider) で翻訳ループを閉じる端到端テスト。
+> `e2e/flows/tab-capture-translation.spec.ts` から着手し、ゴールデンパス 1 本のみで開始。
 
-- 範囲: `entrypoints/offscreen/` + `entrypoints/monitor/`
-- 依存: (次) #1
-
-### PR (次) #6 — Design system tokens + atoms (M)
-
-> IMPL-500/501 (カラー / タイポ / スペーシング token 化、`IBM Plex Sans JP` / `Space Grotesk` 読込)
-> を先行実装。Popup / SidePanel / Content Script / Monitor が共通利用する atoms を固める。
-
-- 範囲: `src/presentation/atoms/` + CSS variables + フォント読み込み
-- 依存: なし (並列可)
-- 検証: Storybook 相当 (sandbox ページ or test snapshot)
+- 範囲: `packages/extension/e2e/` + Playwright config + CI workflow
+- 依存: PR (次) #10
+- 検証: CI で Chrome extension launch + tab audio 注入 + Relay mock で translation event 到達を assert
 
 ## 5. Phase 4 完了基準 (M1) — 2026-04-22 達成
 
@@ -169,21 +204,34 @@ worker composition root から Phase 3 infrastructure を DI 注入できるよ�
 - [ ] 性能テスト (k6 / TST-NF-004) で SLO (WebSocket 3000ms / STT 1000ms / 翻訳 800ms) を確認 — Phase 6 へ
 - [ ] Docker image ビルド + Cloud Run local emulator で起動確認 — Phase 7 へ
 
-## 6. Phase 5 拡張 presentation 層 (M2 準備)
+## 6. Phase 5 拡張 presentation 層 (M2 進行中)
 
 PR #45 で domain repository adapter が揃ったため、Background composition root から
-全 infrastructure を DI 注入可能になった。本 Phase では下記を順次実装する。
+全 infrastructure を DI 注入可能になった。本 Phase で順次実装する 8 項目の進捗:
 
 **マイルストン (M2)** — `wxt dev` で unpacked 拡張起動 → 手動で tab / mic / desktop ソース作成 → 翻訳オーバーレイが描画される:
 
-1. Background service worker: `SessionCommandService` 配線 (§4 PR 次 #1)
-2. Popup UI: ソース追加・開始・設定 (§4 PR 次 #2)
-3. Side Panel UI: アクティブセッション一覧・停止・エクスポート (§4 PR 次 #3)
-4. Content Script: `ContentScriptOverlayPresenter` の対象ページ注入 (§4 PR 次 #4)
-5. Offscreen document: `AudioPreprocessor` のホスト (AudioContext 維持) (§4 PR 次 #5)
-6. Monitor page: タブ以外のソース用 overlay 表示 (§4 PR 次 #5)
-7. Design system tokens / atoms / molecules (§4 PR 次 #6 + IMPL-500〜522)
-8. WXT バンドル・zip 出力
+1. [x] Background service worker: `SessionCommandService` 配線 (PR #47)
+2. [x] Popup UI: ソース追加・開始・設定 (PR #48)
+3. [x] Side Panel UI: アクティブセッション一覧・停止・エクスポート (PR #49)
+4. [x] Content Script: `ContentScriptOverlayPresenter` の対象ページ注入 (PR #50)
+5. [x] Offscreen document: AudioContext ホスト + ライフサイクル配線 (PR #51, #53)
+6. [x] Monitor page: タブ以外のソース用 overlay 表示 (PR #51)
+7. [x] Design system tokens / fonts (PR #52)
+8. [ ] WXT バンドル・zip 出力 (§4 PR 次 #10)
+
+**Phase 5 integration 追加達成 (PR #53, IMPL-600/601)**:
+
+- `relayGateway.subscribe` → `SessionCommandService.handleRelayEvent` 接続 (`RelaySessionSubscriber` application service)
+- `captureOrchestrator.connect` を start UseCase で呼び出し、`relaySessionSubscriber.start` と合わせて配線
+- SW 起動時に `chrome.offscreen.createDocument` を ensure (`OffscreenLifecycle` helper)
+
+**Phase 5 残タスク (§4 PR 次 #7〜#10)**:
+
+- [ ] IMPL-602 Audio frame pipeline: `captureOrchestrator.frames` → `relayGateway.sendAudioFrame` (本 PR)
+- [ ] SW → Offscreen audio.open / audio.close コマンド送信
+- [ ] Session recovery on SW restart
+- [ ] WXT zip 配布 smoke (Chrome Web Store 提出前提)
 
 依存: Phase 4 の Relay API が develop 上で動作中 (完了)、Phase 3 infrastructure adapter および Phase 3.5 repository adapter が揃っている (完了)。
 
@@ -224,15 +272,17 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 - [x] `GET /sessions/:id` の動的 state 返却方針 — **stateless + `state: 'capturing'` 固定** で確定 (PR #39 / IMPL-412)
 - [x] `session.stop` / `session.pause` / `session.resume` の server 側振る舞い — PR #43 (IMPL-421/422) で確定。pause/resume は debug log 留め、stop は stream handle close
 - [x] Provider サーキットブレーカー発火時のエラー設計 — PR #41 (IMPL-446) で `invariantViolationError` を `session.error` envelope に変換
-- [ ] Phase 5 開始時の chrome.runtime messaging schema — Background と Popup/SidePanel 間の Command / Query / Event の Zod schema 設計 (§4 PR 次 #1 で確定)
-- [ ] Background 多重起動時のセッション継続 — Service Worker 再起動時に `SourceSessionRepository.findActiveSessions` で復元するか、capturing 中のみ offscreen keep-alive か。§4 PR 次 #1 で確定
-- [ ] AudioWorklet を offscreen document にホストする際の chrome.tabCapture との連携方式 — IMPL-303 + Offscreen の実装で確定
+- [x] Phase 5 開始時の chrome.runtime messaging schema — PR #47 の `runtime-messages.ts` (Zod discriminated union) で Command / Query / Offscreen 各 schema を確定
+- [ ] Background 多重起動時のセッション継続 — PR #53 で `RelaySessionSubscriber` / `OffscreenLifecycle` を整備したが、SW 再起動時の active session 復元は未実装。§4 PR 次 #9 (Session recovery) で確定
+- [ ] AudioWorklet を offscreen document にホストする際の chrome.tabCapture との連携方式 — MVP は SW 側で `AudioPreprocessor` stub (empty frame channel) を保持。実 AudioWorklet + offscreen ホスト化は Phase 5 後続 PR で決定
+- [ ] Audio frame 送信失敗時の永続キュー / retry 設計 — 本 PR (IMPL-602) は 1 回 warn + skip。AudioWorklet 実装後の計測結果で再評価
 - [ ] DB v2 schema migration の必要性 — MVP で同時 3 session 前提の full-scan が足りない場合のみ実施
 
 ## 11. 変更履歴
 
-| バージョン | 日付       | 変更内容                                                                                                                                                                                                                                  |
-| ---------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.1.0      | 2026-04-21 | 初版作成。Phase 0〜3 完了、Phase 4 進行中時点の整理。                                                                                                                                                                                     |
-| 0.2.0      | 2026-04-22 | Phase 4 完了を反映 (IMPL-400〜451)。直近 PR 優先順位を Phase 5 presentation 層へ更新。                                                                                                                                                    |
-| 0.3.0      | 2026-04-22 | Phase 3.5 Domain Repository Adapters (PR #45) 完了を反映。Phase 5 進行中へ遷移、§4 の PR 次優先順位を Background composition 起点に再構成。D1/D2/D4 決定を反映。§10 宿題の 3 件を Phase 4 成果でクローズ、Phase 5 固有の論点 3 件を追加。 |
+| バージョン | 日付       | 変更内容                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | 初版作成。Phase 0〜3 完了、Phase 4 進行中時点の整理。                                                                                                                                                                                                                                                                                                                                                                       |
+| 0.2.0      | 2026-04-22 | Phase 4 完了を反映 (IMPL-400〜451)。直近 PR 優先順位を Phase 5 presentation 層へ更新。                                                                                                                                                                                                                                                                                                                                      |
+| 0.3.0      | 2026-04-22 | Phase 3.5 Domain Repository Adapters (PR #45) 完了を反映。Phase 5 進行中へ遷移、§4 の PR 次優先順位を Background composition 起点に再構成。D1/D2/D4 決定を反映。§10 宿題の 3 件を Phase 4 成果でクローズ、Phase 5 固有の論点 3 件を追加。                                                                                                                                                                                   |
+| 0.4.0      | 2026-04-22 | Phase 5 拡張 presentation 層の PR #47〜#53 (Background composition / Popup UI / Side Panel UI / Content overlay / Offscreen+Monitor / Design tokens / Phase 5 integration gap 埋め) 完了を反映。Phase 5 進捗 ~85% へ。§4 の PR 次優先順位を残タスク (audio frame pipeline / SW→Offscreen command / session recovery / WXT zip / Phase 6 E2E) に再構成。§6 M2 チェックリスト 7/8 完了、§10 messaging schema 論点をクローズ。 |

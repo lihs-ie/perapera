@@ -8,6 +8,10 @@ import { createStartSourceSessionUseCase } from '../application/use-cases/start-
 import { createStopSourceSessionUseCase } from '../application/use-cases/stop-source-session-use-case';
 import { createUpdateSourceSettingsUseCase } from '../application/use-cases/update-source-settings-use-case';
 import {
+  createAudioFramePump,
+  type AudioFramePump,
+} from '../application/services/audio-frame-pump';
+import {
   createCaptureOrchestrator,
   type CaptureOrchestrator,
 } from '../application/services/capture-orchestrator';
@@ -187,6 +191,7 @@ export type ExtensionApp = Readonly<{
   getSessionMonitorStateQuery: GetSessionMonitorStateQuery;
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
+  audioFramePump: AudioFramePump;
   transcriptAssembler: TranscriptAssembler;
   close: () => Promise<void>;
 }>;
@@ -291,6 +296,7 @@ export const createExtensionApp = (
     relayGateway,
     handleEvent: handleRelayEventLate,
   });
+  const audioFramePump: AudioFramePump = createAudioFramePump();
 
   // --------------- UseCases (Phase 2) ---------------
   const startSourceSessionUseCase = createStartSourceSessionUseCase({
@@ -300,6 +306,7 @@ export const createExtensionApp = (
     permissionCoordinator,
     captureOrchestrator,
     relaySessionSubscriber,
+    audioFramePump,
     clock: ports.clockIso,
     idFactory: {
       session: ports.sessionIdFactory,
@@ -312,6 +319,7 @@ export const createExtensionApp = (
     overlayPresenter,
     captureOrchestrator,
     relaySessionSubscriber,
+    audioFramePump,
     clock: ports.clockIso,
   });
   const updateSourceSettingsUseCase = createUpdateSourceSettingsUseCase({
@@ -367,9 +375,11 @@ export const createExtensionApp = (
     getSessionMonitorStateQuery,
     sessionRegistry,
     captureOrchestrator,
+    audioFramePump,
     transcriptAssembler,
     close: async () => {
       relaySessionSubscriber.stopAll();
+      audioFramePump.stopAll();
       await sessionStore.close();
       await sourceSessionRepository.close();
       await transcriptStreamRepository.close();

@@ -11,6 +11,7 @@ import type { OverlayPresenter } from '../ports/overlay-presenter';
 import type { RelayGateway } from '../ports/relay-gateway';
 import type { SourceSessionRepository } from '../../domain/repositories/source-session-repository';
 import type { SourceSession } from '../../domain/session/source-session';
+import type { AudioFramePump } from '../services/audio-frame-pump';
 import type { CaptureOrchestrator } from '../services/capture-orchestrator';
 import type { RelaySessionSubscriber } from '../services/relay-session-subscriber';
 import {
@@ -80,12 +81,19 @@ const buildDependencies = (
     stopAll: vi.fn(),
     activeCount: vi.fn(() => 0),
   };
+  const audioFramePump: AudioFramePump = {
+    start: vi.fn(),
+    stop: vi.fn(),
+    stopAll: vi.fn(),
+    activeCount: vi.fn(() => 0),
+  };
   return {
     sourceSessionRepository,
     relayGateway,
     overlayPresenter,
     captureOrchestrator,
     relaySessionSubscriber,
+    audioFramePump,
     clock: () => STOPPED_AT,
     ...overrides,
   };
@@ -111,6 +119,8 @@ describe('createStopSourceSessionUseCase (IMPL-215, DD-306)', () => {
     expect(deps.sourceSessionRepository.save).toHaveBeenCalledTimes(1);
     expect(deps.relayGateway.closeSession).toHaveBeenCalledTimes(1);
     expect(deps.overlayPresenter.unmount).toHaveBeenCalledTimes(1);
+    expect(deps.audioFramePump.stop).toHaveBeenCalledWith(SESSION_ID);
+    expect(deps.relaySessionSubscriber.stop).toHaveBeenCalledWith(SESSION_ID);
   });
 
   it('returns validation error when input is invalid', async () => {
