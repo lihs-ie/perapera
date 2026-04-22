@@ -11,11 +11,15 @@ import {
 import { toApplicationError, type ApplicationError } from '../errors/application-errors';
 import { type OverlayPresenter } from '../ports/overlay-presenter';
 import { type RelayGateway } from '../ports/relay-gateway';
+import { type CaptureOrchestrator } from '../services/capture-orchestrator';
+import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 
 export type StopSourceSessionDependencies = Readonly<{
   sourceSessionRepository: SourceSessionRepository;
   relayGateway: RelayGateway;
   overlayPresenter: OverlayPresenter;
+  captureOrchestrator: CaptureOrchestrator;
+  relaySessionSubscriber: RelaySessionSubscriber;
   clock: () => string;
 }>;
 
@@ -32,9 +36,14 @@ const logWarn =
 /**
  * IMPL-215 StopSourceSessionUseCase (DD-306)。
  *
- * アクティブなセッションを停止し、Relay 接続とオーバーレイを解放する。
- * `closeSession` / `unmount` は fire-and-forget (失敗しても UseCase は成功を
- * 返す) で、結果整合性を優先する (use-case.md §6.1)。
+ * アクティブなセッションを停止し、Relay 接続 / capture / overlay / subscribe を
+ * 解放する。`closeSession` / `unmount` / `captureOrchestrator.disconnect` /
+ * `relaySessionSubscriber.stop` は fire-and-forget で結果整合性を優先
+ * (use-case.md §6.1)。
+ *
+ * IMPL-600 (Phase 5 integration): capture 切断と relay subscribe 解除を
+ * stop フェーズで並列実行し、session 停止後に relay イベントが subscriber を
+ * 経由して UseCase に流れないようにする。
  */
 export const createStopSourceSessionUseCase = (
   deps: StopSourceSessionDependencies,
@@ -48,12 +57,25 @@ export const createStopSourceSessionUseCase = (
             .andThen((session) => stopSourceSession(session, { stoppedAt: deps.clock() }))
             .andThen((stopped) => deps.sourceSessionRepository.save(stopped).map(() => stopped))
             .map((stopped): StopSourceSessionOutput => {
+              // relay subscribe 解除は同期 (throw しても listener は残らない想定)
+              try {
+                deps.relaySessionSubscriber.stop(sessionIdentifier);
+              } catch (cause) {
+                console.warn(
+                  `[use-case:stop-source-session] relay-session-subscriber.stop threw:`,
+                  cause,
+                );
+              }
+              // 下記 3 つは fire-and-forget (UseCase 自体は成功を返す)
               void deps.relayGateway
                 .closeSession(sessionIdentifier)
                 .match(() => undefined, logWarn('closeSession'));
+              void deps.captureOrchestrator
+                .disconnect(sessionIdentifier)
+                .match(() => undefined, logWarn('captureOrchestrator.disconnect'));
               void deps.overlayPresenter
                 .unmount(sessionIdentifier)
-                .match(() => undefined, logWarn('unmount'));
+                .match(() => undefined, logWarn('overlayPresenter.unmount'));
               return {
                 sessionId: stopped.sessionIdentifier,
                 state: stopped.state,

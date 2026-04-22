@@ -16,6 +16,8 @@ import {
 } from '../../domain/shared/errors';
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
+import { type CaptureOrchestrator } from '../services/capture-orchestrator';
+import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 import {
   createStartSourceSessionUseCase,
   type StartSourceSessionDependencies,
@@ -66,11 +68,38 @@ const buildDependencies = (
   const permissionCoordinator: PermissionCoordinator = {
     requestFor: vi.fn(grantingRequestFor),
   };
+  const connect: CaptureOrchestrator['connect'] = (command) =>
+    okAsync({
+      sessionIdentifier: command.sessionIdentifier,
+      sourceType: command.sourceType,
+      stream: new MediaStream(),
+      frameChannel: {
+        frames: {
+          [Symbol.asyncIterator]: (): AsyncIterator<never> => ({
+            next: (): Promise<IteratorReturnResult<undefined>> =>
+              Promise.resolve({ done: true, value: undefined }),
+          }),
+        },
+        close: () => undefined,
+      },
+    });
+  const captureOrchestrator: CaptureOrchestrator = {
+    connect: vi.fn(connect),
+    disconnect: vi.fn(() => okAsync(undefined)),
+  };
+  const relaySessionSubscriber: RelaySessionSubscriber = {
+    start: vi.fn(),
+    stop: vi.fn(),
+    stopAll: vi.fn(),
+    activeCount: vi.fn(() => 0),
+  };
   return {
     sourceSessionRepository,
     extensionProfileRepository,
     relayGateway,
     permissionCoordinator,
+    captureOrchestrator,
+    relaySessionSubscriber,
     clock: () => STARTED_AT,
     idFactory: {
       session: () => SESSION_ID,

@@ -11,6 +11,8 @@ import type { OverlayPresenter } from '../ports/overlay-presenter';
 import type { RelayGateway } from '../ports/relay-gateway';
 import type { SourceSessionRepository } from '../../domain/repositories/source-session-repository';
 import type { SourceSession } from '../../domain/session/source-session';
+import type { CaptureOrchestrator } from '../services/capture-orchestrator';
+import type { RelaySessionSubscriber } from '../services/relay-session-subscriber';
 import {
   createStopSourceSessionUseCase,
   type StopSourceSessionDependencies,
@@ -53,10 +55,37 @@ const buildDependencies = (
     updateSettings: vi.fn(() => okAsync(undefined)),
     unmount: vi.fn(() => okAsync(undefined)),
   };
+  const connect: CaptureOrchestrator['connect'] = (command) =>
+    okAsync({
+      sessionIdentifier: command.sessionIdentifier,
+      sourceType: command.sourceType,
+      stream: new MediaStream(),
+      frameChannel: {
+        frames: {
+          [Symbol.asyncIterator]: (): AsyncIterator<never> => ({
+            next: (): Promise<IteratorReturnResult<undefined>> =>
+              Promise.resolve({ done: true, value: undefined }),
+          }),
+        },
+        close: () => undefined,
+      },
+    });
+  const captureOrchestrator: CaptureOrchestrator = {
+    connect: vi.fn(connect),
+    disconnect: vi.fn(() => okAsync(undefined)),
+  };
+  const relaySessionSubscriber: RelaySessionSubscriber = {
+    start: vi.fn(),
+    stop: vi.fn(),
+    stopAll: vi.fn(),
+    activeCount: vi.fn(() => 0),
+  };
   return {
     sourceSessionRepository,
     relayGateway,
     overlayPresenter,
+    captureOrchestrator,
+    relaySessionSubscriber,
     clock: () => STOPPED_AT,
     ...overrides,
   };
