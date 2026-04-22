@@ -1,0 +1,15 @@
+/*
+ * IMPL-591 Font loading (ui-ux-design.md §3.2)。
+ *
+ * Google Fonts 経由で `IBM Plex Sans JP` (400 / 500 / 600 / 700) と
+ * `Space Grotesk` (500) を読み込む。extension page の CSP は `self` に加えて
+ * `https://fonts.gstatic.com` からの font 取得を許容するため、
+ * `@import` + `font-display: swap` で初期表示のブロックを避ける。
+ *
+ * オフライン・CSP 制約が強化された場合は自己ホスト (fonts/*.woff2) への
+ * 切替を検討する。ui-ux-design.md §3.2 の font stack 自体は tokens.css の
+ * `--font-family-body` / `--font-family-numeric` で system フォント fallback を
+ * 含むため、本ファイルの @import が失敗しても UI 自体は機能する。
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Space+Grotesk:wght@500&display=swap');

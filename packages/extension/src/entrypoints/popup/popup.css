@@ -1,25 +1,11 @@
 /*
- * Popup minimal CSS。vanilla + 単一単語 className (CLAUDE.md §React ルール)。
- * Design system tokens は Phase 5 PR 次 #6 で導入予定。
+ * Popup CSS。tokens.css + fonts.css を共有 (IMPL-590/591)、単一単語 className
+ * (CLAUDE.md §React ルール)。カラー / フォント / スペーシング値は
+ * `var(--token-*)` 経由で参照する。
  */
 
-:root {
-  color-scheme: light;
-  --color-text: #1a1a1a;
-  --color-muted: #666;
-  --color-bg: #ffffff;
-  --color-border: #e0e0e0;
-  --color-accent: #2563eb;
-  --color-accent-fg: #ffffff;
-  --color-danger: #dc2626;
-  --color-danger-fg: #ffffff;
-  --color-active: #10b981;
-  --color-pending: #f59e0b;
-  --color-degraded: #c2410c;
-  --color-error: #dc2626;
-  --color-stopped: #6b7280;
-  --color-neutral: #9ca3af;
-}
+@import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/fonts.css');
 
 * {
   box-sizing: border-box;
@@ -28,17 +14,11 @@
 body {
   margin: 0;
   padding: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Hiragino Sans',
-    'Yu Gothic UI',
-    sans-serif;
-  font-size: 13px;
-  color: var(--color-text);
-  background: var(--color-bg);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
   width: 360px;
   min-height: 320px;
 }
@@ -46,8 +26,8 @@ body {
 .container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-md);
+  padding: var(--space-md);
 }
 
 .header {
@@ -55,30 +35,33 @@ body {
   align-items: baseline;
   justify-content: space-between;
   border-bottom: 1px solid var(--color-border);
-  padding-bottom: 8px;
+  padding-bottom: var(--space-sm);
 }
 
 .title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-h3);
+  line-height: var(--line-height-heading);
   margin: 0;
 }
 
 .version {
-  font-size: 11px;
-  color: var(--color-muted);
+  font-family: var(--font-family-numeric);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-numeric);
+  color: var(--color-text-muted);
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .subtitle {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-h3);
+  color: var(--color-text-muted);
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -210,11 +193,12 @@ body {
   display: inline-flex;
   align-items: center;
   padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-accent-fg);
-  background: var(--color-neutral);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-family-numeric);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-numeric);
+  color: var(--color-text-inverse);
+  background: var(--color-state-neutral);
   align-self: flex-start;
 }
 
