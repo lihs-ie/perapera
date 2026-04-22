@@ -3,15 +3,13 @@ import { z } from 'zod';
 import { type SourceSession } from '../../domain/session/source-session';
 import { type SourceType } from '../../domain/session/source-type';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
-import { type StreamTokenIssuer } from './relay-websocket-gateway';
+import { type StreamTokenIssuer, type StreamTokenIssuerResult } from './relay-websocket-gateway';
 
 /**
- * POST /sessions リクエストボディの shape (api-specification.md §4.1)。
- *
- * `displayName` / `autoDetectLanguage` / `overlayTarget` / `client` は SourceSession
- * に含まれないため、config で解決関数を注入する。
+ * POST /sessions 成功レスポンス (api-specification.md §4.2):
+ * 全体は `{ data: {...}, meta: { requestId } }` envelope。
  */
-const postSessionsResponseSchema = z.object({
+const postSessionsDataSchema = z.object({
   sessionId: z.string().min(1),
   streamToken: z.string().min(1),
   relayUrl: z.string().min(1),
@@ -28,6 +26,14 @@ const postSessionsResponseSchema = z.object({
     maxConcurrentSessions: z.number().int().positive(),
     maxFrameRatePerSecond: z.number().int().positive(),
   }),
+});
+
+const postSessionsResponseSchema = z.object({
+  data: postSessionsDataSchema,
+  meta: z
+    .object({ requestId: z.string().min(1) })
+    .partial()
+    .optional(),
 });
 
 /**
@@ -89,10 +95,13 @@ const buildRequestBody = (
 };
 
 /**
- * IMPL-319 FetchStreamTokenIssuer (DD-401, api-specification.md §4.1)。
+ * IMPL-319 FetchStreamTokenIssuer (DD-401, api-specification.md §4.1 / §4.2)。
  *
  * `StreamTokenIssuer` の production 実装。`POST ${baseUrl}/sessions` に JSON を
- * 送り、Relay API から短命 `streamToken` を取得する。
+ * 送り、Relay API から `{ data: { streamToken, relayUrl, ... }, meta }` envelope を
+ * 受け取って `{ streamToken, relayUrl }` を返す。WebSocket 接続先は Relay から
+ * 返された `relayUrl` をそのまま使うため、SSOT (docs) と impl の path prefix
+ * drift (`/api/v1` 有無) を吸収できる。
  *
  * **本番実装で mock が利用されない設計**:
  * - 全 DI (resolve* callback 含む) が必須引数。default は持たない
@@ -138,45 +147,20 @@ export const createFetchStreamTokenIssuer = (
           toInvariant('json-parse'),
         );
       })
-      .andThen((raw): ResultAsync<string, DomainError> => {
+      .andThen((raw): ResultAsync<StreamTokenIssuerResult, DomainError> => {
         const parsed = postSessionsResponseSchema.safeParse(raw);
         if (!parsed.success) {
-          return errAsync<string, DomainError>(
+          return errAsync<StreamTokenIssuerResult, DomainError>(
             invariantViolationError({
               invariant: 'stream-token-fetch',
               details: `response schema: ${parsed.error.issues.map((i) => i.message).join('; ')}`,
             }),
           );
         }
-        return okAsync<string, DomainError>(parsed.data.streamToken);
+        return okAsync<StreamTokenIssuerResult, DomainError>({
+          streamToken: parsed.data.data.streamToken,
+          relayUrl: parsed.data.data.relayUrl,
+        });
       });
   };
-};
-
-/**
- * `wsEndpointBuilder` の標準実装。Relay API の `relayUrl` を使わず、
- * `config.baseUrl` をそのまま ws(s) に差し替える (MVP 簡易版)。
- *
- * 例: `https://relay.example.com` + streamToken → `wss://relay.example.com/relay?token=...&sessionId=...`
- */
-export type WsEndpointBuilderConfig = Readonly<{
-  /** HTTP base URL (`http(s)://` prefix)。`wss://` に変換される */
-  baseUrl: string;
-  /** WebSocket パス (default `/api/v1/relay`) */
-  wsPath?: string;
-}>;
-
-export const createDefaultWsEndpointBuilder = (
-  config: WsEndpointBuilderConfig,
-): ((sessionIdentifier: string, streamToken: string) => string) => {
-  const wsPath = config.wsPath ?? '/api/v1/relay';
-  const httpPrefix = config.baseUrl.startsWith('https://')
-    ? 'https://'
-    : config.baseUrl.startsWith('http://')
-      ? 'http://'
-      : 'https://';
-  const rest = config.baseUrl.slice(httpPrefix.length);
-  const wsPrefix = httpPrefix === 'https://' ? 'wss://' : 'ws://';
-  return (sessionIdentifier, streamToken) =>
-    `${wsPrefix}${rest}${wsPath}?token=${encodeURIComponent(streamToken)}&sessionId=${encodeURIComponent(sessionIdentifier)}`;
 };
