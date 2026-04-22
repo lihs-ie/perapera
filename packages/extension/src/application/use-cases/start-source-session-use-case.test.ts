@@ -20,6 +20,7 @@ import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
 import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
+import { type OffscreenCommandSender } from '../services/offscreen-command-sender';
 import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 import {
   createStartSourceSessionUseCase,
@@ -102,6 +103,11 @@ const buildDependencies = (
     stopAll: vi.fn(),
     activeCount: vi.fn(() => 0),
   };
+  const offscreenCommandSender: OffscreenCommandSender = {
+    openAudioContext: vi.fn(() => okAsync(undefined)),
+    closeAudioContext: vi.fn(() => okAsync(undefined)),
+    ping: vi.fn(() => okAsync(undefined)),
+  };
   return {
     sourceSessionRepository,
     extensionProfileRepository,
@@ -110,6 +116,7 @@ const buildDependencies = (
     captureOrchestrator,
     relaySessionSubscriber,
     audioFramePump,
+    offscreenCommandSender,
     clock: () => STARTED_AT,
     idFactory: {
       session: () => SESSION_ID,
@@ -157,6 +164,7 @@ describe('createStartSourceSessionUseCase (IMPL-210, DD-301)', () => {
     }
     expect(deps.sourceSessionRepository.save).toHaveBeenCalledTimes(2);
     expect(deps.relayGateway.openSession).toHaveBeenCalledTimes(1);
+    expect(deps.offscreenCommandSender.openAudioContext).toHaveBeenCalledWith(SESSION_ID);
     expect(deps.audioFramePump.start).toHaveBeenCalledTimes(1);
     const startCalls = vi.mocked(deps.audioFramePump.start).mock.calls;
     const firstCall = startCalls[0];

@@ -80,6 +80,7 @@ const createTestPorts = (overrides: Partial<ExtensionRuntimePorts> = {}): Extens
       ),
     ),
     overlayMessagingBridge: { send: vi.fn(() => Promise.resolve()) },
+    chromeRuntimeApi: { sendMessage: vi.fn(() => Promise.resolve(undefined)) },
     tabCaptureApi: { capture: vi.fn(() => Promise.resolve(null)) },
     userMediaApi: { getUserMedia: vi.fn(() => Promise.reject(new Error('not implemented'))) },
     desktopCaptureApi: {
@@ -127,6 +128,8 @@ describe('createExtensionApp (IMPL-500)', () => {
     expect(app.captureOrchestrator).toBeDefined();
     expect(app.audioFramePump).toBeDefined();
     expect(app.audioFramePump.activeCount()).toBe(0);
+    expect(app.offscreenCommandSender).toBeDefined();
+    expect(app.offscreenCommandSender.openAudioContext).toBeTypeOf('function');
     expect(app.orphanSessionCleanup).toBeDefined();
     expect(app.orphanSessionCleanup.cleanup).toBeTypeOf('function');
     expect(app.transcriptAssembler).toBeDefined();

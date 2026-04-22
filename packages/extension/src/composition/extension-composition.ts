@@ -17,6 +17,11 @@ import {
 } from '../application/services/capture-orchestrator';
 import { createExportService, type ExportService } from '../application/services/export-service';
 import {
+  createOffscreenCommandSender,
+  type OffscreenCommandSender,
+  type RuntimeMessageBridge,
+} from '../application/services/offscreen-command-sender';
+import {
   createOrphanSessionCleanupService,
   type OrphanSessionCleanupService,
 } from '../application/services/orphan-session-cleanup-service';
@@ -60,6 +65,11 @@ import {
   defaultUserMediaApi,
   type UserMediaApi,
 } from '../infrastructure/capture/user-media-source-adapter';
+import {
+  createChromeRuntimeMessageBridge,
+  defaultChromeRuntimeApi,
+  type ChromeRuntimeApi,
+} from '../infrastructure/messaging/chrome-runtime-message-bridge';
 import {
   createChromeMessagingOverlayPresenter,
   defaultOverlayMessagingBridge,
@@ -146,6 +156,7 @@ export type ExtensionRuntimePorts = Readonly<{
   webSocketFactory: WebSocketFactory;
   fetchImpl: typeof fetch;
   overlayMessagingBridge: OverlayMessagingBridge;
+  chromeRuntimeApi: ChromeRuntimeApi;
   tabCaptureApi: TabCaptureApi;
   userMediaApi: UserMediaApi;
   desktopCaptureApi: DesktopCaptureApi;
@@ -171,6 +182,7 @@ export const createProductionRuntimePorts = (): ExtensionRuntimePorts => ({
   webSocketFactory: createBrowserWebSocketFactory(),
   fetchImpl: fetch,
   overlayMessagingBridge: defaultOverlayMessagingBridge,
+  chromeRuntimeApi: defaultChromeRuntimeApi,
   tabCaptureApi: defaultTabCaptureApi,
   userMediaApi: defaultUserMediaApi,
   desktopCaptureApi: defaultDesktopCaptureApi,
@@ -196,6 +208,7 @@ export type ExtensionApp = Readonly<{
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
+  offscreenCommandSender: OffscreenCommandSender;
   orphanSessionCleanup: OrphanSessionCleanupService;
   transcriptAssembler: TranscriptAssembler;
   close: () => Promise<void>;
@@ -302,6 +315,12 @@ export const createExtensionApp = (
     handleEvent: handleRelayEventLate,
   });
   const audioFramePump: AudioFramePump = createAudioFramePump();
+  const runtimeMessageBridge: RuntimeMessageBridge = createChromeRuntimeMessageBridge(
+    ports.chromeRuntimeApi,
+  );
+  const offscreenCommandSender: OffscreenCommandSender = createOffscreenCommandSender({
+    bridge: runtimeMessageBridge,
+  });
   const orphanSessionCleanup: OrphanSessionCleanupService = createOrphanSessionCleanupService({
     sourceSessionRepository,
     clock: ports.clockIso,
@@ -316,6 +335,7 @@ export const createExtensionApp = (
     captureOrchestrator,
     relaySessionSubscriber,
     audioFramePump,
+    offscreenCommandSender,
     clock: ports.clockIso,
     idFactory: {
       session: ports.sessionIdFactory,
@@ -329,6 +349,7 @@ export const createExtensionApp = (
     captureOrchestrator,
     relaySessionSubscriber,
     audioFramePump,
+    offscreenCommandSender,
     clock: ports.clockIso,
   });
   const updateSourceSettingsUseCase = createUpdateSourceSettingsUseCase({
@@ -385,6 +406,7 @@ export const createExtensionApp = (
     sessionRegistry,
     captureOrchestrator,
     audioFramePump,
+    offscreenCommandSender,
     orphanSessionCleanup,
     transcriptAssembler,
     close: async () => {

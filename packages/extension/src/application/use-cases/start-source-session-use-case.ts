@@ -25,6 +25,7 @@ import { type RelayGateway } from '../ports/relay-gateway';
 import { type StartSourceCommand } from '../ports/source-adapter';
 import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
+import { type OffscreenCommandSender } from '../services/offscreen-command-sender';
 import { type RelaySessionSubscriber } from '../services/relay-session-subscriber';
 
 export type StartSourceSessionDependencies = Readonly<{
@@ -35,6 +36,7 @@ export type StartSourceSessionDependencies = Readonly<{
   captureOrchestrator: CaptureOrchestrator;
   relaySessionSubscriber: RelaySessionSubscriber;
   audioFramePump: AudioFramePump;
+  offscreenCommandSender: OffscreenCommandSender;
   clock: () => string;
   idFactory: Readonly<{
     session: () => string;
@@ -135,6 +137,11 @@ export const createStartSourceSessionUseCase = (
                             .connect(toStartSourceCommand(connecting))
                             .andThen((activeCapture) =>
                               deps.relayGateway.openSession(connecting).map(() => activeCapture),
+                            )
+                            .andThen((activeCapture) =>
+                              deps.offscreenCommandSender
+                                .openAudioContext(connecting.sessionIdentifier)
+                                .map(() => activeCapture),
                             )
                             .andThen((activeCapture) => {
                               deps.audioFramePump.start(
