@@ -10,22 +10,28 @@ import { invariantViolationError, type DomainError } from '../../domain/shared/e
  * chrome.permissions API の最小 contract。production では chrome.permissions を
  * そのまま利用する default 実装を、test では minimal fake を注入する。
  *
- * MVP では `request` のみを使う ( `contains` / `remove` は将来拡張)。
+ * `contains` を必須にしたのは MV3 の manifest 宣言済み permission に対し
+ * `request` を呼ぶと Chrome 版によっては user gesture 要求で reject する
+ * ケースがあるため (Popup → background の async gap で user gesture が
+ * 失効する)。`contains` は user gesture 非依存で常に動き、manifest 宣言済
+ * permission は install 時に granted 済みのため即 true を返す。
  */
 export type ChromePermissionsApi = Readonly<{
+  contains: (permissions: chrome.permissions.Permissions) => Promise<boolean>;
   request: (permissions: chrome.permissions.Permissions) => Promise<boolean>;
 }>;
 
-/**
- * Production `ChromePermissionsApi` 実装 (mock ではない)。
- * `chrome.permissions.request` の callback API を Promise に wrap する。
- * `chrome.runtime.lastError` は Promise reject に変換する。
- */
-export const defaultChromePermissionsApi: ChromePermissionsApi = {
-  request: (permissions) =>
+const wrapCallbackPromise =
+  (
+    scope: (
+      permissions: chrome.permissions.Permissions,
+      callback: (granted: boolean) => void,
+    ) => void,
+  ) =>
+  (permissions: chrome.permissions.Permissions): Promise<boolean> =>
     new Promise<boolean>((resolve, reject) => {
       try {
-        chrome.permissions.request(permissions, (granted) => {
+        scope(permissions, (granted) => {
           const lastError = chrome.runtime.lastError;
           if (lastError !== undefined) {
             reject(new Error(lastError.message ?? 'unknown chrome.permissions error'));
@@ -36,7 +42,15 @@ export const defaultChromePermissionsApi: ChromePermissionsApi = {
       } catch (cause) {
         reject(cause instanceof Error ? cause : new Error(String(cause)));
       }
-    }),
+    });
+
+/**
+ * Production `ChromePermissionsApi` 実装 (mock ではない)。
+ * `chrome.permissions.contains` / `request` の callback API を Promise に wrap。
+ */
+export const defaultChromePermissionsApi: ChromePermissionsApi = {
+  contains: wrapCallbackPromise((perms, cb) => chrome.permissions.contains(perms, cb)),
+  request: wrapCallbackPromise((perms, cb) => chrome.permissions.request(perms, cb)),
 };
 
 /**
@@ -72,6 +86,14 @@ export type ChromePermissionCoordinatorDependencies = Readonly<{
   chromePermissionsApi: ChromePermissionsApi;
 }>;
 
+const toSystemError =
+  (scope: 'contains' | 'request') =>
+  (cause: unknown): DomainError =>
+    invariantViolationError({
+      invariant: 'permission-coordinator-system-error',
+      details: `${scope}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    });
+
 export const createChromePermissionCoordinator = (
   deps: ChromePermissionCoordinatorDependencies,
 ): PermissionCoordinator => ({
@@ -89,21 +111,35 @@ export const createChromePermissionCoordinator = (
           }),
       );
     }
+    // manifest 宣言済み permission は install 時に granted 済みなので、
+    // まず `contains` で確認し既に granted なら request を skip する
+    // (`request` は user gesture 要求で reject するケースがあるため)。
     return ResultAsync.fromPromise<boolean, DomainError>(
-      deps.chromePermissionsApi.request(permissions),
-      (cause) =>
-        invariantViolationError({
-          invariant: 'permission-coordinator-system-error',
-          details: cause instanceof Error ? cause.message : String(cause),
-        }),
-    ).map<PermissionGrant>((granted) =>
-      granted
-        ? { status: 'granted', sourceType }
-        : {
-            status: 'denied',
-            sourceType,
-            reason: `user denied ${sourceType} permission`,
-          },
-    );
+      deps.chromePermissionsApi.contains(permissions),
+      toSystemError('contains'),
+    ).andThen<PermissionGrant, DomainError>((alreadyGranted) => {
+      if (alreadyGranted) {
+        return ResultAsync.fromPromise<PermissionGrant, DomainError>(
+          Promise.resolve<PermissionGrant>({ status: 'granted', sourceType }),
+          () =>
+            invariantViolationError({
+              invariant: 'permission-coordinator-impossible',
+              details: 'already-granted resolved synchronously cannot error',
+            }),
+        );
+      }
+      return ResultAsync.fromPromise<boolean, DomainError>(
+        deps.chromePermissionsApi.request(permissions),
+        toSystemError('request'),
+      ).map<PermissionGrant>((granted) =>
+        granted
+          ? { status: 'granted', sourceType }
+          : {
+              status: 'denied',
+              sourceType,
+              reason: `user denied ${sourceType} permission`,
+            },
+      );
+    });
   },
 });
