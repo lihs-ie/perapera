@@ -1,0 +1,120 @@
+name: Relay API k6 Smoke
+
+# IMPL-610 Step 2 — k6 シナリオを CI で定期実行し、ホットパスの SLO 閾値を
+# 回帰的に監視する。
+#
+# - schedule: 毎週月曜 11:00 UTC (Asia/Tokyo 20:00)
+# - pull_request: relay-api 実装 / perf scenario / workflow 変更時
+# - workflow_dispatch: 手動実行
+#
+# シナリオは Docker image `grafana/k6:latest` で実行し、host network mode で
+# ローカル起動した Relay API (port 3001) にアクセスする。
+#
+# Deepgram / DeepL の API Key factory 側 length>0 check のみで、stream / HTTP
+# 呼び出しは audio.frame / transcript.final client event を送った場合にのみ
+# 発生する。create-session.js / ws-relay.js はいずれも stream を start しない
+# ため、ダミー API Key で起動すれば十分 (real provider に到達しない)。
+#
+# 実コードで mock / in-memory を使わない原則を守りつつ、provider 依存の CI
+# 不安定性を持ち込まないため、mock provider を entrypoint に配線する代わりに
+# 「provider factory を dummy key で初期化し、実行時には到達しない」構成を
+# 採る。
+
+on:
+  schedule:
+    - cron: '0 11 * * 1'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'packages/relay-api/src/**'
+      - 'packages/relay-api/perf/**'
+      - 'packages/relay-api/package.json'
+      - '.github/workflows/k6-smoke.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: k6-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  k6-smoke:
+    name: k6 smoke (create-session + ws-relay)
+    # actrun ローカル実行では Docker pull と relay 起動が重いため skip。
+    if: ${{ !env.ACTRUN_LOCAL }}
+    runs-on: ubuntu-latest
+    env:
+      # 32+ chars required (server.ts line 115)
+      STREAM_TOKEN_SECRET: k6-smoke-stream-token-secret-0123456789abcdef
+      STREAM_TOKEN_ISSUER: https://relay.k6-smoke.local
+      STREAM_TOKEN_AUDIENCE: perapera-extension-k6
+      RELAY_PUBLIC_URL: ws://localhost:3001/relay
+      # 16+ chars required per token (static-access-token-verifier)
+      ACCESS_TOKENS: dev-access-token
+      # factory は length>0 のみ validate、stream 起動しない限り API には到達しない
+      DEEPGRAM_API_KEY: k6-smoke-dummy-deepgram-key
+      DEEPL_API_KEY: k6-smoke-dummy-deepl-key
+      PORT: '3001'
+      HOST: '0.0.0.0'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build relay-api
+        run: pnpm --filter @perapera/relay-api build
+      - name: Start Relay API in background
+        run: |
+          pnpm --filter @perapera/relay-api start > relay.log 2>&1 &
+          echo $! > relay.pid
+          echo "Relay PID=$(cat relay.pid)"
+      - name: Wait for Relay API /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3001/health > /dev/null 2>&1; then
+              echo "Relay ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Relay failed to start in 30s. Log tail:"
+          tail -n 50 relay.log || true
+          exit 1
+      - name: k6 create-session scenario
+        run: |
+          docker run --rm --network=host \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e ACCESS_TOKEN=dev-access-token \
+            -e RELAY_BASE_URL=http://localhost:3001 \
+            grafana/k6:latest \
+            run packages/relay-api/perf/scenarios/create-session.js
+      - name: k6 ws-relay scenario
+        run: |
+          docker run --rm --network=host \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e ACCESS_TOKEN=dev-access-token \
+            -e RELAY_BASE_URL=http://localhost:3001 \
+            -e RELAY_WS_BASE_URL=ws://localhost:3001 \
+            grafana/k6:latest \
+            run packages/relay-api/perf/scenarios/ws-relay.js
+      - name: Stop Relay API
+        if: always()
+        run: |
+          if [ -f relay.pid ]; then
+            PID=$(cat relay.pid)
+            if kill -0 "$PID" 2>/dev/null; then
+              kill "$PID" || true
+              sleep 1
+              kill -9 "$PID" 2>/dev/null || true
+            fi
+          fi
+      - name: Upload Relay log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: relay-log
+          path: relay.log
+          retention-days: 7
