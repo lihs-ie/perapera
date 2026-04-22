@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.4'
+version: '0.5.5'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -31,7 +31,7 @@ author: 'Codex'
 | 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                        |
 | 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                              |
 | 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)    |
-| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~60% (sender + worklet + tabCapture streamId API) |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~65% (audio.open message に tabStreamId 追加完了) |
 | 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未) |
 | 7     | リリース / 運用整備                                       | ⚪ 未着手                                            |
 
@@ -235,13 +235,21 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - 17 tests で Int16 full scale / clamp / base64 round-trip / downsample step / mono mix を検証
 - 将来 offscreen 側 AudioPreprocessor や別の tool から再利用可能
 
-#### Phase 5+ Step 2a: TabCaptureApi.getMediaStreamId 追加 (✅ 完了, IMPL-609, 本 PR)
+#### Phase 5+ Step 2a: TabCaptureApi.getMediaStreamId 追加 (✅ 完了, IMPL-609, PR #62)
 
 - `TabCaptureApi` 型に `getMediaStreamId(options): Promise<string>` を追加
 - `defaultTabCaptureApi` に `chrome.tabCapture.getMediaStreamId` の Promise wrap 実装
   (callback + lastError + empty id の防御検査を含む)
 - まだ SourceAdapter からは呼ばれない (Step 2b で offscreen 側配線と同時に接続)
 - test contract: getMediaStreamId が非空文字列を返すことを assert
+
+#### Phase 5+ Step 2b-1: audio.open message に tabStreamId 追加 (✅ 完了, IMPL-610, 本 PR)
+
+- `offscreen-commands.ts` の `audioOpenSchema` / `OffscreenCommand` / `parseOffscreenCommand` に
+  optional `tabStreamId: string` field を追加
+- `OffscreenCommandSender.openAudioContext` の options に `tabStreamId` を追加
+- schema / type / sender / parser の 4 箇所で整合性保証 + 既存 test + 新規 contract test 4 件
+- offscreen 側はまだ streamId を参照しない (Step 2b-2 で `getUserMedia` 呼び出し実装)
 
 #### Phase 5+ Step 2: Offscreen MediaStream 受け取り + AudioPreprocessor 移管 (未着手, 規模大)
 
@@ -360,3 +368,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.2      | 2026-04-22 | IMPL-607 で Phase 5+ Step 1.5 (AudioWorklet processor JS の単体配置) を完了。`packages/extension/src/public/perapera-audio-processor.js` を追加し、WXT build / zip の output ルートに含まれることを確認。worklet 自身は呼び出し元なし (offscreen 側 AudioPreprocessor 移管が次 step)。§2 Phase 5+ ステータスを ~30% → ~50% に更新。eslint config で `src/public/**` を ignore に追加 (W3C worklet global は ts で扱えないため)。 |
 | 0.5.3      | 2026-04-22 | IMPL-608 で Phase 5+ Step 1.6 (PCM utility extract + unit test) を完了。worklet 内 PCM 変換ロジックを `packages/extension/src/infrastructure/audio/pcm-utils.ts` に pure function として extract し、vitest で 17 tests を追加 (Int16 full scale / clamp / base64 round-trip / downsample step / mono mix)。worklet 側コメントで ts 側との同期ルールを明記。                                                                     |
 | 0.5.4      | 2026-04-22 | IMPL-609 で Phase 5+ Step 2a (TabCaptureApi.getMediaStreamId 追加) を完了。`chrome.tabCapture.getMediaStreamId` を Promise wrap した production adapter と test contract を追加。まだ SourceAdapter からは呼ばれない (Step 2b で offscreen 側 MediaStream 受け取り配線と同時に接続)。§2 Phase 5+ ステータスを ~50% → ~60% に更新。                                                                                               |
+| 0.5.5      | 2026-04-22 | IMPL-610 で Phase 5+ Step 2b-1 (audio.open message に tabStreamId 追加) を完了。`offscreen-commands.ts` の schema / type / parser と `OffscreenCommandSender.openAudioContext` の options に optional `tabStreamId: string` を追加。offscreen 側は受信のみで参照なし (Step 2b-2 で `getUserMedia({chromeMediaSource: 'tab'})` 呼び出しを実装)。§2 Phase 5+ ステータスを ~60% → ~65% に更新。                                     |

@@ -26,10 +26,16 @@ export type RuntimeMessageBridge = Readonly<{
 }>;
 
 export type OffscreenCommandSender = Readonly<{
-  /** Session に対する AudioContext を offscreen 側で確保 */
+  /**
+   * Session に対する AudioContext を offscreen 側で確保。
+   * `tabStreamId` (IMPL-610) を渡すと offscreen 側が
+   * `getUserMedia({chromeMediaSource: 'tab', chromeMediaSourceId: tabStreamId})`
+   * で MediaStream を確保する。tab 以外では省略 (microphone / desktop は
+   * offscreen 側で別経路を使う)。
+   */
   openAudioContext: (
     sessionIdentifier: SessionIdentifier,
-    options?: Readonly<{ sampleRateHz?: number }>,
+    options?: Readonly<{ sampleRateHz?: number; tabStreamId?: string }>,
   ) => ResultAsync<void, DomainError>;
   /** Session に対する AudioContext を破棄 */
   closeAudioContext: (sessionIdentifier: SessionIdentifier) => ResultAsync<void, DomainError>;
@@ -46,12 +52,15 @@ export const createOffscreenCommandSender = (
 ): OffscreenCommandSender => {
   return {
     openAudioContext: (sessionIdentifier, options) => {
-      const sampleRateHz = options?.sampleRateHz;
-      const command: OffscreenCommand =
-        sampleRateHz !== undefined
-          ? { type: 'offscreen.audio.open', sessionIdentifier, sampleRateHz }
-          : { type: 'offscreen.audio.open', sessionIdentifier };
-      return deps.bridge.sendMessage(command);
+      const base: {
+        type: 'offscreen.audio.open';
+        sessionIdentifier: SessionIdentifier;
+        sampleRateHz?: number;
+        tabStreamId?: string;
+      } = { type: 'offscreen.audio.open', sessionIdentifier };
+      if (options?.sampleRateHz !== undefined) base.sampleRateHz = options.sampleRateHz;
+      if (options?.tabStreamId !== undefined) base.tabStreamId = options.tabStreamId;
+      return deps.bridge.sendMessage(base satisfies OffscreenCommand);
     },
     closeAudioContext: (sessionIdentifier) =>
       deps.bridge.sendMessage({ type: 'offscreen.audio.close', sessionIdentifier }),

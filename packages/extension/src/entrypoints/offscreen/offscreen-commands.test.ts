@@ -34,6 +34,27 @@ describe('parseOffscreenCommand (IMPL-560)', () => {
     }
   });
 
+  it('parses offscreen.audio.open with tabStreamId (IMPL-610)', () => {
+    const result = parseOffscreenCommand({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: SESSION_ID,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+    expect(result.isOk()).toBe(true);
+    if (result.isOk() && result.value.type === 'offscreen.audio.open') {
+      expect(result.value.tabStreamId).toBe('tab-stream-id-fixture');
+    }
+  });
+
+  it('rejects offscreen.audio.open with empty tabStreamId', () => {
+    const result = parseOffscreenCommand({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: SESSION_ID,
+      tabStreamId: '',
+    });
+    expect(result.isErr()).toBe(true);
+  });
+
   it('parses offscreen.audio.close', () => {
     const result = parseOffscreenCommand({
       type: 'offscreen.audio.close',
