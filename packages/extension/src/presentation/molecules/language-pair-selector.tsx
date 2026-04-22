@@ -1,17 +1,6 @@
-import React from 'react';
 import { Label } from '../atoms/label';
-import { Select, type SelectOption } from '../atoms/select';
-
-/**
- * MVP では 4 ペア程度を想定。BCP-47 BCP-47 形式の code に対して日本語ラベルを
- * 固定 map で割り当てる。設定から取得する運用は Phase 6 以降。
- */
-export const LANGUAGE_OPTIONS: readonly SelectOption[] = [
-  { value: 'en-US', label: '英語 (米国)' },
-  { value: 'ja-JP', label: '日本語' },
-  { value: 'ko-KR', label: '韓国語' },
-  { value: 'zh-CN', label: '中国語 (簡体)' },
-];
+import { Select } from '../atoms/select';
+import { LANGUAGE_OPTIONS } from './language-options';
 
 export type Props = Readonly<{
   sourceLanguage: string;

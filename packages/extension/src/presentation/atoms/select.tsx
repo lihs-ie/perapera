@@ -1,5 +1,3 @@
-import React from 'react';
-
 export type SelectOption = Readonly<{
   value: string;
   label: string;

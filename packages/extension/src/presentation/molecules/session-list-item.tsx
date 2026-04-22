@@ -1,4 +1,3 @@
-import React from 'react';
 import { Button } from '../atoms/button';
 import { StatusBadge } from '../atoms/status-badge';
 

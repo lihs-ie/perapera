@@ -1,4 +1,3 @@
-import React from 'react';
 import { type SourceType, SOURCE_TYPES } from '../../domain/session/source-type';
 
 export type Props = Readonly<{
