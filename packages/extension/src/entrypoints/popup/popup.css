@@ -1,0 +1,257 @@
+/*
+ * Popup minimal CSS。vanilla + 単一単語 className (CLAUDE.md §React ルール)。
+ * Design system tokens は Phase 5 PR 次 #6 で導入予定。
+ */
+
+:root {
+  color-scheme: light;
+  --color-text: #1a1a1a;
+  --color-muted: #666;
+  --color-bg: #ffffff;
+  --color-border: #e0e0e0;
+  --color-accent: #2563eb;
+  --color-accent-fg: #ffffff;
+  --color-danger: #dc2626;
+  --color-danger-fg: #ffffff;
+  --color-active: #10b981;
+  --color-pending: #f59e0b;
+  --color-degraded: #c2410c;
+  --color-error: #dc2626;
+  --color-stopped: #6b7280;
+  --color-neutral: #9ca3af;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Hiragino Sans',
+    'Yu Gothic UI',
+    sans-serif;
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-bg);
+  width: 360px;
+  min-height: 320px;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 8px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.version {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input,
+.select {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.input:focus,
+.select:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.checkbox {
+  margin: 0;
+}
+
+.selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selector > .field {
+  flex: 1 1 45%;
+  min-width: 130px;
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.button[data-variant='secondary'] {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.button[data-variant='danger'] {
+  background: var(--color-danger);
+  color: var(--color-danger-fg);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-accent-fg);
+  background: var(--color-neutral);
+  align-self: flex-start;
+}
+
+.badge[data-variant='active'] {
+  background: var(--color-active);
+}
+.badge[data-variant='pending'] {
+  background: var(--color-pending);
+}
+.badge[data-variant='degraded'] {
+  background: var(--color-degraded);
+}
+.badge[data-variant='error'] {
+  background: var(--color-error);
+}
+.badge[data-variant='stopped'] {
+  background: var(--color-stopped);
+}
+.badge[data-variant='neutral'] {
+  background: var(--color-neutral);
+}
+
+.message {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.message[role='alert'] {
+  color: var(--color-danger);
+  background: rgba(220, 38, 38, 0.06);
+}
+
+.message[data-variant='success'] {
+  color: #065f46;
+  background: rgba(16, 185, 129, 0.1);
+}
