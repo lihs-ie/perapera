@@ -19,6 +19,10 @@ import {
   createAudioFrameForwardReceiver,
   type AudioFrameForwardReceiver,
 } from '../application/services/audio-frame-forward-receiver';
+import {
+  createEnsureDefaultProfile,
+  type EnsureDefaultProfile,
+} from '../application/services/ensure-default-profile';
 import { createExportService, type ExportService } from '../application/services/export-service';
 import {
   createOffscreenCommandSender,
@@ -211,6 +215,7 @@ export type ExtensionApp = Readonly<{
   offscreenCommandSender: OffscreenCommandSender;
   audioFrameForwardReceiver: AudioFrameForwardReceiver;
   orphanSessionCleanup: OrphanSessionCleanupService;
+  ensureDefaultProfile: EnsureDefaultProfile;
   transcriptAssembler: TranscriptAssembler;
   close: () => Promise<void>;
 }>;
@@ -301,6 +306,9 @@ export const createExtensionApp = (
     handleEvent: handleRelayEventLate,
   });
   const audioFramePump: AudioFramePump = createAudioFramePump();
+  const ensureDefaultProfile: EnsureDefaultProfile = createEnsureDefaultProfile({
+    extensionProfileRepository,
+  });
   const runtimeMessageBridge: RuntimeMessageBridge = createChromeRuntimeMessageBridge(
     ports.chromeRuntimeApi,
   );
@@ -400,6 +408,7 @@ export const createExtensionApp = (
     offscreenCommandSender,
     audioFrameForwardReceiver,
     orphanSessionCleanup,
+    ensureDefaultProfile,
     transcriptAssembler,
     close: async () => {
       relaySessionSubscriber.stopAll();
