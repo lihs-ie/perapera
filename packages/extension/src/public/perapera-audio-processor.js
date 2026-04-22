@@ -26,6 +26,12 @@
  * - AudioWorkletProcessor は ES Module 構文を使えるが、TypeScript は使えない
  * - 外部 import 不可 (Worklet の独立コンテキスト)
  * - registerProcessor の name 引数 'perapera-audio-processor' を offscreen 側と整合させる
+ *
+ * ロジック等価物の TypeScript 実装は
+ * `packages/extension/src/infrastructure/audio/pcm-utils.ts` (IMPL-608) に
+ * extract されており vitest で単体テスト済。worklet context は ES Module
+ * import 制限のため本ファイル内で inline 複製する。ロジックを変更する際は
+ * 両方を同期させること。
  */
 
 const PROCESSOR_NAME = 'perapera-audio-processor';
