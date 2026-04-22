@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.19'
+version: '0.5.20'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -432,7 +432,11 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
   - `.github/workflows/deploy-relay.yml` 新設。workflow_dispatch only、WIF auth → Artifact Registry push → Cloud Run deploy → `/health` smoke の骨組み
   - GCP vars/secrets が未設定の環境では guard step で no-op (develop merge 後も副作用なし)
   - Step 2 (実運用設定): GCP プロジェクト作成、WIF pool/provider、GAR repository、Service Account 権限、GitHub vars/secrets 配置、main push trigger enable
-- IMPL-710 Chrome Web Store manifest + packaging (署名鍵管理) — ⚪ 未着手
+- IMPL-710 Chrome Web Store manifest + packaging (署名鍵管理) — 🟡 Step 1 完了 (publish workflow 雛形):
+  - `.github/workflows/publish-extension.yml` 新設。tag push (`v*.*.*`) + workflow_dispatch trigger、wxt build + zip → `chrome-webstore-upload-cli@3` で Chrome Web Store API にアップロード → 任意で publish (target: default / trustedTesters 切替)
+  - guard step で `CHROME_EXTENSION_ID` / `CHROME_CLIENT_ID` / `CHROME_CLIENT_SECRET` / `CHROME_REFRESH_TOKEN` が未設定なら skip (develop merge 後も副作用なし)
+  - 初期運用 (β / 限定公開) は upload 止まりで手動レビューに委ね、`publish: true` input のときだけ publish step が走る設計
+  - Step 2 (実運用設定): Chrome Developer Dashboard での拡張登録、OAuth2 client + refresh token 取得、GitHub vars/secrets 配置、`wxt.config.ts` に環境別 manifest 生成設定追加
 - IMPL-720 ランブック / インシデント対応手順 — ⚪ 未着手
 - IMPL-730 ベータ配布 → 一般公開 — ⚪ 未着手
 
@@ -478,3 +482,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.17     | 2026-04-22 | IMPL-610 Step 2 として k6 smoke を CI に統合。`.github/workflows/k6-smoke.yml` で weekly monday 11:00 UTC + perf/src 変更 PR + workflow_dispatch を trigger に、relay-api を bg 起動 (build → start) → `/health` 待機 → Docker `grafana/k6:latest` で create-session / ws-relay scenarios 実行 → relay.log artifact を upload。provider factory は length>0 check のみで stream 起動しない限り real provider に到達しないため、dummy API key で初期化し mock を production entrypoint に混ぜない構成。IMPL-610 を ✅ 完了に更新。                                           |
 | 0.5.18     | 2026-04-22 | IMPL-620 (脅威モデル最終確認) を完了。`docs/09-security-design/threat-matrix-impl-mapping.md` を新設し、security-design §2 STRIDE 6 カテゴリ × 実装 IMPL 番号 / ファイルパスを trace。主対策 (短命 JWT / Bearer + JWT 認証 / 生音声非永続化 / ログマスキング / レートリミット / circuit breaker / degraded / MV3 最小権限 / CORS / helmet / dependabot+audit) は全て実装済を確認。3 件の低優先 gap (client event sequence / IndexedDB TTL / 本番 manifest host_permissions 切替) を note として記録、Phase 7 IMPL-700/710 に委譲。                                          |
 | 0.5.19     | 2026-04-22 | Phase 7 IMPL-700 Step 1 として Cloud Run deploy workflow 雛形を追加。`.github/workflows/deploy-relay.yml` で workflow_dispatch only trigger、WIF (`google-github-actions/auth@v2` SHA pin) → Artifact Registry push → `deploy-cloudrun@v2` → `/health` smoke の骨組み。GCP vars/secrets 未設定時は guard step で no-op (develop merge 後も副作用なし)。実運用設定 (GCP プロジェクト / WIF / GAR / SA / vars/secrets 配置) は Step 2 へ委譲。§9 Phase 7 の IMPL-700 を 🟡 Step 1 完了に更新。                                                                                |
+| 0.5.20     | 2026-04-22 | Phase 7 IMPL-710 Step 1 として Chrome Web Store publish workflow 雛形を追加。`.github/workflows/publish-extension.yml` で tag push (`v*.*.*`) + workflow_dispatch trigger、wxt build + zip → `chrome-webstore-upload-cli@3` で upload → `publish: true` のときだけ publish step (target: default / trustedTesters)。guard で `CHROME_EXTENSION_ID` / OAuth2 secrets 未設定時は skip。実運用 (Chrome Developer Dashboard 登録 / refresh token 取得 / vars+secrets 配置 / env 別 manifest 生成) は Step 2 へ委譲。§9 Phase 7 の IMPL-710 を 🟡 Step 1 完了に更新。            |
