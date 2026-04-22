@@ -49,23 +49,18 @@ import {
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { type SourceSession } from '../domain/session/source-session';
 import {
-  createAudioPreprocessor,
   defaultAudioContextFactory,
   type AudioContextFactory,
 } from '../infrastructure/audio/audio-preprocessor';
 import {
-  createDesktopCaptureSourceAdapter,
   defaultDesktopCaptureApi,
   type DesktopCaptureApi,
 } from '../infrastructure/capture/desktop-capture-source-adapter';
-import { createSourceAdapterFactory } from '../infrastructure/capture/source-adapter-factory';
 import {
-  createTabCaptureSourceAdapter,
   defaultTabCaptureApi,
   type TabCaptureApi,
 } from '../infrastructure/capture/tab-capture-source-adapter';
 import {
-  createUserMediaSourceAdapter,
   defaultUserMediaApi,
   type UserMediaApi,
 } from '../infrastructure/capture/user-media-source-adapter';
@@ -248,25 +243,10 @@ export const createExtensionApp = (
   );
 
   // --------------- Capture / Audio ---------------
-  const tabCaptureSourceAdapter = createTabCaptureSourceAdapter({
-    tabCaptureApi: ports.tabCaptureApi,
-  });
-  const userMediaSourceAdapter = createUserMediaSourceAdapter({
-    userMediaApi: ports.userMediaApi,
-  });
-  const desktopCaptureSourceAdapter = createDesktopCaptureSourceAdapter({
-    desktopCaptureApi: ports.desktopCaptureApi,
-  });
-  const sourceAdapterFactory = createSourceAdapterFactory({
-    tabCaptureSourceAdapter,
-    userMediaSourceAdapter,
-    desktopCaptureSourceAdapter,
-  });
-  const audioPreprocessor = createAudioPreprocessor({
-    audioContextFactory: ports.audioContextFactory,
-    workletModuleUrl: config.workletModuleUrl,
-    clock: ports.clockMs,
-  });
+  // SW 側 CaptureOrchestrator は placeholder のため、SourceAdapter / AudioPreprocessor
+  // は SW では生成しない。実 stream / AudioWorklet は offscreen document 側で
+  // TabStreamApi / defaultAudioContextFactory / defaultWorkletNodeFactory を直接使う
+  // (packages/extension/src/entrypoints/offscreen/main.ts)。
 
   // --------------- Permission + Relay ---------------
   const permissionCoordinator = createChromePermissionCoordinator({
@@ -299,10 +279,10 @@ export const createExtensionApp = (
   });
 
   // --------------- Application services (先に構築: circular dep 回避) ---------------
-  const captureOrchestrator = createCaptureOrchestrator({
-    sourceAdapterFactory,
-    audioPreprocessor,
-  });
+  // MV3 SW では MediaStream / AudioContext が動作しないため、CaptureOrchestrator は
+  // SW-safe な placeholder (empty frame channel) として動作。実 stream / AudioWorklet
+  // は offscreen document 側が担う (IMPL-612〜618)。
+  const captureOrchestrator = createCaptureOrchestrator();
 
   // relaySessionSubscriber は handleEvent を late-bind する形で参照する。
   // SessionCommandService を先に構築したいが、sessionCommandService は
