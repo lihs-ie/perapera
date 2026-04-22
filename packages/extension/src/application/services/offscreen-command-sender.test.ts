@@ -45,6 +45,36 @@ describe('createOffscreenCommandSender (IMPL-606)', () => {
     });
   });
 
+  it('passes through optional tabStreamId when provided (IMPL-610)', async () => {
+    const bridge = buildBridge();
+    const sender = createOffscreenCommandSender({ bridge });
+
+    await sender.openAudioContext(identifier, { tabStreamId: 'tab-stream-id-fixture' });
+
+    expect(bridge.sendMessage).toHaveBeenCalledWith({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: SESSION_ID,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+  });
+
+  it('combines sampleRateHz and tabStreamId when both provided', async () => {
+    const bridge = buildBridge();
+    const sender = createOffscreenCommandSender({ bridge });
+
+    await sender.openAudioContext(identifier, {
+      sampleRateHz: 48000,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+
+    expect(bridge.sendMessage).toHaveBeenCalledWith({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: SESSION_ID,
+      sampleRateHz: 48000,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+  });
+
   it('sends audio.close with sessionIdentifier', async () => {
     const bridge = buildBridge();
     const sender = createOffscreenCommandSender({ bridge });

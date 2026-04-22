@@ -27,6 +27,14 @@ const audioOpenSchema = z.object({
   sessionIdentifier: z.string().min(1),
   /** AudioContext のサンプルレート (default 16000) */
   sampleRateHz: z.number().int().positive().optional(),
+  /**
+   * `chrome.tabCapture.getMediaStreamId` で取得した stream id。
+   * IMPL-610: offscreen 側で `navigator.mediaDevices.getUserMedia({
+   *   audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: tabStreamId } }
+   * })` を呼び MediaStream を確保するのに必要。tab source 以外では省略 (microphone は
+   * offscreen 側で deviceId ベースの getUserMedia を直接呼ぶ設計)。
+   */
+  tabStreamId: z.string().min(1).optional(),
 });
 
 const audioCloseSchema = z.object({
@@ -49,6 +57,7 @@ export type OffscreenCommand =
       type: 'offscreen.audio.open';
       sessionIdentifier: SessionIdentifier;
       sampleRateHz?: number;
+      tabStreamId?: string;
     }>
   | Readonly<{ type: 'offscreen.audio.close'; sessionIdentifier: SessionIdentifier }>
   | Readonly<{ type: 'offscreen.ping' }>;
@@ -69,15 +78,15 @@ export const parseOffscreenCommand = (raw: unknown): Result<OffscreenCommand, Do
       return ok<OffscreenCommand, DomainError>({ type: 'offscreen.ping' });
     case 'offscreen.audio.open':
       return parseSessionIdentifier(data.sessionIdentifier).map((sessionIdentifier) => {
-        const command: OffscreenCommand =
-          data.sampleRateHz !== undefined
-            ? {
-                type: 'offscreen.audio.open',
-                sessionIdentifier,
-                sampleRateHz: data.sampleRateHz,
-              }
-            : { type: 'offscreen.audio.open', sessionIdentifier };
-        return command;
+        const base: {
+          type: 'offscreen.audio.open';
+          sessionIdentifier: SessionIdentifier;
+          sampleRateHz?: number;
+          tabStreamId?: string;
+        } = { type: 'offscreen.audio.open', sessionIdentifier };
+        if (data.sampleRateHz !== undefined) base.sampleRateHz = data.sampleRateHz;
+        if (data.tabStreamId !== undefined) base.tabStreamId = data.tabStreamId;
+        return base satisfies OffscreenCommand;
       });
     case 'offscreen.audio.close':
       return parseSessionIdentifier(data.sessionIdentifier).map(
