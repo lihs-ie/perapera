@@ -31,6 +31,10 @@ export default tseslint.config(
       // （将来的に e2e/tsconfig.json を切って lint 対象へ戻す）
       'packages/extension/e2e/**',
       'packages/relay-api/perf/**',
+      // AudioWorklet processor は独立 worklet コンテキスト (W3C global:
+      // sampleRate / registerProcessor / AudioWorkletProcessor) で動くため
+      // tsconfig 配下に含めず、lint も skip する
+      'packages/extension/src/public/**',
     ],
   },
 
