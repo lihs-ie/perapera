@@ -1,12 +1,16 @@
+import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it, vi } from 'vitest';
 import {
   type AudioContextLike,
   type AudioContextFactory,
 } from '../../infrastructure/audio/audio-preprocessor';
+import { type TabStreamApi } from '../../infrastructure/audio/tab-stream-api';
+import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
 import {
   parseSessionIdentifier,
   type SessionIdentifier,
 } from '../../domain/session/session-identifier';
+import { addFakeTrack } from '../../../tests/helpers/media-stream';
 import { createOffscreenAudioHost } from './offscreen-audio-host';
 
 const SESSION_A = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
@@ -131,5 +135,102 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
     host.dispose();
     expect(contextA.closeFn).toHaveBeenCalledOnce();
     expect(contextB.closeFn).toHaveBeenCalledOnce();
+  });
+
+  // IMPL-612: tabStreamId 付き audio.open で MediaStream を取得・保持・破棄
+  it('acquires MediaStream when tabStreamId is provided and tabStreamApi is injected', async () => {
+    const factory = vi.fn<AudioContextFactory>(() => buildFakeContext(16000));
+    const mediaStream = new MediaStream();
+    const acquire = vi.fn<TabStreamApi['acquire']>(() =>
+      okAsync<MediaStream, DomainError>(mediaStream),
+    );
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      tabStreamApi: { acquire },
+    });
+
+    host.dispatch({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: identifierA,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+
+    expect(acquire).toHaveBeenCalledWith('tab-stream-id-fixture');
+    expect(host.has(identifierA)).toBe(true);
+    expect(host.hasStream(identifierA)).toBe(true);
+  });
+
+  it('stops MediaStream tracks when session closes (IMPL-612)', async () => {
+    const factory = vi.fn<AudioContextFactory>(() => buildFakeContext(16000));
+    const mediaStream = new MediaStream();
+    const stop = vi.fn();
+    addFakeTrack(mediaStream, { stop });
+    const acquire = vi.fn<TabStreamApi['acquire']>(() =>
+      okAsync<MediaStream, DomainError>(mediaStream),
+    );
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      tabStreamApi: { acquire },
+    });
+
+    host.dispatch({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: identifierA,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    host.dispatch({ type: 'offscreen.audio.close', sessionIdentifier: identifierA });
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(host.hasStream(identifierA)).toBe(false);
+  });
+
+  it('logs warn and keeps AudioContext open when tab-stream acquire fails', async () => {
+    const logger = buildLogger();
+    const factory = vi.fn<AudioContextFactory>(() => buildFakeContext(16000));
+    const acquire = vi.fn<TabStreamApi['acquire']>(() =>
+      errAsync<MediaStream, DomainError>(
+        invariantViolationError({ invariant: 'tab-stream-api', details: 'permission denied' }),
+      ),
+    );
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      tabStreamApi: { acquire },
+      logger,
+    });
+
+    host.dispatch({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: identifierA,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+
+    expect(host.has(identifierA)).toBe(true);
+    expect(host.hasStream(identifierA)).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+  });
+
+  it('ignores tabStreamId when tabStreamApi is not injected (backward-compatible)', () => {
+    const logger = buildLogger();
+    const factory = vi.fn<AudioContextFactory>(() => buildFakeContext(16000));
+    const host = createOffscreenAudioHost({ audioContextFactory: factory, logger });
+
+    host.dispatch({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: identifierA,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+
+    expect(host.has(identifierA)).toBe(true);
+    expect(host.hasStream(identifierA)).toBe(false);
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('tabStreamApi not injected'));
   });
 });

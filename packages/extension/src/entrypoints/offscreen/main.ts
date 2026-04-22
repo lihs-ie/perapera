@@ -1,4 +1,5 @@
 import { defaultAudioContextFactory } from '../../infrastructure/audio/audio-preprocessor';
+import { defaultTabStreamApi } from '../../infrastructure/audio/tab-stream-api';
 import { createOffscreenAudioHost } from './offscreen-audio-host';
 import { parseOffscreenCommand } from './offscreen-commands';
 
@@ -20,6 +21,7 @@ console.log('[perapera] offscreen document loaded');
 
 const host = createOffscreenAudioHost({
   audioContextFactory: defaultAudioContextFactory,
+  tabStreamApi: defaultTabStreamApi,
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
