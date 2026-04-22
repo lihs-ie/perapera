@@ -19,10 +19,14 @@ const buildCommand = (overrides: Partial<StartSourceCommand> = {}): StartSourceC
 
 const buildApi = (): TabCaptureApi & {
   capture: ReturnType<typeof vi.fn<TabCaptureApi['capture']>>;
+  getMediaStreamId: ReturnType<typeof vi.fn<TabCaptureApi['getMediaStreamId']>>;
 } => {
   const stream = new MediaStream();
   const capture = vi.fn<TabCaptureApi['capture']>(() => Promise.resolve(stream));
-  return { capture };
+  const getMediaStreamId = vi.fn<TabCaptureApi['getMediaStreamId']>(() =>
+    Promise.resolve('stream-id-fixture'),
+  );
+  return { capture, getMediaStreamId };
 };
 
 describe('createTabCaptureSourceAdapter (IMPL-300, DD-101)', () => {
@@ -51,6 +55,7 @@ describe('createTabCaptureSourceAdapter (IMPL-300, DD-101)', () => {
   it('returns invariant-violation when capture returns null (tab no longer audible)', async () => {
     const api: TabCaptureApi = {
       capture: () => Promise.resolve(null),
+      getMediaStreamId: () => Promise.resolve('stream-id-fixture'),
     };
     const adapter = createTabCaptureSourceAdapter({ tabCaptureApi: api });
     const result = await adapter.open(buildCommand());
@@ -61,6 +66,7 @@ describe('createTabCaptureSourceAdapter (IMPL-300, DD-101)', () => {
   it('returns invariant-violation when the api throws (e.g., chrome.runtime.lastError)', async () => {
     const api: TabCaptureApi = {
       capture: () => Promise.reject(new Error('Tab is not currently being captured')),
+      getMediaStreamId: () => Promise.resolve('stream-id-fixture'),
     };
     const adapter = createTabCaptureSourceAdapter({ tabCaptureApi: api });
     const result = await adapter.open(buildCommand());
@@ -77,7 +83,10 @@ describe('createTabCaptureSourceAdapter (IMPL-300, DD-101)', () => {
     const stop = vi.fn();
     const stream = new MediaStream();
     addFakeTrack(stream, { stop });
-    const api: TabCaptureApi = { capture: () => Promise.resolve(stream) };
+    const api: TabCaptureApi = {
+      capture: () => Promise.resolve(stream),
+      getMediaStreamId: () => Promise.resolve('stream-id-fixture'),
+    };
     const adapter = createTabCaptureSourceAdapter({ tabCaptureApi: api });
     await adapter.open(buildCommand());
     const result = await adapter.close(sessionIdentifier);
@@ -90,5 +99,15 @@ describe('createTabCaptureSourceAdapter (IMPL-300, DD-101)', () => {
     const adapter = createTabCaptureSourceAdapter({ tabCaptureApi: api });
     const result = await adapter.close(sessionIdentifier);
     expect(result.isOk()).toBe(true);
+  });
+
+  // IMPL-609 TabCaptureApi extension — getMediaStreamId は SourceAdapter からは
+  // まだ呼ばれない (次 PR で offscreen 側 MediaStream 受け取り配線と同時に
+  // 利用を開始する)。本 test は API 契約が確保されていることを保証する。
+  it('TabCaptureApi exposes getMediaStreamId producing non-empty stream id (contract)', async () => {
+    const api = buildApi();
+    const streamId = await api.getMediaStreamId({ targetTabId: 42 });
+    expect(streamId).toBe('stream-id-fixture');
+    expect(api.getMediaStreamId).toHaveBeenCalledWith({ targetTabId: 42 });
   });
 });

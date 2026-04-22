@@ -7,12 +7,22 @@ import {
 } from '../../application/ports/source-adapter';
 
 /**
- * `chrome.tabCapture.capture` を最小 contract で抽象化した adapter。
+ * `chrome.tabCapture` を最小 contract で抽象化した adapter。
  * production では callback を Promise に wrap した default 実装、test では
  * mock を注入する。
+ *
+ * - `capture`: SW 側で MediaStream を直接取得する従来経路 (MV3 SW では
+ *   実用上動作しないが、既存の SourceAdapter API 互換のため維持)
+ * - `getMediaStreamId` (IMPL-609): `targetTabId` 指定で stream identifier
+ *   文字列を取得する経路。取得した id を offscreen document に postMessage
+ *   で渡し、offscreen 側で `navigator.mediaDevices.getUserMedia({ audio: {
+ *   mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id } } })`
+ *   を呼ぶことで、AudioContext が使えるコンテキストで MediaStream を確保
+ *   できる。MV3 で実 audio data を Relay まで流す唯一の実用的な経路
  */
 export type TabCaptureApi = {
   capture: (options: chrome.tabCapture.CaptureOptions) => Promise<MediaStream | null>;
+  getMediaStreamId: (options: chrome.tabCapture.GetMediaStreamOptions) => Promise<string>;
 };
 
 /**
@@ -30,6 +40,25 @@ export const defaultTabCaptureApi: TabCaptureApi = {
             return;
           }
           resolve(stream);
+        });
+      } catch (cause) {
+        reject(cause instanceof Error ? cause : new Error(String(cause)));
+      }
+    }),
+  getMediaStreamId: (options) =>
+    new Promise<string>((resolve, reject) => {
+      try {
+        chrome.tabCapture.getMediaStreamId(options, (streamId) => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError !== undefined) {
+            reject(new Error(lastError.message ?? 'unknown getMediaStreamId error'));
+            return;
+          }
+          if (streamId === undefined || streamId === '') {
+            reject(new Error('chrome.tabCapture.getMediaStreamId returned empty id'));
+            return;
+          }
+          resolve(streamId);
         });
       } catch (cause) {
         reject(cause instanceof Error ? cause : new Error(String(cause)));
