@@ -99,7 +99,7 @@ describe('createFetchStreamTokenIssuer (IMPL-319, DD-401)', () => {
       extensionVersion: '0.1.0',
       protocolVersion: '1.0',
       resolveDisplayName: () => 'n',
-      resolveOverlayTarget: () => ({ kind: 'monitor' }),
+      resolveOverlayTarget: () => ({ kind: 'extension-monitor', pageId: 'monitor' }),
       resolveAutoDetectLanguage: () => true,
       fetchImpl: (_url, init) => {
         const body: unknown = init?.body;
@@ -137,7 +137,7 @@ describe('createFetchStreamTokenIssuer (IMPL-319, DD-401)', () => {
       extensionVersion: '0.1.0',
       protocolVersion: '1.0',
       resolveDisplayName: () => 'n',
-      resolveOverlayTarget: () => ({ kind: 'monitor' }),
+      resolveOverlayTarget: () => ({ kind: 'extension-monitor', pageId: 'monitor' }),
       resolveAutoDetectLanguage: () => false,
       fetchImpl: () => Promise.resolve(new Response('unauthorized', { status: 401 })),
     });
@@ -159,7 +159,7 @@ describe('createFetchStreamTokenIssuer (IMPL-319, DD-401)', () => {
       extensionVersion: '0.1.0',
       protocolVersion: '1.0',
       resolveDisplayName: () => 'n',
-      resolveOverlayTarget: () => ({ kind: 'monitor' }),
+      resolveOverlayTarget: () => ({ kind: 'extension-monitor', pageId: 'monitor' }),
       resolveAutoDetectLanguage: () => false,
       fetchImpl: () => Promise.reject(new Error('TCP reset')),
     });
@@ -180,7 +180,7 @@ describe('createFetchStreamTokenIssuer (IMPL-319, DD-401)', () => {
       extensionVersion: '0.1.0',
       protocolVersion: '1.0',
       resolveDisplayName: () => 'n',
-      resolveOverlayTarget: () => ({ kind: 'monitor' }),
+      resolveOverlayTarget: () => ({ kind: 'extension-monitor', pageId: 'monitor' }),
       resolveAutoDetectLanguage: () => false,
       fetchImpl: () => Promise.resolve(createFakeResponse({ hello: 'world' })),
     });

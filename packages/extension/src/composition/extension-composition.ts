@@ -139,7 +139,7 @@ export type ExtensionRuntimeConfig = Readonly<{
   workletModuleUrl: string;
   /** SourceSession → displayName (default: sourceType 名) */
   resolveDisplayName?: (session: SourceSession) => string;
-  /** SourceSession → overlayTarget (default: `{ kind: 'monitor' }`) */
+  /** SourceSession → overlayTarget (default: `{ kind: 'extension-monitor', pageId: 'monitor' }`) */
   resolveOverlayTarget?: (session: SourceSession) => OverlayTargetDescriptor;
   /** SourceSession → autoDetectLanguage (default: `false`) */
   resolveAutoDetectLanguage?: (session: SourceSession) => boolean;
@@ -217,7 +217,8 @@ export type ExtensionApp = Readonly<{
 
 const DEFAULT_RESOLVE_DISPLAY_NAME = (session: SourceSession): string => session.sourceType;
 const DEFAULT_RESOLVE_OVERLAY_TARGET = (_session: SourceSession): OverlayTargetDescriptor => ({
-  kind: 'monitor',
+  kind: 'extension-monitor',
+  pageId: 'monitor',
 });
 const DEFAULT_RESOLVE_AUTO_DETECT = (_session: SourceSession): boolean => false;
 
