@@ -1,4 +1,4 @@
-import { errAsync, ResultAsync } from 'neverthrow';
+import { errAsync, okAsync, ResultAsync } from 'neverthrow';
 import { type ExtensionProfileRepository } from '../../domain/repositories/extension-profile-repository';
 import { type SourceSessionRepository } from '../../domain/repositories/source-session-repository';
 import { validateSessionConcurrency } from '../../domain/services/session-concurrency-policy';
@@ -9,7 +9,7 @@ import {
   transitionSourceSessionState,
   type SourceSession,
 } from '../../domain/session/source-session';
-import { type DomainError } from '../../domain/shared/errors';
+import { describeDomainError, type DomainError } from '../../domain/shared/errors';
 import {
   parseStartSourceSessionInput,
   type StartSourceSessionInput,
@@ -23,6 +23,7 @@ import {
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
 import { type StartSourceCommand } from '../ports/source-adapter';
+import { type TabStreamIdResolver } from '../ports/tab-stream-id-resolver';
 import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
 import { type OffscreenCommandSender } from '../services/offscreen-command-sender';
@@ -37,6 +38,13 @@ export type StartSourceSessionDependencies = Readonly<{
   relaySessionSubscriber: RelaySessionSubscriber;
   audioFramePump: AudioFramePump;
   offscreenCommandSender: OffscreenCommandSender;
+  /**
+   * Optional。指定すると tab source の granted path で
+   * `chrome.tabCapture.getMediaStreamId` 由来の streamId を解決し、
+   * offscreen audio.open command の tabStreamId として渡す (IMPL-613)。
+   * 未指定の場合は streamId なしで送信 (Step 2b-2b の tabStreamApi 未注入時と同様)。
+   */
+  tabStreamIdResolver?: TabStreamIdResolver;
   clock: () => string;
   idFactory: Readonly<{
     session: () => string;
@@ -138,11 +146,41 @@ export const createStartSourceSessionUseCase = (
                             .andThen((activeCapture) =>
                               deps.relayGateway.openSession(connecting).map(() => activeCapture),
                             )
-                            .andThen((activeCapture) =>
-                              deps.offscreenCommandSender
-                                .openAudioContext(connecting.sessionIdentifier)
-                                .map(() => activeCapture),
-                            )
+                            .andThen((activeCapture) => {
+                              // tab source の overlayTarget.tabId を capture 対象 tab として利用。
+                              // MV3 では `chrome.tabCapture.getMediaStreamId({targetTabId})` で
+                              // 取得した streamId を offscreen に渡し、offscreen 側が
+                              // `getUserMedia` で MediaStream を確保する (IMPL-611/612)。
+                              const targetTabId =
+                                parsed.sourceType === 'tab' &&
+                                parsed.overlayTarget.kind === 'tab' &&
+                                parsed.overlayTarget.tabId !== undefined
+                                  ? parsed.overlayTarget.tabId
+                                  : undefined;
+                              const tabStreamIdChain: ResultAsync<string | undefined, ChainError> =
+                                targetTabId !== undefined && deps.tabStreamIdResolver !== undefined
+                                  ? deps.tabStreamIdResolver
+                                      .resolve(targetTabId)
+                                      .orElse(
+                                        (error): ResultAsync<string | undefined, ChainError> => {
+                                          console.warn(
+                                            `[use-case:start-source-session] tab-stream-id resolve failed (continuing without streamId): ${describeDomainError(
+                                              error,
+                                            )}`,
+                                          );
+                                          return okAsync<string | undefined, ChainError>(undefined);
+                                        },
+                                      )
+                                  : okAsync<string | undefined, ChainError>(undefined);
+                              return tabStreamIdChain.andThen((tabStreamId) =>
+                                deps.offscreenCommandSender
+                                  .openAudioContext(
+                                    connecting.sessionIdentifier,
+                                    tabStreamId !== undefined ? { tabStreamId } : undefined,
+                                  )
+                                  .map(() => activeCapture),
+                              );
+                            })
                             .andThen((activeCapture) => {
                               deps.audioFramePump.start(
                                 connecting.sessionIdentifier,

@@ -18,6 +18,7 @@ import {
 import { type AudioFrameEnvelope } from '../ports/audio-preprocessor';
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
+import { type TabStreamIdResolver } from '../ports/tab-stream-id-resolver';
 import { type AudioFramePump } from '../services/audio-frame-pump';
 import { type CaptureOrchestrator } from '../services/capture-orchestrator';
 import { type OffscreenCommandSender } from '../services/offscreen-command-sender';
@@ -108,6 +109,9 @@ const buildDependencies = (
     closeAudioContext: vi.fn(() => okAsync(undefined)),
     ping: vi.fn(() => okAsync(undefined)),
   };
+  const tabStreamIdResolver: TabStreamIdResolver = {
+    resolve: vi.fn(() => okAsync('tab-stream-id-fixture')),
+  };
   return {
     sourceSessionRepository,
     extensionProfileRepository,
@@ -117,6 +121,7 @@ const buildDependencies = (
     relaySessionSubscriber,
     audioFramePump,
     offscreenCommandSender,
+    tabStreamIdResolver,
     clock: () => STARTED_AT,
     idFactory: {
       session: () => SESSION_ID,
@@ -164,7 +169,11 @@ describe('createStartSourceSessionUseCase (IMPL-210, DD-301)', () => {
     }
     expect(deps.sourceSessionRepository.save).toHaveBeenCalledTimes(2);
     expect(deps.relayGateway.openSession).toHaveBeenCalledTimes(1);
-    expect(deps.offscreenCommandSender.openAudioContext).toHaveBeenCalledWith(SESSION_ID);
+    // IMPL-613: tab source + overlayTarget.kind='tab' + tabId あり → streamId 解決 → openAudioContext に tabStreamId 渡す
+    expect(deps.tabStreamIdResolver?.resolve).toHaveBeenCalledWith(1);
+    expect(deps.offscreenCommandSender.openAudioContext).toHaveBeenCalledWith(SESSION_ID, {
+      tabStreamId: 'tab-stream-id-fixture',
+    });
     expect(deps.audioFramePump.start).toHaveBeenCalledTimes(1);
     const startCalls = vi.mocked(deps.audioFramePump.start).mock.calls;
     const firstCall = startCalls[0];

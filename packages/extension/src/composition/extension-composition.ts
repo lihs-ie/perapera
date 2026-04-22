@@ -70,6 +70,7 @@ import {
   defaultChromeRuntimeApi,
   type ChromeRuntimeApi,
 } from '../infrastructure/messaging/chrome-runtime-message-bridge';
+import { createChromeTabStreamIdResolver } from '../infrastructure/capture/chrome-tab-stream-id-resolver';
 import {
   createChromeMessagingOverlayPresenter,
   defaultOverlayMessagingBridge,
@@ -321,6 +322,7 @@ export const createExtensionApp = (
   const offscreenCommandSender: OffscreenCommandSender = createOffscreenCommandSender({
     bridge: runtimeMessageBridge,
   });
+  const tabStreamIdResolver = createChromeTabStreamIdResolver(ports.tabCaptureApi);
   const orphanSessionCleanup: OrphanSessionCleanupService = createOrphanSessionCleanupService({
     sourceSessionRepository,
     clock: ports.clockIso,
@@ -336,6 +338,7 @@ export const createExtensionApp = (
     relaySessionSubscriber,
     audioFramePump,
     offscreenCommandSender,
+    tabStreamIdResolver,
     clock: ports.clockIso,
     idFactory: {
       session: ports.sessionIdFactory,
