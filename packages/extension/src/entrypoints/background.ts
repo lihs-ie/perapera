@@ -83,6 +83,23 @@ export default defineBackground(() => {
   };
   const ports = createProductionRuntimePorts();
   const app: ExtensionApp = createExtensionApp(config, ports);
+
+  // SW 再起動時に IndexedDB に残存していた orphan active session を stopped 化
+  // (IMPL-603, 設計論点 §10)。ensure() の完了を待たずに並列実行してよい
+  // (異なるストレージ: chrome.offscreen vs IndexedDB)。
+  void app.orphanSessionCleanup.cleanup().match(
+    (summary) => {
+      if (summary.recoveredCount > 0) {
+        console.log(
+          `[perapera] orphan-session-cleanup: ${summary.recoveredCount.toString()} sessions transitioned to stopped`,
+        );
+      }
+    },
+    (error) => {
+      console.warn('[perapera] orphan-session-cleanup failed:', error);
+    },
+  );
+
   const dispatch: RuntimeDispatcher = createRuntimeDispatcher({
     sessionCommandService: app.sessionCommandService,
     exportService: app.exportService,

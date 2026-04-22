@@ -17,6 +17,10 @@ import {
 } from '../application/services/capture-orchestrator';
 import { createExportService, type ExportService } from '../application/services/export-service';
 import {
+  createOrphanSessionCleanupService,
+  type OrphanSessionCleanupService,
+} from '../application/services/orphan-session-cleanup-service';
+import {
   createRelaySessionSubscriber,
   type RelayEventHandler,
   type RelaySessionSubscriber,
@@ -192,6 +196,7 @@ export type ExtensionApp = Readonly<{
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
+  orphanSessionCleanup: OrphanSessionCleanupService;
   transcriptAssembler: TranscriptAssembler;
   close: () => Promise<void>;
 }>;
@@ -297,6 +302,10 @@ export const createExtensionApp = (
     handleEvent: handleRelayEventLate,
   });
   const audioFramePump: AudioFramePump = createAudioFramePump();
+  const orphanSessionCleanup: OrphanSessionCleanupService = createOrphanSessionCleanupService({
+    sourceSessionRepository,
+    clock: ports.clockIso,
+  });
 
   // --------------- UseCases (Phase 2) ---------------
   const startSourceSessionUseCase = createStartSourceSessionUseCase({
@@ -376,6 +385,7 @@ export const createExtensionApp = (
     sessionRegistry,
     captureOrchestrator,
     audioFramePump,
+    orphanSessionCleanup,
     transcriptAssembler,
     close: async () => {
       relaySessionSubscriber.stopAll();

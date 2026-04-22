@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.4.0'
+version: '0.4.1'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -228,9 +228,9 @@ PR #45 で domain repository adapter が揃ったため、Background composition
 
 **Phase 5 残タスク (§4 PR 次 #7〜#10)**:
 
-- [ ] IMPL-602 Audio frame pipeline: `captureOrchestrator.frames` → `relayGateway.sendAudioFrame` (本 PR)
-- [ ] SW → Offscreen audio.open / audio.close コマンド送信
-- [ ] Session recovery on SW restart
+- [x] IMPL-602 Audio frame pipeline: `captureOrchestrator.frames` → `relayGateway.sendAudioFrame` (PR #54)
+- [x] IMPL-603 Orphan session cleanup on SW restart: `stopSourceSession` で全 active を stopped 化 (本 PR)
+- [ ] SW → Offscreen audio.open / audio.close コマンド送信 (AudioWorklet + offscreen preprocessor と同時)
 - [ ] WXT zip 配布 smoke (Chrome Web Store 提出前提)
 
 依存: Phase 4 の Relay API が develop 上で動作中 (完了)、Phase 3 infrastructure adapter および Phase 3.5 repository adapter が揃っている (完了)。
@@ -273,7 +273,7 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 - [x] `session.stop` / `session.pause` / `session.resume` の server 側振る舞い — PR #43 (IMPL-421/422) で確定。pause/resume は debug log 留め、stop は stream handle close
 - [x] Provider サーキットブレーカー発火時のエラー設計 — PR #41 (IMPL-446) で `invariantViolationError` を `session.error` envelope に変換
 - [x] Phase 5 開始時の chrome.runtime messaging schema — PR #47 の `runtime-messages.ts` (Zod discriminated union) で Command / Query / Offscreen 各 schema を確定
-- [ ] Background 多重起動時のセッション継続 — PR #53 で `RelaySessionSubscriber` / `OffscreenLifecycle` を整備したが、SW 再起動時の active session 復元は未実装。§4 PR 次 #9 (Session recovery) で確定
+- [x] Background 多重起動時のセッション継続 — **復元は行わず orphan session を `stopped` 状態に遷移** (IMPL-603)。MV3 の permission / capture 制約により full restore は user gesture が必要で MVP 外。ユーザーは Popup から新規 session 開始
 - [ ] AudioWorklet を offscreen document にホストする際の chrome.tabCapture との連携方式 — MVP は SW 側で `AudioPreprocessor` stub (empty frame channel) を保持。実 AudioWorklet + offscreen ホスト化は Phase 5 後続 PR で決定
 - [ ] Audio frame 送信失敗時の永続キュー / retry 設計 — 本 PR (IMPL-602) は 1 回 warn + skip。AudioWorklet 実装後の計測結果で再評価
 - [ ] DB v2 schema migration の必要性 — MVP で同時 3 session 前提の full-scan が足りない場合のみ実施
@@ -286,3 +286,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.2.0      | 2026-04-22 | Phase 4 完了を反映 (IMPL-400〜451)。直近 PR 優先順位を Phase 5 presentation 層へ更新。                                                                                                                                                                                                                                                                                                                                      |
 | 0.3.0      | 2026-04-22 | Phase 3.5 Domain Repository Adapters (PR #45) 完了を反映。Phase 5 進行中へ遷移、§4 の PR 次優先順位を Background composition 起点に再構成。D1/D2/D4 決定を反映。§10 宿題の 3 件を Phase 4 成果でクローズ、Phase 5 固有の論点 3 件を追加。                                                                                                                                                                                   |
 | 0.4.0      | 2026-04-22 | Phase 5 拡張 presentation 層の PR #47〜#53 (Background composition / Popup UI / Side Panel UI / Content overlay / Offscreen+Monitor / Design tokens / Phase 5 integration gap 埋め) 完了を反映。Phase 5 進捗 ~85% へ。§4 の PR 次優先順位を残タスク (audio frame pipeline / SW→Offscreen command / session recovery / WXT zip / Phase 6 E2E) に再構成。§6 M2 チェックリスト 7/8 完了、§10 messaging schema 論点をクローズ。 |
+| 0.4.1      | 2026-04-22 | IMPL-602 Audio frame pipeline (PR #54) と IMPL-603 Orphan session cleanup (本 PR) の完了を反映。§10 "Background 多重起動時のセッション継続" 論点を "stopped 遷移" 方針でクローズ (full restore は MV3 permission 制約で MVP 外)。                                                                                                                                                                                           |
