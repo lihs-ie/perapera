@@ -1,0 +1,148 @@
+name: Deploy Relay API to Cloud Run
+
+# IMPL-700 Step 1 — Phase 7 M4 リリースパイプラインの雛形。
+#
+# infrastructure-design.md §4.2 デプロイ手順:
+#   1. main merge で CI 起動 (ci.yml)
+#   2. Lint / Test / Build (ci.yml)
+#   3. Relay Image build → Artifact Registry (本 workflow)
+#   4. Staging deploy + smoke (本 workflow)
+#   5. Approval 後 production deploy (本 workflow)
+#   6. Extension は Chrome Web Store 公開 (IMPL-710, 別 workflow)
+#
+# 現時点の位置付け:
+# - trigger は `workflow_dispatch` のみ。main push による自動 deploy は
+#   GCP 設定完了 (WIF provider / SA / GAR repo / Cloud Run service) 後に
+#   enable する (IMPL-700 Step 2)。
+# - vars/secrets が未設定の環境では最初のガード step で skip。
+# - Workload Identity Federation を使い、長期 SA key を GitHub Secrets に
+#   置かない (security-design §5.2 極秘データ取り扱い)。
+#
+# 必要な GitHub configuration (IMPL-700 Step 2 で config):
+#   vars:
+#     GCP_PROJECT_ID          = GCP プロジェクト ID
+#     GCP_REGION              = asia-northeast1 (既定)
+#     GAR_REPOSITORY          = perapera (既定)
+#   secrets:
+#     GCP_WORKLOAD_IDENTITY_PROVIDER = projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+#     GCP_DEPLOY_SERVICE_ACCOUNT     = deploy-sa@<project>.iam.gserviceaccount.com
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deploy target environment
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+
+concurrency:
+  group: deploy-relay-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'asia-northeast1' }}
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY || 'perapera' }}
+  IMAGE_NAME: relay-api
+
+jobs:
+  deploy:
+    name: Build image + deploy (${{ github.event.inputs.environment }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CLOUD_RUN_SERVICE: ${{ github.event.inputs.environment == 'production' && 'perapera-relay-api' || 'perapera-relay-api-staging' }}
+    steps:
+      - name: Guard — require GCP configuration
+        id: guard
+        run: |
+          if [ -z "${GCP_PROJECT_ID}" ]; then
+            echo "::warning::GCP_PROJECT_ID variable is not configured; skipping deploy job."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ]; then
+            echo "::warning::GCP_WORKLOAD_IDENTITY_PROVIDER secret is not configured; skipping deploy job."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}" ]; then
+            echo "::warning::GCP_DEPLOY_SERVICE_ACCOUNT secret is not configured; skipping deploy job."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        if: steps.guard.outputs.ready == 'true'
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        if: steps.guard.outputs.ready == 'true'
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Configure Docker auth for Artifact Registry
+        if: steps.guard.outputs.ready == 'true'
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        if: steps.guard.outputs.ready == 'true'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+
+      - name: Build and push image to Artifact Registry
+        if: steps.guard.outputs.ready == 'true'
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        with:
+          context: .
+          file: packages/relay-api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.environment }}-latest
+          cache-from: type=gha,scope=relay-api
+          cache-to: type=gha,mode=max,scope=relay-api
+
+      - name: Deploy to Cloud Run
+        if: steps.guard.outputs.ready == 'true'
+        uses: google-github-actions/deploy-cloudrun@251330ba9a8a34bfbc1622895f42e1d53fd14522 # v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          flags: |
+            --memory=512Mi
+            --cpu=1
+            --concurrency=80
+            --min-instances=0
+            --max-instances=10
+            --allow-unauthenticated
+
+      - name: Smoke test /health
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          URL=$(gcloud run services describe "${CLOUD_RUN_SERVICE}" \
+            --region="${GCP_REGION}" --format='value(status.url)')
+          echo "Deployed service URL: $URL"
+          for i in $(seq 1 30); do
+            if curl -fsS "${URL}/health" > /dev/null; then
+              echo "Smoke OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Smoke failed after 60s"
+          exit 1
