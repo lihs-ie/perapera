@@ -1,5 +1,8 @@
 import { defineConfig } from 'wxt';
 
+const relayBaseUrl = process.env.PERAPERA_RELAY_API_BASE_URL ?? 'http://localhost:3001';
+const relayAccessToken = process.env.PERAPERA_RELAY_ACCESS_TOKEN ?? '';
+
 // https://wxt.dev/api/config.html
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
@@ -25,10 +28,10 @@ export default defineConfig({
     ],
   },
   vite: () => ({
-    resolve: {
-      alias: {
-        '@': '/src',
-      },
+    resolve: { alias: { '@': '/src' } },
+    define: {
+      'import.meta.env.PERAPERA_RELAY_API_BASE_URL': JSON.stringify(relayBaseUrl),
+      'import.meta.env.PERAPERA_RELAY_ACCESS_TOKEN': JSON.stringify(relayAccessToken),
     },
   }),
   runner: {
