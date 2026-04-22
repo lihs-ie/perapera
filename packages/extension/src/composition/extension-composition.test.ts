@@ -127,8 +127,19 @@ describe('createExtensionApp (IMPL-500)', () => {
     expect(app.captureOrchestrator).toBeDefined();
     expect(app.audioFramePump).toBeDefined();
     expect(app.audioFramePump.activeCount()).toBe(0);
+    expect(app.orphanSessionCleanup).toBeDefined();
+    expect(app.orphanSessionCleanup.cleanup).toBeTypeOf('function');
     expect(app.transcriptAssembler).toBeDefined();
     expect(app.close).toBeTypeOf('function');
+  });
+
+  it('orphanSessionCleanup.cleanup resolves to recoveredCount 0 when IndexedDB is empty', async () => {
+    app = createExtensionApp(config, createTestPorts());
+    const result = await app.orphanSessionCleanup.cleanup();
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      expect(result.value.recoveredCount).toBe(0);
+    }
   });
 
   it('SessionRegistry starts empty', () => {
