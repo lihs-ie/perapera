@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.5.10'
+version: '0.5.11'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -22,18 +22,18 @@ author: 'Codex'
 
 ## 2. 現状サマリ (2026-04-22)
 
-| Phase | 範囲                                                      | 状態                                                 |
-| ----- | --------------------------------------------------------- | ---------------------------------------------------- |
-| 0     | 着手前合意 (IMPL-001〜005)                                | ✅ 完了                                              |
-| 1     | ドメイン層 (IMPL-101〜153)                                | ✅ 完了                                              |
-| 2     | アプリケーション層 (IMPL-200〜230)                        | ✅ 完了                                              |
-| 3     | 拡張 infrastructure (IMPL-300〜344)                       | ✅ 完了                                              |
-| 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                        |
-| 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                              |
-| 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)    |
-| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~90% (WorkletNodeFactory port + adapter 追加)     |
-| 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未) |
-| 7     | リリース / 運用整備                                       | ⚪ 未着手                                            |
+| Phase | 範囲                                                      | 状態                                                  |
+| ----- | --------------------------------------------------------- | ----------------------------------------------------- |
+| 0     | 着手前合意 (IMPL-001〜005)                                | ✅ 完了                                               |
+| 1     | ドメイン層 (IMPL-101〜153)                                | ✅ 完了                                               |
+| 2     | アプリケーション層 (IMPL-200〜230)                        | ✅ 完了                                               |
+| 3     | 拡張 infrastructure (IMPL-300〜344)                       | ✅ 完了                                               |
+| 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                         |
+| 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                               |
+| 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)     |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | 🟡 ~95% (MediaStream + AudioWorkletNode 接続まで配線) |
+| 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未)  |
+| 7     | リリース / 運用整備                                       | ⚪ 未着手                                             |
 
 ### Phase 5 拡張 presentation 層 内訳 (PR #47〜#53, 2026-04-22 時点)
 
@@ -291,7 +291,7 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - 3 新規 tests (addModule 呼び出し / rejection で warn + context 維持 / workletModuleUrl 未注入で skip)
 - 次の Step 2d-2 で MediaStream と AudioWorkletNode を接続 (MediaStreamAudioSourceNode 作成)
 
-#### Phase 5+ Step 2d-2a: WorkletNodeFactory port + adapter (✅ 完了, IMPL-615, 本 PR)
+#### Phase 5+ Step 2d-2a: WorkletNodeFactory port + adapter (✅ 完了, IMPL-615, PR #68)
 
 - 新規 `packages/extension/src/infrastructure/audio/worklet-node-factory.ts`
 - `AudioWorkletNodeLike` 型 (port.onmessage / connect / disconnect の minimal contract)
@@ -299,6 +299,17 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - `defaultWorkletNodeFactory` — `new AudioWorkletNode(context, processorName)` を wrap (production)
 - 3 unit tests (factory surface / port onmessage 代入可能 / disconnect 呼び出し)
 - 本 PR 時点では offscreen-audio-host からは呼ばれない (Step 2d-2b で MediaStream 接続と同時に配線)
+
+#### Phase 5+ Step 2d-2b: offscreen-audio-host で MediaStream + AudioWorkletNode 接続 (✅ 完了, IMPL-616, 本 PR)
+
+- `offscreen-audio-host.ts` に optional `workletNodeFactory` / `workletProcessorName` 依存追加
+- MediaStream 取得 + addModule 完了を Promise で同期 (addModule 失敗時は false 返して unhandled rejection 回避)
+- `context.createMediaStreamSource(mediaStream)` で SourceNode、`workletNodeFactory(context, 'perapera-audio-processor')` で WorkletNode を作成し、`source.connect(worklet)` で接続
+- close 時に source / worklet の disconnect → tracks stop → context close を順次実行
+- `hasWorkletConnected(sessionId)` API 追加 (test / smoke 用)
+- `offscreen/main.ts` で `defaultWorkletNodeFactory` を注入 (production wiring)
+- 2 新規 tests (MediaStream + WorkletNode 接続 / close で disconnect)
+- 残 Step 2d-3: worklet port.onmessage で frame を受信 → chrome.runtime.sendMessage で SW へ転送
 
 #### Phase 5+ Step 2: Offscreen MediaStream 受け取り + AudioPreprocessor 移管 (未着手, 規模大)
 
@@ -423,3 +434,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.5.8      | 2026-04-22 | IMPL-613 で Phase 5+ Step 2c (SW UseCase で streamId 解決 → offscreen に転送) を完了。`TabStreamIdResolver` port + `createChromeTabStreamIdResolver` adapter を追加し、`StartSourceSessionUseCase` の granted path で tab source のとき `overlayTarget.tabId` を使って streamId を解決、`offscreenCommandSender.openAudioContext` の `tabStreamId` に乗せる。失敗時は warn して streamId なしで継続 (後方互換)。composition で wiring、既存 test mock + 2 新規 contract tests。§2 Phase 5+ を ~80% → ~85% に。 |
 | 0.5.9      | 2026-04-22 | IMPL-614 で Phase 5+ Step 2d-1 (offscreen-audio-host で AudioWorklet module 読込) を完了。`OffscreenAudioHostDependencies` に optional `workletModuleUrl` を追加し、`audio.open` 受信で `context.audioWorklet.addModule(workletModuleUrl)` を呼ぶ。`offscreen/main.ts` で `chrome.runtime.getURL('/perapera-audio-processor.js')` を注入。3 新規 tests。§2 Phase 5+ を ~85% → ~88% に。                                                                                                                        |
 | 0.5.10     | 2026-04-22 | IMPL-615 で Phase 5+ Step 2d-2a (WorkletNodeFactory port + adapter) を完了。`AudioWorkletNodeLike` 型 (port.onmessage / connect / disconnect) + `WorkletNodeFactory` port + `defaultWorkletNodeFactory` (`new AudioWorkletNode` wrap) を追加。3 unit tests。本 PR 時点では offscreen-audio-host から未配線 (Step 2d-2b で MediaStream 接続と同時に接続)。§2 Phase 5+ を ~88% → ~90% に。                                                                                                                       |
+| 0.5.11     | 2026-04-22 | IMPL-616 で Phase 5+ Step 2d-2b (offscreen-audio-host で MediaStream + AudioWorkletNode 接続) を完了。`workletNodeFactory` 依存追加、`createMediaStreamSource(mediaStream)` + `workletNodeFactory(ctx, name)` + `source.connect(worklet)` の audio graph 構築を実装。addModule 失敗時は Promise<boolean> で resolve (unhandled rejection 回避)。close 時に disconnect → tracks stop → context close。`offscreen/main.ts` で `defaultWorkletNodeFactory` を注入。2 新規 tests。§2 Phase 5+ を ~90% → ~95% に。  |

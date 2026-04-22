@@ -1,5 +1,6 @@
 import { defaultAudioContextFactory } from '../../infrastructure/audio/audio-preprocessor';
 import { defaultTabStreamApi } from '../../infrastructure/audio/tab-stream-api';
+import { defaultWorkletNodeFactory } from '../../infrastructure/audio/worklet-node-factory';
 import { createOffscreenAudioHost } from './offscreen-audio-host';
 import { parseOffscreenCommand } from './offscreen-commands';
 
@@ -31,6 +32,7 @@ const host = createOffscreenAudioHost({
   audioContextFactory: defaultAudioContextFactory,
   tabStreamApi: defaultTabStreamApi,
   workletModuleUrl: WORKLET_MODULE_URL,
+  workletNodeFactory: defaultWorkletNodeFactory,
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

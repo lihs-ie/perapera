@@ -3,13 +3,14 @@ import { type AudioContextLike } from './audio-preprocessor';
 /**
  * IMPL-615 AudioWorkletNode abstraction (offscreen 側 port)。
  *
- * `AudioWorkletNode` の最小 contract。実装側で必要な property のみを列挙し、
- * test で minimal stub を注入できるようにする。production の
- * `AudioWorkletNode` は structurally に本 interface を満たす。
+ * `AudioWorkletNode` の最小 contract。production の `AudioWorkletNode` は
+ * structurally に本 interface を満たす。
  *
  * - `port.onmessage`: worklet processor からの postMessage を受ける
  *   (次 Step 2d-3 で frame 受信 callback を設定)
- * - `connect` / `disconnect`: MediaStreamAudioSourceNode 等の destination に接続
+ * - `connect` / `disconnect`: audio graph の接続 / 切断
+ *
+ * 接続は offscreen-audio-host 内の安全な wrapper (`unknown` 経由) で行う。
  */
 export type AudioWorkletNodeLike = {
   readonly port: Readonly<{
