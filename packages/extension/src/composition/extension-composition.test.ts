@@ -41,6 +41,7 @@ const createTestPorts = (overrides: Partial<ExtensionRuntimePorts> = {}): Extens
   const storage = overrides.chromeStorageAdapter ?? createFakeStorage();
   return {
     chromePermissionsApi: {
+      contains: vi.fn(() => Promise.resolve(true)),
       request: vi.fn(() => Promise.resolve(true)),
     },
     chromeStorageAdapter: storage,
@@ -198,7 +199,10 @@ describe('createExtensionApp (IMPL-500)', () => {
 
     const ports = createTestPorts({
       chromeStorageAdapter: storage,
-      chromePermissionsApi: { request: vi.fn(() => Promise.resolve(false)) },
+      chromePermissionsApi: {
+        contains: vi.fn(() => Promise.resolve(false)),
+        request: vi.fn(() => Promise.resolve(false)),
+      },
     });
     app = createExtensionApp(config, ports);
     const result = await app.sessionCommandService.startSource({
