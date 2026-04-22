@@ -90,9 +90,24 @@ export const createStopSourceSessionUseCase = (
               void deps.overlayPresenter
                 .unmount(sessionIdentifier)
                 .match(() => undefined, logWarn('overlayPresenter.unmount'));
-              void deps.offscreenCommandSender
-                .closeAudioContext(sessionIdentifier)
-                .match(() => undefined, logWarn('offscreenCommandSender.closeAudioContext'));
+              void deps.offscreenCommandSender.closeAudioContext(sessionIdentifier).match(
+                () => undefined,
+                (error) => {
+                  // Offscreen が既に unload されているケース (SW 側で teardown
+                  // 中に開始前停止した場合など) は意味的に no-op (閉じる対象が
+                  // 存在しない) ので warn しない。Chrome runtime は receiver
+                  // 不在時に "Could not establish connection. Receiving end
+                  // does not exist." を throw する。
+                  if (
+                    error.kind === 'invariant-violation' &&
+                    error.invariant === 'chrome-runtime-message-bridge' &&
+                    /receiving end does not exist/i.test(error.details)
+                  ) {
+                    return;
+                  }
+                  logWarn('offscreenCommandSender.closeAudioContext')(error);
+                },
+              );
               return {
                 sessionId: stopped.sessionIdentifier,
                 state: stopped.state,

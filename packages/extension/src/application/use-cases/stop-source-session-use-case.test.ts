@@ -193,6 +193,82 @@ describe('createStopSourceSessionUseCase (IMPL-215, DD-306)', () => {
     expect(result.isOk()).toBe(true);
   });
 
+  it('suppresses closeAudioContext warn when offscreen receiver is already gone (teardown race)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {
+      /* swallow */
+    });
+    try {
+      const deps = buildDependencies({
+        offscreenCommandSender: {
+          openAudioContext: vi.fn(() => okAsync<void, DomainError>(undefined)),
+          closeAudioContext: vi.fn(() =>
+            errAsync<void, DomainError>(
+              invariantViolationError({
+                invariant: 'chrome-runtime-message-bridge',
+                details: 'Could not establish connection. Receiving end does not exist.',
+              }),
+            ),
+          ),
+          ping: vi.fn(() => okAsync<void, DomainError>(undefined)),
+        },
+      });
+      const useCase = createStopSourceSessionUseCase(deps);
+      const result = await useCase({ sessionId: SESSION_ID });
+      // fire-and-forget の match は microtask で評価されるため、microtask を
+      // 1 周 flush してからログを検査する。
+      await new Promise<void>((resolve) => {
+        queueMicrotask(resolve);
+      });
+      expect(result.isOk()).toBe(true);
+      const closeAudioContextWarned = warnSpy.mock.calls.some((call) =>
+        call.some(
+          (arg) =>
+            typeof arg === 'string' && arg.includes('offscreenCommandSender.closeAudioContext'),
+        ),
+      );
+      expect(closeAudioContextWarned).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('still warns on closeAudioContext errors not matching the teardown pattern', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {
+      /* swallow */
+    });
+    try {
+      const deps = buildDependencies({
+        offscreenCommandSender: {
+          openAudioContext: vi.fn(() => okAsync<void, DomainError>(undefined)),
+          closeAudioContext: vi.fn(() =>
+            errAsync<void, DomainError>(
+              invariantViolationError({
+                invariant: 'offscreen-audio-host',
+                details: 'AudioContext unexpectedly throws on close',
+              }),
+            ),
+          ),
+          ping: vi.fn(() => okAsync<void, DomainError>(undefined)),
+        },
+      });
+      const useCase = createStopSourceSessionUseCase(deps);
+      const result = await useCase({ sessionId: SESSION_ID });
+      await new Promise<void>((resolve) => {
+        queueMicrotask(resolve);
+      });
+      expect(result.isOk()).toBe(true);
+      const closeAudioContextWarned = warnSpy.mock.calls.some((call) =>
+        call.some(
+          (arg) =>
+            typeof arg === 'string' && arg.includes('offscreenCommandSender.closeAudioContext'),
+        ),
+      );
+      expect(closeAudioContextWarned).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('propagates save errors as conflict application errors', async () => {
     const deps = buildDependencies({
       sourceSessionRepository: {
