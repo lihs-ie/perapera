@@ -1,5 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
-import { ulid } from 'ulid';
+import { ulid } from 'ulidx';
 import { z } from 'zod';
 import { type DomainError, validationError } from '../shared/errors';
 
