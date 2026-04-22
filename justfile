@@ -74,6 +74,9 @@ e2e:
 perf-sessions:
     k6 run packages/relay-api/perf/scenarios/create-session.js
 
+perf-ws:
+    k6 run packages/relay-api/perf/scenarios/ws-relay.js
+
 # -- Docker（ローカル検証） --
 
 docker-build-relay:

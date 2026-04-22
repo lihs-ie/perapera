@@ -28,7 +28,7 @@ export default function () {
     client: { extensionVersion: '0.0.0', protocolVersion: '1.0' },
   });
 
-  const response = http.post(`${BASE_URL}/api/v1/sessions`, payload, {
+  const response = http.post(`${BASE_URL}/sessions`, payload, {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${ACCESS_TOKEN}`,
