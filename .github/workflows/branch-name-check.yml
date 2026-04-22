@@ -27,10 +27,12 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          pattern='^(feat|fix|refactor|chore|docs|test|perf|ci|deps|infra|release|hotfix)/[a-z0-9._-]+$'
+          # Dependabot は dependabot/<ecosystem>/<package> 形式の branch を
+          # 自動生成するため、規約外でも allow する。
+          pattern='^(feat|fix|refactor|chore|docs|test|perf|ci|deps|infra|release|hotfix)/[a-z0-9._-]+$|^dependabot/.+$'
           if [[ ! "$BRANCH" =~ $pattern ]]; then
             echo "::error title=Invalid branch name::Branch '$BRANCH' does not match convention"
-            echo "Expected: <type>/<description> where"
+            echo "Expected: <type>/<description> or dependabot/<ecosystem>/... where"
             echo "  type = feat | fix | refactor | chore | docs | test | perf | ci | deps | infra | release | hotfix"
             echo "  description = [a-z0-9._-]+"
             exit 1

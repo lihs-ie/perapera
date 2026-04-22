@@ -1,0 +1,41 @@
+name: Dependency Audit
+
+# IMPL-630: pnpm audit を weekly schedule + 依存更新 PR + 手動実行で回し、
+# 既知脆弱性 (moderate 以上) を早期検出する。Dependabot (.github/dependabot.yml)
+# と組み合わせて運用する。
+#
+# - schedule: 毎週月曜 10:00 UTC (Asia/Tokyo 19:00)
+# - pull_request: 依存ファイル変更時のみ (pnpm-lock / package.json)
+# - workflow_dispatch: 手動実行
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - 'packages/*/package.json'
+      - '.github/workflows/audit.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pnpm-audit:
+    name: pnpm audit (moderate+)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Audit (workspace root, moderate+)
+        run: pnpm audit --audit-level moderate
