@@ -82,6 +82,7 @@ describe('createFetchStreamTokenIssuer (IMPL-319, DD-401)', () => {
       expect(result.value).toEqual({
         streamToken: 'jwt.stream.token',
         relayUrl: 'wss://relay.test/relay',
+        sessionId: SESSION_ID,
       });
     }
     expect(capturedRequests).toHaveLength(1);

@@ -17,16 +17,22 @@ import { type WebSocketFactory, type WebSocketLike } from './websocket-factory';
 
 /**
  * Stream token 発行器の結果。`POST /sessions` レスポンス (api-specification.md
- * §4.2) から `streamToken` と `relayUrl` の 2 値を抽出する。
+ * §4.2) から `streamToken` / `relayUrl` / `sessionId` の 3 値を抽出する。
  *
- * `relayUrl` は Relay API 側が環境ごとに提示する WS 接続先 (例:
- * `ws://localhost:3001/relay`)。extension 側で path を組み立てずに
- * そのまま使うことで SSOT (docs) と impl の path prefix drift (`/api/v1` 有無)
- * を吸収する。
+ * - `streamToken`: WS upgrade の Authorization 代替 token
+ * - `relayUrl`: Relay API が環境ごとに提示する WS 接続先 (例:
+ *   `ws://localhost:3001/relay`)。extension 側で path を組み立てずにそのまま
+ *   使うことで SSOT (docs) と impl の path prefix drift (`/api/v1` 有無) を吸収
+ * - `sessionId`: Relay が発行した session 識別子。WS URL の `?sessionId=` に
+ *   使う (token の `sub` claim と一致するため `validateSessionIdMatch` を通過
+ *   できる)。extension の local `SourceSession.sessionIdentifier` とは独立した
+ *   ULID。extension 側は local id を内部 routing key に使い続けるが、Relay と
+ *   の contract 用には本 field を使う
  */
 export type StreamTokenIssuerResult = Readonly<{
   streamToken: string;
   relayUrl: string;
+  sessionId: string;
 }>;
 
 /**
@@ -49,14 +55,14 @@ export type RelayWebSocketGatewayDependencies = Readonly<{
    */
   protocolVersion: string;
   /**
-   * Relay から返された `relayUrl` (ws:// or wss://) と streamToken / sessionId /
-   * protocolVersion から実 WebSocket URL を組み立てる。default は
-   * `${relayUrl}?token=<jwt>&sessionId=<ulid>&protocolVersion=<ver>` で、
+   * Relay から返された `relayUrl` / `serverSessionId` (token.sub 一致) /
+   * streamToken / protocolVersion から実 WebSocket URL を組み立てる。default は
+   * `${relayUrl}?token=<jwt>&sessionId=<serverSessionId>&protocolVersion=<ver>` で、
    * 相対 path や追加 query を本番で override したい場合のみ注入する。
    */
   wsEndpointBuilder?: (params: {
     relayUrl: string;
-    sessionIdentifier: SessionIdentifier;
+    serverSessionId: string;
     streamToken: string;
     protocolVersion: string;
   }) => string;
@@ -69,12 +75,12 @@ export type RelayWebSocketGatewayDependencies = Readonly<{
 
 const defaultWsEndpointBuilder = (params: {
   relayUrl: string;
-  sessionIdentifier: SessionIdentifier;
+  serverSessionId: string;
   streamToken: string;
   protocolVersion: string;
 }): string => {
   const separator = params.relayUrl.includes('?') ? '&' : '?';
-  return `${params.relayUrl}${separator}token=${encodeURIComponent(params.streamToken)}&sessionId=${encodeURIComponent(params.sessionIdentifier)}&protocolVersion=${encodeURIComponent(params.protocolVersion)}`;
+  return `${params.relayUrl}${separator}token=${encodeURIComponent(params.streamToken)}&sessionId=${encodeURIComponent(params.serverSessionId)}&protocolVersion=${encodeURIComponent(params.protocolVersion)}`;
 };
 
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000 as const;
@@ -168,12 +174,12 @@ export const createRelayWebSocketGateway = (
   return {
     openSession: (session) =>
       deps.tokenIssuer(session).andThen(
-        ({ streamToken, relayUrl }): ResultAsync<void, DomainError> =>
+        ({ streamToken, relayUrl, sessionId }): ResultAsync<void, DomainError> =>
           ResultAsync.fromPromise<void, DomainError>(
             new Promise<void>((resolve, reject) => {
               const url = wsEndpointBuilder({
                 relayUrl,
-                sessionIdentifier: session.sessionIdentifier,
+                serverSessionId: sessionId,
                 streamToken,
                 protocolVersion: deps.protocolVersion,
               });

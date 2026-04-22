@@ -13,6 +13,7 @@ import type { WebSocketLike } from './websocket-factory';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const SOURCE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7B1';
+const SERVER_SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7C2';
 const STREAM_TOKEN = 'stream-token-xxx';
 const RELAY_URL = 'wss://relay.example/relay';
 
@@ -119,7 +120,9 @@ const buildDependencies = (
     createdSockets.push(socket);
     return socket;
   });
-  const tokenIssuer = vi.fn(() => okAsync({ streamToken: STREAM_TOKEN, relayUrl: RELAY_URL }));
+  const tokenIssuer = vi.fn(() =>
+    okAsync({ streamToken: STREAM_TOKEN, relayUrl: RELAY_URL, sessionId: SERVER_SESSION_ID }),
+  );
   const clock = vi.fn(() => Date.parse('2026-04-21T00:00:00.000Z'));
 
   return Object.assign(
@@ -142,7 +145,7 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
   });
 
   describe('openSession', () => {
-    it('uses the relayUrl returned by tokenIssuer to open the WebSocket', async () => {
+    it('uses the Relay-issued sessionId (not extension local id) in the WS URL', async () => {
       const deps = buildDependencies();
       const gateway = createRelayWebSocketGateway(deps);
       const resultPromise = gateway.openSession(buildSession());
@@ -153,7 +156,9 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       const urlArg = deps.createdUrls[0] ?? '';
       expect(urlArg).toContain(RELAY_URL);
       expect(urlArg).toContain(`token=${STREAM_TOKEN}`);
-      expect(urlArg).toContain(`sessionId=${SESSION_ID}`);
+      // sessionId in URL must match token.sub (Relay-issued), not extension local id
+      expect(urlArg).toContain(`sessionId=${SERVER_SESSION_ID}`);
+      expect(urlArg).not.toContain(`sessionId=${SESSION_ID}`);
       expect(urlArg).toContain('protocolVersion=1.0');
     });
 
@@ -161,11 +166,11 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       const customBuilder = vi.fn(
         (params: {
           relayUrl: string;
-          sessionIdentifier: string;
+          serverSessionId: string;
           streamToken: string;
           protocolVersion: string;
         }) =>
-          `${params.relayUrl}/custom?t=${params.streamToken}&s=${params.sessionIdentifier}&v=${params.protocolVersion}`,
+          `${params.relayUrl}/custom?t=${params.streamToken}&s=${params.serverSessionId}&v=${params.protocolVersion}`,
       );
       const deps = buildDependencies({ wsEndpointBuilder: customBuilder });
       const gateway = createRelayWebSocketGateway(deps);
@@ -175,12 +180,12 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       await resultPromise;
       expect(customBuilder).toHaveBeenCalledWith({
         relayUrl: RELAY_URL,
-        sessionIdentifier: sessionIdentifier,
+        serverSessionId: SERVER_SESSION_ID,
         streamToken: STREAM_TOKEN,
         protocolVersion: '1.0',
       });
       expect(deps.createdUrls[0]).toBe(
-        `${RELAY_URL}/custom?t=${STREAM_TOKEN}&s=${SESSION_ID}&v=1.0`,
+        `${RELAY_URL}/custom?t=${STREAM_TOKEN}&s=${SERVER_SESSION_ID}&v=1.0`,
       );
     });
 

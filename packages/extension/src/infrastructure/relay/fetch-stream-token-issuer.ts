@@ -160,6 +160,7 @@ export const createFetchStreamTokenIssuer = (
         return okAsync<StreamTokenIssuerResult, DomainError>({
           streamToken: parsed.data.data.streamToken,
           relayUrl: parsed.data.data.relayUrl,
+          sessionId: parsed.data.data.sessionId,
         });
       });
   };
