@@ -1,6 +1,6 @@
 ---
 title: 実装ロードマップ
-version: '0.4.3'
+version: '0.5.0'
 status: in-progress
 created: '2026-04-21'
 last_updated: '2026-04-22'
@@ -11,21 +11,29 @@ author: 'Codex'
 
 ## 1. 位置付け
 
-本文書は [`Task.md`](./Task.md) (実装タスクの全量カタログ) を補完する、**前進方向の優先順位付け** である。作業順・直近 PR・未決事項・方針原則をまとめる。カタログと本ロードマップでステータスが食い違った場合は `Task.md` の記述を正とする。
+本文書は [`Task.md`](./Task.md) (実装タスクの全量カタログ) を補完する、**前進方向の優先順位付け** である。作業順・直近 PR・未決事項・方針原則をまとめる。
+
+**IMPL 番号の運用方針**:
+
+- `Task.md` は設計時点のプランで、Phase 5 = `IMPL-500〜541`、Phase 6 = `IMPL-600〜619` が予約されている
+- 本 roadmap では `IMPL-500/501/502` → `IMPL-510〜553` (Popup/SidePanel) → `IMPL-554〜558` (Content overlay) → `IMPL-560〜564` (Offscreen/Monitor) → `IMPL-590/591` (tokens) → `IMPL-600〜605` (integration/audio/cleanup/E2E) と段階的に実装してきた
+- 結果として **roadmap で使う `IMPL-600〜605` は Task.md の Phase 6 番号 (IMPL-600〜608) と衝突する** が、commit/PR タイトル・コミットメッセージとの一貫性を保つために本 roadmap の番号を維持する
+- **現実装の状態は本 roadmap を正とする**。`Task.md` の Phase 5/6 セクションは設計時点の予定として保持するが、実装後の整理は本 roadmap §2/§4/§6 に集約する
 
 ## 2. 現状サマリ (2026-04-22)
 
-| Phase | 範囲                                       | 状態                                                   |
-| ----- | ------------------------------------------ | ------------------------------------------------------ |
-| 0     | 着手前合意 (IMPL-001〜005)                 | ✅ 完了                                                |
-| 1     | ドメイン層 (IMPL-101〜153)                 | ✅ 完了                                                |
-| 2     | アプリケーション層 (IMPL-200〜230)         | ✅ 完了                                                |
-| 3     | 拡張 infrastructure (IMPL-300〜344)        | ✅ 完了                                                |
-| 3.5   | Domain Repository Adapters (IMPL-140〜143) | ✅ 完了 (#45)                                          |
-| 4     | Relay API (IMPL-400〜451)                  | ✅ 完了                                                |
-| 5     | 拡張 presentation 層 (IMPL-500〜604)       | 🟡 ~95% (残 SW→Offscreen audio command + AudioWorklet) |
-| 6     | E2E / 性能 / 品質検証                      | 🟡 開始 (popup/sidepanel page render smoke 完了)       |
-| 7     | リリース / 運用整備                        | ⚪ 未着手                                              |
+| Phase | 範囲                                                      | 状態                                                 |
+| ----- | --------------------------------------------------------- | ---------------------------------------------------- |
+| 0     | 着手前合意 (IMPL-001〜005)                                | ✅ 完了                                              |
+| 1     | ドメイン層 (IMPL-101〜153)                                | ✅ 完了                                              |
+| 2     | アプリケーション層 (IMPL-200〜230)                        | ✅ 完了                                              |
+| 3     | 拡張 infrastructure (IMPL-300〜344)                       | ✅ 完了                                              |
+| 3.5   | Domain Repository Adapters (IMPL-140〜143)                | ✅ 完了 (#45)                                        |
+| 4     | Relay API (IMPL-400〜451)                                 | ✅ 完了                                              |
+| 5     | 拡張 presentation 層 (IMPL-500〜605)                      | ✅ M2 完了 (実 audio data 転送は Phase 5+ へ分離)    |
+| 5+    | Audio data routing (AudioWorklet + offscreen MediaStream) | ⚪ 未着手 (§4 PR 次 #12)                             |
+| 6     | E2E / 性能 / 品質検証                                     | 🟡 開始 (page render smoke 4/5 完了, golden path 未) |
+| 7     | リリース / 運用整備                                       | ⚪ 未着手                                            |
 
 ### Phase 5 拡張 presentation 層 内訳 (PR #47〜#53, 2026-04-22 時点)
 
@@ -46,12 +54,14 @@ Phase 5 M2 (unpacked 拡張で実機動作) の foundation が揃った。
 **ホットパス完全接続**: Popup → SW → Relay WebSocket → SessionCommandService →
 HandleTranscript UseCase → OverlayPresenter → Shadow DOM 描画
 
-**残タスク** (Phase 5 完了へ):
+**追加完了** (PR #54〜#57):
 
-- Audio frame pipeline (`captureOrchestrator.frames` → `relayGateway.sendAudioFrame` の実データ転送)
-- SW → offscreen audio.open / audio.close コマンド送信
-- WXT zip 配布 smoke (`pnpm --filter @perapera/extension zip`)
-- Session recovery on SW restart (IndexedDB から active session を読み戻して再 subscribe)
+- IMPL-602 Audio frame pipeline (`audioFramePump`: `captureOrchestrator.frames` → `relayGateway.sendAudioFrame` の SW 内 drain) (PR #54)
+- IMPL-603 Orphan session cleanup on SW restart (`stopSourceSession` で active を stopped 化) (PR #55)
+- IMPL-604 popup/sidepanel page render smoke E2E + WXT zip 認識更新 (PR #56)
+- IMPL-605 monitor page render smoke E2E (PR #57)
+
+**Phase 5 完了基準**: Phase 5 M2 (`wxt dev` で unpacked 拡張 → UI 動作 → ホットパス配線) は **達成**。残るのは MV3 制約下での **実 audio data 転送** (AudioWorklet + offscreen MediaStream 受け取り、§4 PR 次 #12 で扱う、規模大) のみ。
 
 ### Phase 3.5 Domain Repository Adapters 内訳 (PR #45, 完了 2026-04-22)
 
@@ -190,13 +200,32 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 >
 > 1. (済) `smoke.spec.ts` — Service Worker 登録確認 (PR #47 時点で配線)
 > 2. (済) `popup.spec.ts` / `sidepanel.spec.ts` — Popup / SidePanel ページの React render 確認 (PR #56, IMPL-604)
-> 3. (済) `monitor.spec.ts` — Monitor ページ (web_accessible_resources) の React render 確認 (本 PR, IMPL-605)
+> 3. (済) `monitor.spec.ts` — Monitor ページ (web_accessible_resources) の React render 確認 (PR #57, IMPL-605)
 > 4. (未) `tab-capture-translation.spec.ts` — golden path: Popup から start → Relay mock → translation overlay 描画
 > 5. (未) `permission-denied.spec.ts` — permission denied → error state 表示
 
 - 範囲: `packages/extension/e2e/specs/`
 - 依存: なし (各 spec 独立)
 - 検証: CI `e2e` job (xvfb-run via Playwright) で全 spec pass
+
+### PR (次) #12 — Audio data routing (AudioWorklet + Offscreen MediaStream) (L, 規模大)
+
+> Phase 5+ の本丸。MV3 Service Worker は `MediaStream` / `AudioContext` を直接扱えないため、
+> capture と前処理を offscreen 側に移し、実 PCM16 フレームを `audioFramePump` 経由で
+> Relay まで流す。Plan mode で設計した上で着手する。
+
+- **新規実装**:
+  - `packages/extension/public/audio-worklet.js` — AudioWorklet processor (mono 化 + 16kHz 再サンプル + 100ms バッファ → postMessage)
+  - `application/services/offscreen-command-sender.ts` — SW → offscreen `audio.open` / `audio.close` 送信
+  - `infrastructure/audio/offscreen-audio-preprocessor.ts` — offscreen 側で `getUserMedia({chromeMediaSource: 'tab'})` + AudioWorklet 起動 + AsyncIterable<AudioFrameEnvelope> を SW へ転送
+- **既存改修**:
+  - `infrastructure/capture/tab-capture-source-adapter.ts` — `chrome.tabCapture.getMediaStreamId({targetTabId})` を返す形に変更 (実 MediaStream は offscreen 側で確保)
+  - `application/services/capture-orchestrator.ts` — SourceAdapter から streamId を受け取り offscreen に audio.open 送信
+  - `entrypoints/offscreen/main.ts` — audio.open ハンドラで MediaStream + Worklet を起動、frame を SW に postMessage
+  - `extension-composition.ts` — offscreen-command-sender wiring
+- **検証**: vitest + 手動 unpacked smoke
+- **依存**: なし (PR #54 frame pump が既に SW 側で受信側を持っている)
+- **複雑性**: Plan mode で MV3 制約・MediaStream 受け渡し方式・worklet ビルド設定を慎重に設計する必要
 
 ## 5. Phase 4 完了基準 (M1) — 2026-04-22 達成
 
@@ -206,12 +235,12 @@ PR #47 時点で `wxt zip` script + CI `build-extension` job の `WXT zip` step 
 - [ ] 性能テスト (k6 / TST-NF-004) で SLO (WebSocket 3000ms / STT 1000ms / 翻訳 800ms) を確認 — Phase 6 へ
 - [ ] Docker image ビルド + Cloud Run local emulator で起動確認 — Phase 7 へ
 
-## 6. Phase 5 拡張 presentation 層 (M2 進行中)
+## 6. Phase 5 拡張 presentation 層 (M2 ✅ 達成)
 
 PR #45 で domain repository adapter が揃ったため、Background composition root から
-全 infrastructure を DI 注入可能になった。本 Phase で順次実装する 8 項目の進捗:
+全 infrastructure を DI 注入可能になった。本 Phase で順次実装した 8 項目 + 拡張作業:
 
-**マイルストン (M2)** — `wxt dev` で unpacked 拡張起動 → 手動で tab / mic / desktop ソース作成 → 翻訳オーバーレイが描画される:
+**マイルストン (M2)** — `wxt dev` で unpacked 拡張起動 → 手動で tab / mic / desktop ソース作成 → 翻訳オーバーレイが描画される (実 audio data なしのフレーム接続まで):
 
 1. [x] Background service worker: `SessionCommandService` 配線 (PR #47)
 2. [x] Popup UI: ソース追加・開始・設定 (PR #48)
@@ -228,12 +257,22 @@ PR #45 で domain repository adapter が揃ったため、Background composition
 - `captureOrchestrator.connect` を start UseCase で呼び出し、`relaySessionSubscriber.start` と合わせて配線
 - SW 起動時に `chrome.offscreen.createDocument` を ensure (`OffscreenLifecycle` helper)
 
-**Phase 5 残タスク (§4 PR 次 #7〜#10)**:
+**Phase 5 拡張作業 (PR #54〜#57)**:
 
 - [x] IMPL-602 Audio frame pipeline: `captureOrchestrator.frames` → `relayGateway.sendAudioFrame` (PR #54)
 - [x] IMPL-603 Orphan session cleanup on SW restart: `stopSourceSession` で全 active を stopped 化 (PR #55)
-- [x] WXT zip 配布 smoke (PR #47 時点で `wxt zip` + CI extension-zip artifact 配線済 — 本 PR で認識更新)
-- [ ] SW → Offscreen audio.open / audio.close コマンド送信 (AudioWorklet + offscreen preprocessor と同時)
+- [x] WXT zip 配布 smoke (PR #47 時点で `wxt zip` + CI extension-zip artifact 配線済、PR #56 で認識更新)
+- [x] IMPL-604 popup/sidepanel page render smoke E2E (PR #56)
+- [x] IMPL-605 monitor page render smoke E2E (PR #57)
+
+**Phase 5 完了**: 全 UI 層 + integration 配線 + frame pump 骨組み + page render smoke E2E が揃った。
+
+**Phase 5+ (Audio data routing) として分離した残作業** — §4 PR 次 #12 で扱う:
+
+- AudioWorklet 実装 (`audio-worklet.js`) で `MediaStream` → 100ms PCM16 フレーム化
+- SW → offscreen `audio.open` / `audio.close` コマンド送信 service
+- Offscreen 側 AudioPreprocessor ホスト化 (MediaStream 取得は `chrome.tabCapture.getMediaStreamId` → offscreen 側で `getUserMedia`)
+- これで実 audio data が relay まで流れる (現状 stub の empty frame channel を実装に差し替え)
 
 依存: Phase 4 の Relay API が develop 上で動作中 (完了)、Phase 3 infrastructure adapter および Phase 3.5 repository adapter が揃っている (完了)。
 
@@ -291,3 +330,4 @@ Phase 4 で D1 / D2 を消化、D4 は設計書方針を明示的に確認。残
 | 0.4.1      | 2026-04-22 | IMPL-602 Audio frame pipeline (PR #54) と IMPL-603 Orphan session cleanup (PR #55) の完了を反映。§10 "Background 多重起動時のセッション継続" 論点を "stopped 遷移" 方針でクローズ (full restore は MV3 permission 制約で MVP 外)。                                                                                                                                                                                          |
 | 0.4.2      | 2026-04-22 | IMPL-604 で Phase 6 E2E に `popup.spec.ts` / `sidepanel.spec.ts` を追加 (chrome-extension URL 直接 load → React root render 確認)。§6 M2 checklist 8 (WXT zip 配布) は実は PR #47 で達成済だったため認識を更新し M2 完了。Phase 5 残作業は SW→Offscreen audio command + AudioWorklet 実装のみ。                                                                                                                             |
 | 0.4.3      | 2026-04-22 | IMPL-605 で Phase 6 E2E に `monitor.spec.ts` を追加 (Monitor page も `web_accessible_resources` 経由で render smoke 検証)。これで chrome-extension URL 直接 load 可能な全 entrypoint (popup / sidepanel / monitor) を E2E で網羅。                                                                                                                                                                                          |
+| 0.5.0      | 2026-04-22 | Phase 5 を **M2 完了** として正式にクローズし、実 audio data routing を **Phase 5+ として分離**。§1 に IMPL 番号運用方針 (Task.md 予約番号との衝突を本 roadmap で吸収する旨) を追記。§4 に PR 次 #12 (AudioWorklet + Offscreen MediaStream) を追加し、Plan mode で慎重設計する旨を明記。§2 状態表に Phase 5+ 行を追加。                                                                                                     |
