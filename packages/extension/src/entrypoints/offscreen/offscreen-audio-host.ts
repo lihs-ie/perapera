@@ -43,6 +43,15 @@ export type OffscreenAudioHostDependencies = Readonly<{
    * MediaStream を解決する。未指定の場合は tabStreamId を無視 (後方互換)。
    */
   tabStreamApi?: TabStreamApi;
+  /**
+   * Optional。指定されたとき、AudioContext 作成直後に
+   * `audioWorklet.addModule(workletModuleUrl)` を呼び出し、
+   * `perapera-audio-processor` を register する。後続 step で
+   * `AudioWorkletNode` を接続するための前段 (IMPL-614)。
+   *
+   * 未指定の場合は addModule を呼ばない (後方互換)。
+   */
+  workletModuleUrl?: string;
   /** 操作のログ sink。既定は console */
   logger?: Readonly<{
     debug: (message: string) => void;
@@ -155,6 +164,23 @@ export const createOffscreenAudioHost = (
       logger.debug(
         `[perapera] offscreen-audio-host opened AudioContext for ${sessionIdentifier} (sampleRate=${String(context.sampleRate)})`,
       );
+      if (deps.workletModuleUrl !== undefined) {
+        const moduleUrl = deps.workletModuleUrl;
+        void context.audioWorklet.addModule(moduleUrl).then(
+          () => {
+            logger.debug(
+              `[perapera] offscreen-audio-host registered AudioWorklet module for ${sessionIdentifier}: ${moduleUrl}`,
+            );
+          },
+          (cause: unknown) => {
+            logger.warn(
+              `[perapera] offscreen-audio-host addModule failed for ${sessionIdentifier}: ${
+                cause instanceof Error ? cause.message : String(cause)
+              }`,
+            );
+          },
+        );
+      }
       if (tabStreamId !== undefined) {
         attachMediaStream(sessionIdentifier, tabStreamId);
       }
