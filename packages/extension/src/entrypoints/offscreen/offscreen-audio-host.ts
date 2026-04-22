@@ -3,6 +3,10 @@ import {
   type AudioContextLike,
 } from '../../infrastructure/audio/audio-preprocessor';
 import { type TabStreamApi } from '../../infrastructure/audio/tab-stream-api';
+import {
+  type AudioWorkletNodeLike,
+  type WorkletNodeFactory,
+} from '../../infrastructure/audio/worklet-node-factory';
 import { describeDomainError } from '../../domain/shared/errors';
 import { type SessionIdentifier } from '../../domain/session/session-identifier';
 import { type OffscreenCommand } from './offscreen-commands';
@@ -32,6 +36,8 @@ export type OffscreenAudioHost = Readonly<{
   has: (sessionIdentifier: SessionIdentifier) => boolean;
   /** sessionId に対する MediaStream が現在確保されているか (test/smoke 用) */
   hasStream: (sessionIdentifier: SessionIdentifier) => boolean;
+  /** sessionId に対する AudioWorkletNode が接続済か (test/smoke 用, IMPL-616) */
+  hasWorkletConnected: (sessionIdentifier: SessionIdentifier) => boolean;
   /** 登録中の全 AudioContext + MediaStream を破棄 (entry shutdown 用) */
   dispose: () => void;
 }>;
@@ -52,6 +58,17 @@ export type OffscreenAudioHostDependencies = Readonly<{
    * 未指定の場合は addModule を呼ばない (後方互換)。
    */
   workletModuleUrl?: string;
+  /**
+   * Optional。`tabStreamApi` + `workletModuleUrl` と揃って注入された場合、
+   * addModule 完了 + MediaStream 取得後に本 factory で AudioWorkletNode を
+   * 作成し、`MediaStreamAudioSourceNode.connect(workletNode)` で接続する
+   * (IMPL-616)。frame port.onmessage の配線は後続 step で実装。
+   *
+   * 未指定の場合は MediaStream だけを保持 (後方互換)。
+   */
+  workletNodeFactory?: WorkletNodeFactory;
+  /** Worklet processor 名 (default `'perapera-audio-processor'`) */
+  workletProcessorName?: string;
   /** 操作のログ sink。既定は console */
   logger?: Readonly<{
     debug: (message: string) => void;
@@ -69,11 +86,51 @@ const DEFAULT_LOGGER = {
 };
 
 const DEFAULT_SAMPLE_RATE = 16000 as const;
+const DEFAULT_WORKLET_PROCESSOR_NAME = 'perapera-audio-processor';
+
+/**
+ * source node は Web Audio API の standard AudioNode 実装 (production の
+ * `MediaStreamAudioSourceNode`)。structural type で connect / disconnect の
+ * minimal contract のみ表現。offscreen-audio-host 内でのみ利用。
+ */
+type SourceNodeLike = Readonly<{
+  connect: (destination: unknown) => void;
+  disconnect: () => void;
+}>;
 
 type ActiveEntry = Readonly<{
   context: AudioContextLike;
   mediaStream?: MediaStream;
+  sourceNode?: SourceNodeLike;
+  workletNode?: AudioWorkletNodeLike;
+  /**
+   * addModule の結果。resolve 型は `boolean` (成功 true / 失敗 false)。
+   * rejection を握りつぶして unhandled rejection を防ぐ設計。
+   */
+  workletModuleReadyPromise?: Promise<boolean>;
 }>;
+
+/**
+ * `context.createMediaStreamSource` の戻り値 (型: unknown) を SourceNodeLike
+ * に narrowing。production では MediaStreamAudioSourceNode (AudioNode) が
+ * 返され、connect/disconnect を持つため安全に呼べる。
+ */
+const asSourceNode = (raw: unknown): SourceNodeLike => {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new TypeError(
+      '[perapera] offscreen-audio-host: createMediaStreamSource returned a non-object value',
+    );
+  }
+  const connect: unknown = Reflect.get(raw, 'connect');
+  const disconnect: unknown = Reflect.get(raw, 'disconnect');
+  if (typeof connect !== 'function' || typeof disconnect !== 'function') {
+    throw new TypeError(
+      '[perapera] offscreen-audio-host: createMediaStreamSource returned an object without connect/disconnect',
+    );
+  }
+  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+  return raw as SourceNodeLike;
+};
 
 const hasStopMethod = (value: unknown): value is { stop: () => void } => {
   if (typeof value !== 'object' || value === null) return false;
@@ -93,6 +150,30 @@ export const createOffscreenAudioHost = (
   const entries = new Map<SessionIdentifier, ActiveEntry>();
   const logger = deps.logger ?? DEFAULT_LOGGER;
 
+  const connectWorklet = (sessionIdentifier: SessionIdentifier, mediaStream: MediaStream): void => {
+    if (deps.workletNodeFactory === undefined) return;
+    const entry = entries.get(sessionIdentifier);
+    if (entry === undefined) return;
+    try {
+      const sourceNode = asSourceNode(entry.context.createMediaStreamSource(mediaStream));
+      const workletNode = deps.workletNodeFactory(
+        entry.context,
+        deps.workletProcessorName ?? DEFAULT_WORKLET_PROCESSOR_NAME,
+      );
+      sourceNode.connect(workletNode);
+      entries.set(sessionIdentifier, { ...entry, sourceNode, workletNode });
+      logger.debug(
+        `[perapera] offscreen-audio-host connected MediaStreamAudioSourceNode → AudioWorkletNode for ${sessionIdentifier}`,
+      );
+    } catch (cause) {
+      logger.warn(
+        `[perapera] offscreen-audio-host worklet connect failed for ${sessionIdentifier}: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+      );
+    }
+  };
+
   const attachMediaStream = (sessionIdentifier: SessionIdentifier, tabStreamId: string): void => {
     if (deps.tabStreamApi === undefined) {
       logger.debug(
@@ -104,8 +185,7 @@ export const createOffscreenAudioHost = (
     if (existing === undefined) return;
     void deps.tabStreamApi.acquire(tabStreamId).match(
       (mediaStream) => {
-        // openContext と同期処理の間に close が入る可能性を考えて、取得時点の
-        // 既存 entry をもう一度確認する
+        // acquire 完了までの間に close が入った可能性を確認
         const current = entries.get(sessionIdentifier);
         if (current === undefined || current !== existing) {
           stopAllTracks(mediaStream);
@@ -118,6 +198,19 @@ export const createOffscreenAudioHost = (
         logger.debug(
           `[perapera] offscreen-audio-host attached MediaStream for ${sessionIdentifier} (tracks=${String(mediaStream.getTracks().length)})`,
         );
+        // worklet 接続は addModule 完了後 (成功時のみ)
+        const workletReadyPromise = current.workletModuleReadyPromise;
+        if (workletReadyPromise !== undefined) {
+          void workletReadyPromise.then((success) => {
+            if (!success) return;
+            // 再度 entry 存在確認 (close 可能性)
+            const afterModule = entries.get(sessionIdentifier);
+            if (afterModule === undefined) return;
+            connectWorklet(sessionIdentifier, mediaStream);
+          });
+        } else {
+          connectWorklet(sessionIdentifier, mediaStream);
+        }
       },
       (error) => {
         logger.warn(
@@ -133,6 +226,21 @@ export const createOffscreenAudioHost = (
     const entry = entries.get(sessionIdentifier);
     if (entry === undefined) return;
     entries.delete(sessionIdentifier);
+    // Worklet / source の disconnect を先に呼んで audio graph を切る
+    if (entry.sourceNode !== undefined) {
+      try {
+        entry.sourceNode.disconnect();
+      } catch {
+        /* すでに disconnect 済など — 無視 */
+      }
+    }
+    if (entry.workletNode !== undefined) {
+      try {
+        entry.workletNode.disconnect();
+      } catch {
+        /* すでに disconnect 済など — 無視 */
+      }
+    }
     if (entry.mediaStream !== undefined) {
       stopAllTracks(entry.mediaStream);
     }
@@ -160,27 +268,35 @@ export const createOffscreenAudioHost = (
       const context = deps.audioContextFactory({
         sampleRate: sampleRateHz ?? DEFAULT_SAMPLE_RATE,
       });
-      entries.set(sessionIdentifier, { context });
-      logger.debug(
-        `[perapera] offscreen-audio-host opened AudioContext for ${sessionIdentifier} (sampleRate=${String(context.sampleRate)})`,
-      );
+      let workletModuleReadyPromise: Promise<boolean> | undefined;
       if (deps.workletModuleUrl !== undefined) {
         const moduleUrl = deps.workletModuleUrl;
-        void context.audioWorklet.addModule(moduleUrl).then(
-          () => {
+        workletModuleReadyPromise = context.audioWorklet.addModule(moduleUrl).then(
+          (): boolean => {
             logger.debug(
               `[perapera] offscreen-audio-host registered AudioWorklet module for ${sessionIdentifier}: ${moduleUrl}`,
             );
+            return true;
           },
-          (cause: unknown) => {
+          (cause: unknown): boolean => {
             logger.warn(
               `[perapera] offscreen-audio-host addModule failed for ${sessionIdentifier}: ${
                 cause instanceof Error ? cause.message : String(cause)
               }`,
             );
+            return false;
           },
         );
       }
+      entries.set(
+        sessionIdentifier,
+        workletModuleReadyPromise !== undefined
+          ? { context, workletModuleReadyPromise }
+          : { context },
+      );
+      logger.debug(
+        `[perapera] offscreen-audio-host opened AudioContext for ${sessionIdentifier} (sampleRate=${String(context.sampleRate)})`,
+      );
       if (tabStreamId !== undefined) {
         attachMediaStream(sessionIdentifier, tabStreamId);
       }
@@ -209,6 +325,8 @@ export const createOffscreenAudioHost = (
     },
     has: (sessionIdentifier) => entries.has(sessionIdentifier),
     hasStream: (sessionIdentifier) => entries.get(sessionIdentifier)?.mediaStream !== undefined,
+    hasWorkletConnected: (sessionIdentifier) =>
+      entries.get(sessionIdentifier)?.workletNode !== undefined,
     dispose: () => {
       for (const [sessionIdentifier] of entries) {
         closeEntry(sessionIdentifier);

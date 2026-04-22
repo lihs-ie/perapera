@@ -290,7 +290,10 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule },
       close: vi.fn(() => Promise.resolve()),
-      createMediaStreamSource: vi.fn(() => ({})),
+      createMediaStreamSource: vi.fn(() => ({
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      })),
       closeFn: vi.fn(),
     };
     const factory = vi.fn<AudioContextFactory>(() => context);
@@ -299,5 +302,89 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
     host.dispatch({ type: 'offscreen.audio.open', sessionIdentifier: identifierA });
 
     expect(addModule).not.toHaveBeenCalled();
+  });
+
+  // IMPL-616: MediaStream + WorkletNode 接続
+  it('connects MediaStreamAudioSourceNode → AudioWorkletNode when all deps injected', async () => {
+    const sourceNode = { connect: vi.fn(), disconnect: vi.fn() };
+    const workletNode = {
+      port: { onmessage: null },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    const createMediaStreamSource = vi.fn(() => sourceNode);
+    const context = {
+      sampleRate: 16000,
+      audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
+      close: vi.fn(() => Promise.resolve()),
+      createMediaStreamSource,
+    };
+    const factory = vi.fn<AudioContextFactory>(() => context);
+    const mediaStream = new MediaStream();
+    const workletNodeFactory = vi.fn(() => workletNode);
+
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      workletModuleUrl: '/perapera-audio-processor.js',
+      tabStreamApi: { acquire: vi.fn(() => okAsync<MediaStream, DomainError>(mediaStream)) },
+      workletNodeFactory,
+    });
+
+    host.dispatch({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: identifierA,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+    // addModule + acquire 両方の microtask を flush
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+
+    expect(createMediaStreamSource).toHaveBeenCalledWith(mediaStream);
+    expect(workletNodeFactory).toHaveBeenCalledWith(context, 'perapera-audio-processor');
+    expect(sourceNode.connect).toHaveBeenCalledWith(workletNode);
+    expect(host.hasWorkletConnected(identifierA)).toBe(true);
+  });
+
+  it('disconnects source / worklet on close (IMPL-616)', async () => {
+    const sourceNode = { connect: vi.fn(), disconnect: vi.fn() };
+    const workletNode = {
+      port: { onmessage: null },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    const context = {
+      sampleRate: 16000,
+      audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
+      close: vi.fn(() => Promise.resolve()),
+      createMediaStreamSource: vi.fn(() => sourceNode),
+    };
+    const factory = vi.fn<AudioContextFactory>(() => context);
+    const mediaStream = new MediaStream();
+    const host = createOffscreenAudioHost({
+      audioContextFactory: factory,
+      workletModuleUrl: '/perapera-audio-processor.js',
+      tabStreamApi: { acquire: vi.fn(() => okAsync<MediaStream, DomainError>(mediaStream)) },
+      workletNodeFactory: vi.fn(() => workletNode),
+    });
+
+    host.dispatch({
+      type: 'offscreen.audio.open',
+      sessionIdentifier: identifierA,
+      tabStreamId: 'tab-stream-id-fixture',
+    });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    host.dispatch({ type: 'offscreen.audio.close', sessionIdentifier: identifierA });
+
+    expect(sourceNode.disconnect).toHaveBeenCalledOnce();
+    expect(workletNode.disconnect).toHaveBeenCalledOnce();
   });
 });
