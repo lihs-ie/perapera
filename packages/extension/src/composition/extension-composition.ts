@@ -1,5 +1,5 @@
 import { okAsync } from 'neverthrow';
-import { ulid } from 'ulid';
+import { ulid } from 'ulidx';
 import { createExportSessionResultUseCase } from '../application/use-cases/export-session-result-use-case';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';

@@ -24,7 +24,7 @@
     "neverthrow": "^8.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "ulid": "^2.3.0",
+    "ulidx": "^2.4.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
