@@ -96,14 +96,14 @@ describe('RelayGateway (DD-401)', () => {
       broadcast?.({
         type: 'session.ready',
         sessionIdentifier,
-        streamToken: 'token-xxx',
+        heartbeatIntervalSec: 15,
       });
       expect(listener).toHaveBeenCalledTimes(1);
       unsubscribe();
       broadcast?.({
         type: 'session.ready',
         sessionIdentifier,
-        streamToken: 'token-yyy',
+        heartbeatIntervalSec: 15,
       });
       // After unsubscribe, the mock clears broadcast so further events should not invoke listener.
       expect(listener).toHaveBeenCalledTimes(1);
@@ -113,7 +113,7 @@ describe('RelayGateway (DD-401)', () => {
   describe('RelayEvent discriminated union', () => {
     it('narrows payload via the type discriminator', () => {
       const events: RelayEvent[] = [
-        { type: 'session.ready', sessionIdentifier, streamToken: 'tkn' },
+        { type: 'session.ready', sessionIdentifier, heartbeatIntervalSec: 15 },
         {
           type: 'transcript.partial',
           sessionIdentifier,

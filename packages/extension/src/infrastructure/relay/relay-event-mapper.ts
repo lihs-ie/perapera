@@ -25,10 +25,13 @@ const baseEnvelopeSchema = z.object({
   payload: z.record(z.unknown()).optional().default({}),
 });
 
+// api-specification.md §6.3 `session.ready`:
+// { state, heartbeatIntervalSec, acceptedAudio: {...} }
+// Relay 側 `buildSessionReady` (server-events.ts) と shape 一致が必須。
+// streamToken は POST /sessions レスポンス で既に取得済のためここでは送られない。
 const readyPayload = z.object({
   state: z.string(),
   heartbeatIntervalSec: z.number().positive(),
-  streamToken: z.string().min(1),
 });
 
 const transcriptPartialPayload = z.object({
@@ -110,7 +113,7 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
       return ok({
         type: 'session.ready',
         sessionIdentifier,
-        streamToken: payload.data.streamToken,
+        heartbeatIntervalSec: payload.data.heartbeatIntervalSec,
       });
     }
 

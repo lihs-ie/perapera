@@ -15,7 +15,7 @@ export type RelayEvent =
   | Readonly<{
       type: 'session.ready';
       sessionIdentifier: SessionIdentifier;
-      streamToken: string;
+      heartbeatIntervalSec: number;
     }>
   | Readonly<{
       type: 'transcript.partial';

@@ -18,18 +18,23 @@ const wrap = (eventType: string, payload: Record<string, unknown>): string =>
   });
 
 describe('parseRelayServerMessage (IMPL-321, DD-411)', () => {
-  it('parses session.ready', () => {
+  it('parses session.ready (per SSOT: state + heartbeatIntervalSec, no streamToken)', () => {
     const raw = wrap('session.ready', {
       state: 'capturing',
       heartbeatIntervalSec: 15,
-      streamToken: 'tkn_xxx',
+      acceptedAudio: {
+        transport: 'json-base64',
+        sampleRateHz: 16000,
+        channels: 1,
+        frameDurationMs: 100,
+      },
     });
     const result = parseRelayServerMessage(raw);
     expect(result.isOk()).toBe(true);
     if (result.isOk() && result.value !== null) {
       expect(result.value.type).toBe('session.ready');
       if (result.value.type === 'session.ready') {
-        expect(result.value.streamToken).toBe('tkn_xxx');
+        expect(result.value.heartbeatIntervalSec).toBe(15);
         expect(result.value.sessionIdentifier).toBe(sessionIdentifier);
       }
     }
@@ -141,7 +146,7 @@ describe('parseRelayServerMessage (IMPL-321, DD-411)', () => {
       sessionId: 'not-a-ulid',
       sequence: 0,
       timestamp: '2026-04-21T00:00:00.000Z',
-      payload: { state: 'capturing', heartbeatIntervalSec: 15, streamToken: 'x' },
+      payload: { state: 'capturing', heartbeatIntervalSec: 15 },
     });
     const result = parseRelayServerMessage(raw);
     expect(result.isErr()).toBe(true);

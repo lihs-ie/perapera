@@ -188,7 +188,7 @@ describe('createSessionCommandService (IMPL-340)', () => {
     const mocks = buildMocks();
     const service = createSessionCommandService({ ...mocks, clock });
     const events: RelayEvent[] = [
-      { type: 'session.ready', sessionIdentifier, streamToken: 'tok' },
+      { type: 'session.ready', sessionIdentifier, heartbeatIntervalSec: 15 },
       { type: 'session.state.changed', sessionIdentifier, state: 'capturing' },
       {
         type: 'session.error',
