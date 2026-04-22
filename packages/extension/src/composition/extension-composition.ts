@@ -85,7 +85,6 @@ import {
   type ChromePermissionsApi,
 } from '../infrastructure/permission/chrome-permission-coordinator';
 import {
-  createDefaultWsEndpointBuilder,
   createFetchStreamTokenIssuer,
   type OverlayTargetDescriptor,
 } from '../infrastructure/relay/fetch-stream-token-issuer';
@@ -131,8 +130,6 @@ export type ExtensionRuntimeConfig = Readonly<{
   relayApiBaseUrl: string;
   /** POST /sessions 用の Bearer access token。`CLAUDE.md` §データ保存方針に従い chrome.storage 管理 */
   relayAccessToken: string;
-  /** WebSocket パス (default `/api/v1/relay`) */
-  relayWsPath?: string;
   /** 拡張バージョン (manifest.version) */
   extensionVersion: string;
   /** api-specification §4.1 client.protocolVersion */
@@ -268,15 +265,13 @@ export const createExtensionApp = (
     resolveAutoDetectLanguage: config.resolveAutoDetectLanguage ?? DEFAULT_RESOLVE_AUTO_DETECT,
     fetchImpl: ports.fetchImpl,
   });
-  const wsEndpointBuilder = createDefaultWsEndpointBuilder({
-    baseUrl: config.relayApiBaseUrl,
-    ...(config.relayWsPath !== undefined ? { wsPath: config.relayWsPath } : {}),
-  });
+  // WS 接続先は Relay が `POST /sessions` レスポンスで返す `relayUrl`
+  // (`{ data: { relayUrl: 'ws://.../relay' } }`) を dynamic に使う。
+  // config.relayApiBaseUrl に wsPath を足して静的に URL を組み立てない。
   const relayGateway = createRelayWebSocketGateway({
     webSocketFactory: ports.webSocketFactory,
     tokenIssuer,
     clock: ports.clockMs,
-    wsEndpointBuilder,
   });
 
   // --------------- Overlay / presenter ---------------

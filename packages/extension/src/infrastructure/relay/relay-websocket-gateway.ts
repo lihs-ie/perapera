@@ -16,23 +16,57 @@ import { parseRelayServerMessage } from './relay-event-mapper';
 import { type WebSocketFactory, type WebSocketLike } from './websocket-factory';
 
 /**
- * Stream token 発行器。`POST /sessions` 経由で Relay API から短命トークンを
- * 取得する HTTP クライアントを注入する。production entrypoint で
+ * Stream token 発行器の結果。`POST /sessions` レスポンス (api-specification.md
+ * §4.2) から `streamToken` と `relayUrl` の 2 値を抽出する。
+ *
+ * `relayUrl` は Relay API 側が環境ごとに提示する WS 接続先 (例:
+ * `ws://localhost:3001/relay`)。extension 側で path を組み立てずに
+ * そのまま使うことで SSOT (docs) と impl の path prefix drift (`/api/v1` 有無)
+ * を吸収する。
+ */
+export type StreamTokenIssuerResult = Readonly<{
+  streamToken: string;
+  relayUrl: string;
+}>;
+
+/**
+ * Stream token 発行器。`POST /sessions` 経由で Relay API から短命トークン + WS
+ * endpoint を取得する HTTP クライアントを注入する。production entrypoint で
  * 実装を渡す (test では okAsync で mock)。
  */
-export type StreamTokenIssuer = (session: SourceSession) => ResultAsync<string, DomainError>;
+export type StreamTokenIssuer = (
+  session: SourceSession,
+) => ResultAsync<StreamTokenIssuerResult, DomainError>;
 
 export type RelayWebSocketGatewayDependencies = Readonly<{
   webSocketFactory: WebSocketFactory;
   tokenIssuer: StreamTokenIssuer;
   clock: () => number;
-  wsEndpointBuilder: (sessionIdentifier: SessionIdentifier, streamToken: string) => string;
+  /**
+   * Relay から返された `relayUrl` (ws:// or wss://) と streamToken / sessionId
+   * から実 WebSocket URL を組み立てる。default は `${relayUrl}?token=<jwt>&sessionId=<ulid>`
+   * で、相対 path や追加 query を本番で override したい場合のみ注入する。
+   */
+  wsEndpointBuilder?: (params: {
+    relayUrl: string;
+    sessionIdentifier: SessionIdentifier;
+    streamToken: string;
+  }) => string;
   /**
    * ハートビート間隔 (ms)。default 15000 (api-specification.md §2.6 準拠)。
    * 定数なので default を許容 (mock ではない)。
    */
   heartbeatIntervalMs?: number;
 }>;
+
+const defaultWsEndpointBuilder = (params: {
+  relayUrl: string;
+  sessionIdentifier: SessionIdentifier;
+  streamToken: string;
+}): string => {
+  const separator = params.relayUrl.includes('?') ? '&' : '?';
+  return `${params.relayUrl}${separator}token=${encodeURIComponent(params.streamToken)}&sessionId=${encodeURIComponent(params.sessionIdentifier)}`;
+};
 
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000 as const;
 
@@ -87,6 +121,7 @@ export const createRelayWebSocketGateway = (
   deps: RelayWebSocketGatewayDependencies,
 ): RelayGateway => {
   const heartbeatMs = deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+  const wsEndpointBuilder = deps.wsEndpointBuilder ?? defaultWsEndpointBuilder;
   const connections = new Map<SessionIdentifier, SessionConnection>();
 
   const dispatchMessage = (sessionIdentifier: SessionIdentifier, data: string): void => {
@@ -124,10 +159,14 @@ export const createRelayWebSocketGateway = (
   return {
     openSession: (session) =>
       deps.tokenIssuer(session).andThen(
-        (streamToken): ResultAsync<void, DomainError> =>
+        ({ streamToken, relayUrl }): ResultAsync<void, DomainError> =>
           ResultAsync.fromPromise<void, DomainError>(
             new Promise<void>((resolve, reject) => {
-              const url = deps.wsEndpointBuilder(session.sessionIdentifier, streamToken);
+              const url = wsEndpointBuilder({
+                relayUrl,
+                sessionIdentifier: session.sessionIdentifier,
+                streamToken,
+              });
               const socket = deps.webSocketFactory(url);
 
               const onOpen = (): void => {

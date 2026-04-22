@@ -14,6 +14,7 @@ import type { WebSocketLike } from './websocket-factory';
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7A1';
 const SOURCE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7B1';
 const STREAM_TOKEN = 'stream-token-xxx';
+const RELAY_URL = 'wss://relay.example/relay';
 
 const sessionIdentifier = parseSessionIdentifier(SESSION_ID)._unsafeUnwrap();
 
@@ -106,29 +107,29 @@ const flushUntilSocketCreated = async (sockets: MockSocket[]): Promise<void> => 
 
 const buildDependencies = (
   overrides: Partial<RelayWebSocketGatewayDependencies> = {},
-): RelayWebSocketGatewayDependencies & { createdSockets: MockSocket[] } => {
+): RelayWebSocketGatewayDependencies & {
+  createdSockets: MockSocket[];
+  createdUrls: string[];
+} => {
   const createdSockets: MockSocket[] = [];
-  const webSocketFactory = vi.fn((_url: string) => {
+  const createdUrls: string[] = [];
+  const webSocketFactory = vi.fn((url: string) => {
+    createdUrls.push(url);
     const socket = createMockSocket();
     createdSockets.push(socket);
     return socket;
   });
-  const tokenIssuer = vi.fn(() => okAsync(STREAM_TOKEN));
-  const wsEndpointBuilder = vi.fn(
-    (id: string, token: string) =>
-      `wss://relay.example/api/v1/relay?sessionId=${id}&token=${token}`,
-  );
+  const tokenIssuer = vi.fn(() => okAsync({ streamToken: STREAM_TOKEN, relayUrl: RELAY_URL }));
   const clock = vi.fn(() => Date.parse('2026-04-21T00:00:00.000Z'));
 
   return Object.assign(
     {
       webSocketFactory,
       tokenIssuer,
-      wsEndpointBuilder,
       clock,
       ...overrides,
     },
-    { createdSockets },
+    { createdSockets, createdUrls },
   );
 };
 
@@ -140,7 +141,7 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
   });
 
   describe('openSession', () => {
-    it('builds a URL via wsEndpointBuilder with the stream token', async () => {
+    it('uses the relayUrl returned by tokenIssuer to open the WebSocket', async () => {
       const deps = buildDependencies();
       const gateway = createRelayWebSocketGateway(deps);
       const resultPromise = gateway.openSession(buildSession());
@@ -148,10 +149,29 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       deps.createdSockets[0]?.simulateOpen();
       const result = await resultPromise;
       expect(result.isOk()).toBe(true);
-      expect(deps.wsEndpointBuilder).toHaveBeenCalledWith(SESSION_ID, STREAM_TOKEN);
-      expect(deps.webSocketFactory).toHaveBeenCalledWith(
-        expect.stringContaining('sessionId=01HZX8Y1R8M7D3Q2P4T5V6W7A1'),
+      const urlArg = deps.createdUrls[0] ?? '';
+      expect(urlArg).toContain(RELAY_URL);
+      expect(urlArg).toContain(`token=${STREAM_TOKEN}`);
+      expect(urlArg).toContain(`sessionId=${SESSION_ID}`);
+    });
+
+    it('supports a custom wsEndpointBuilder override', async () => {
+      const customBuilder = vi.fn(
+        (params: { relayUrl: string; sessionIdentifier: string; streamToken: string }) =>
+          `${params.relayUrl}/custom?t=${params.streamToken}&s=${params.sessionIdentifier}`,
       );
+      const deps = buildDependencies({ wsEndpointBuilder: customBuilder });
+      const gateway = createRelayWebSocketGateway(deps);
+      const resultPromise = gateway.openSession(buildSession());
+      await flushUntilSocketCreated(deps.createdSockets);
+      deps.createdSockets[0]?.simulateOpen();
+      await resultPromise;
+      expect(customBuilder).toHaveBeenCalledWith({
+        relayUrl: RELAY_URL,
+        sessionIdentifier: sessionIdentifier,
+        streamToken: STREAM_TOKEN,
+      });
+      expect(deps.createdUrls[0]).toBe(`${RELAY_URL}/custom?t=${STREAM_TOKEN}&s=${SESSION_ID}`);
     });
 
     it('sends session.start envelope on open', async () => {
