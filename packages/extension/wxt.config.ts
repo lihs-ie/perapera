@@ -21,17 +21,19 @@ export default defineConfig({
     name: 'perapera',
     description: 'リアルタイム文字起こし・翻訳オーバーレイ',
     version: '0.0.0',
-    permissions: ['tabCapture', 'storage', 'sidePanel', 'offscreen', 'scripting', 'activeTab'],
+    // action.default_popup は未設定 → chrome.action.onClicked が発火し、
+    // background.ts で main.html を独立 window として起動する。
+    // 対象タブへの overlay 注入は廃止したので content_scripts / sidePanel /
+    // scripting permission は不要。activeTab は main window からの
+    // chrome.tabs.query (active tab 解決) で継続使用する。
+    permissions: ['tabCapture', 'storage', 'offscreen', 'activeTab'],
     host_permissions: [relayHostPermission],
     action: {
       default_title: 'perapera',
     },
-    side_panel: {
-      default_path: 'sidepanel.html',
-    },
     web_accessible_resources: [
       {
-        resources: ['monitor.html'],
+        resources: ['main.html'],
         matches: ['<all_urls>'],
       },
     ],

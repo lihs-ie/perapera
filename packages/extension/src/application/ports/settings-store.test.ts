@@ -26,6 +26,9 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getRelayConnectionOverride: () => okAsync(null),
+        saveRelayConnectionOverride: () => okAsync(undefined),
+        clearRelayConnectionOverride: () => okAsync(undefined),
       };
       expect(typeof mock.getDefaultLanguagePair).toBe('function');
       expect(typeof mock.saveDefaultLanguagePair).toBe('function');
@@ -42,6 +45,9 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getRelayConnectionOverride: () => okAsync(null),
+        saveRelayConnectionOverride: () => okAsync(undefined),
+        clearRelayConnectionOverride: () => okAsync(undefined),
       };
       const result = await mock.getDefaultLanguagePair();
       expect(result.isOk()).toBe(true);
@@ -57,6 +63,9 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getRelayConnectionOverride: () => okAsync(null),
+        saveRelayConnectionOverride: () => okAsync(undefined),
+        clearRelayConnectionOverride: () => okAsync(undefined),
       };
       const result = await mock.getDefaultLanguagePair();
       expect(result.isErr()).toBe(true);
@@ -71,6 +80,9 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getRelayConnectionOverride: () => okAsync(null),
+        saveRelayConnectionOverride: () => okAsync(undefined),
+        clearRelayConnectionOverride: () => okAsync(undefined),
       };
       const result = await mock.saveDefaultOverlaySettings(buildOverlaySettings());
       expect(result.isOk()).toBe(true);

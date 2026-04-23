@@ -4,9 +4,13 @@ import {
   permissionRequiredAppError,
   type ApplicationError,
 } from '../application/errors/application-errors';
+import { type SettingsStore } from '../application/ports/settings-store';
 import { type ExportService } from '../application/services/export-service';
 import { type SessionCommandService } from '../application/services/session-command-service';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
+import { createOverlaySettings } from '../domain/profile/overlay-settings';
+import { createLanguagePair } from '../domain/session/language-pair';
+import { notFoundError, type DomainError } from '../domain/shared/errors';
 import { createRuntimeDispatcher } from './runtime-dispatcher';
 
 const buildFakeDeps = () => {
@@ -22,8 +26,30 @@ const buildFakeDeps = () => {
   const getSessionMonitorStateQuery: GetSessionMonitorStateQuery = vi.fn(() =>
     okAsync({ sessions: [], latestSegments: [] }),
   );
-  return { sessionCommandService, exportService, getSessionMonitorStateQuery };
+  const settingsStore: SettingsStore = {
+    getDefaultLanguagePair: vi.fn(() =>
+      errAsync(notFoundError({ resourceType: 'LanguagePair', identifier: 'default' })),
+    ),
+    saveDefaultLanguagePair: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    getDefaultOverlaySettings: vi.fn(() =>
+      errAsync(notFoundError({ resourceType: 'OverlaySettings', identifier: 'default' })),
+    ),
+    saveDefaultOverlaySettings: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    getRelayConnectionOverride: vi.fn(() => okAsync(null)),
+    saveRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    clearRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
+  };
+  return {
+    sessionCommandService,
+    exportService,
+    getSessionMonitorStateQuery,
+    settingsStore,
+  };
 };
+
+// references for language-pair / overlay-settings factories used in later tests
+void createLanguagePair;
+void createOverlaySettings;
 
 describe('createRuntimeDispatcher (IMPL-502)', () => {
   it('dispatches command.start-source-session to SessionCommandService.startSource', async () => {

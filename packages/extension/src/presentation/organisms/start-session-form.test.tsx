@@ -35,6 +35,11 @@ const buildClient = (start: BackgroundClient['startSourceSession']): BackgroundC
   updateSourceSettings: vi.fn(() => Promise.resolve(DUMMY_UPDATE)),
   exportSessionResult: vi.fn(() => Promise.resolve(DUMMY_EXPORT)),
   getSessionMonitorState: vi.fn(() => Promise.resolve(EMPTY_MONITOR)),
+  getDefaultSettings: vi.fn(),
+  saveDefaultLanguagePair: vi.fn(),
+  saveDefaultOverlaySettings: vi.fn(),
+  saveRelayConnectionOverride: vi.fn(),
+  clearRelayConnectionOverride: vi.fn(),
 });
 
 describe('StartSessionForm organism (IMPL-540)', () => {

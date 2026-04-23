@@ -61,11 +61,27 @@ const host = createOffscreenAudioHost({
         `[perapera] offscreen audio frames forwarded for ${sessionIdentifier}: ${String(next)}`,
       );
     }
+    const seq =
+      typeof data === 'object' && data !== null && 'sequenceNumber' in data
+        ? String(Reflect.get(data, 'sequenceNumber'))
+        : '?';
+    if (next === 1 || next % 50 === 0) {
+      console.log(
+        `[perapera] offscreen sending audio.frame.forward (seq=${seq}, count=${String(next)})`,
+      );
+    }
     void chrome.runtime
       .sendMessage({
         type: 'audio.frame.forward',
         sessionIdentifier,
         data,
+      })
+      .then(() => {
+        if (next === 1) {
+          console.log(
+            `[perapera] offscreen first audio.frame.forward sendMessage resolved (session=${sessionIdentifier})`,
+          );
+        }
       })
       .catch((cause: unknown) => {
         console.warn(

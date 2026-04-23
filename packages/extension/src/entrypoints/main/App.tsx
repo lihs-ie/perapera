@@ -1,0 +1,108 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type StartSourceSessionInput } from '../../application/dto/start-source-session-dto';
+import { useBackgroundQuery } from '../../presentation/hooks/use-background-query';
+import {
+  createBackgroundClient,
+  type StartSourceSessionResult,
+} from '../../presentation/infrastructure/background-client';
+import { SessionToolbar, type ActiveSession } from '../../presentation/organisms/session-toolbar';
+import { SettingsView } from '../../presentation/organisms/settings-view';
+import { StartSessionForm } from '../../presentation/organisms/start-session-form';
+import { TranscriptPairStream } from '../../presentation/organisms/transcript-pair-stream';
+import { MainWindowTemplate } from '../../presentation/templates/main-window-template';
+import { useOverlayMessages } from './use-overlay-messages';
+
+/**
+ * Main window App。独立 floating window として開き、
+ * - session 未開始時: `StartSessionForm` を表示
+ * - session 開始後: `SessionToolbar` + `TranscriptPairStream` を表示
+ * - `⚙` クリック時: `SettingsView` を container 全体に差し替えて表示
+ *
+ * ChromeMessagingOverlayPresenter (`chrome.runtime.sendMessage`) から
+ * broadcast される `OverlayCommand` を `useOverlayMessages` hook で受け取り、
+ * React state に反映する。対象タブへの content script 注入は行わない。
+ */
+export function App() {
+  const client = useMemo(() => createBackgroundClient(), []);
+  const overlay = useOverlayMessages();
+  const defaultSettingsQuery = useBackgroundQuery(() => client.getDefaultSettings(), {
+    input: undefined,
+  });
+  const [active, setActive] = useState<ActiveSession | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const handleStarted = useCallback(
+    (result: StartSourceSessionResult, input: StartSourceSessionInput) => {
+      setActive({
+        sessionId: result.sessionId,
+        displayName: input.displayName,
+        state: result.state,
+      });
+    },
+    [],
+  );
+
+  const handleStopped = useCallback(() => {
+    setActive(null);
+  }, []);
+
+  const openSettings = useCallback(() => {
+    setShowSettings(true);
+  }, []);
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+  }, []);
+
+  useEffect(() => {
+    if (overlay.sessionIdentifier === null) {
+      setActive(null);
+    }
+  }, [overlay.sessionIdentifier]);
+
+  if (showSettings) {
+    return (
+      <SettingsView
+        client={client}
+        onClose={() => {
+          closeSettings();
+          void defaultSettingsQuery.refetch();
+        }}
+      />
+    );
+  }
+
+  const defaultLanguagePair = defaultSettingsQuery.state.data?.languagePair ?? null;
+  const formKey =
+    defaultLanguagePair !== null
+      ? `${defaultLanguagePair.source}:${defaultLanguagePair.target}`
+      : 'loading';
+  const formSlot = (
+    <StartSessionForm
+      key={formKey}
+      client={client}
+      onStarted={handleStarted}
+      initialSourceLanguage={defaultLanguagePair?.source}
+      initialTargetLanguage={defaultLanguagePair?.target}
+    />
+  );
+  const toolbarSlot =
+    active !== null ? (
+      <SessionToolbar
+        client={client}
+        session={active}
+        onStopped={handleStopped}
+        onOpenSettings={openSettings}
+      />
+    ) : null;
+  const streamSlot = <TranscriptPairStream lines={overlay.lines} />;
+
+  return (
+    <MainWindowTemplate
+      isActive={active !== null}
+      formSlot={formSlot}
+      toolbarSlot={toolbarSlot}
+      streamSlot={streamSlot}
+      onOpenSettings={openSettings}
+    />
+  );
+}

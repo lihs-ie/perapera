@@ -181,8 +181,8 @@ pnpm --filter @perapera/extension dev
 ### 7.1 タブ音声 (tab capture) の smoke
 
 1. YouTube や任意の音声再生ページを開く
-2. 拡張アイコン (ブラウザ右上のツールバー) をクリック → Popup が開く
-3. フォームに入力:
+2. 拡張アイコン (ブラウザ右上のツールバー) をクリック → **独立 floating window (480×720)** が開く
+3. window 内のフォームに入力:
    - ソース種別: タブ音声
    - 入力言語: 自動判定 / または明示指定 (`en-US` 等)
    - 翻訳先: `ja-JP`
@@ -190,34 +190,34 @@ pnpm --filter @perapera/extension dev
 4. 「開始」ボタンを押す
 5. 初回は `chrome.permissions.request` が走り、tab capture 許可ダイアログが表示されるので許可
 6. SW コンソールにセッション開始ログが出る
-7. 再生中のタブに **Shadow DOM で挿入された翻訳オーバーレイ** が bottom に表示される (positionPreset 設定可)
+7. main window 内が **transcript stream** に切替わり、原文 (gray) と翻訳 (white bold) がペアでリアルタイム追加される
+8. タブ音声は引き続きスピーカーから聞こえる (PR #105 の monitor output を維持)
 
 ### 7.2 マイク音声
 
-1. マイクを有効にしたいタブ (or 任意のページ) を前面に
-2. Popup の「ソース種別: マイク」で開始
+1. 拡張アイコンをクリック → 独立 window が開く
+2. 「ソース種別: マイク」で開始
 3. Chrome の `getUserMedia` マイク許可ダイアログが出るので許可
-4. Unlisted page (`monitor.html`) がタブで自動的に開き、オーバーレイがそこに表示される
+4. 同じ main window 内で原文 / 翻訳が表示される (対象タブへの Shadow DOM 注入は廃止、main window に一元化)
 
-### 7.3 セッション一覧 / 停止 / エクスポート
+### 7.3 セッション停止
 
-- 左サイドバーから拡張の「サイドパネル」を開く (Chrome 114+)
-- 稼働中セッションが一覧表示される
-- 各セッション右の「停止」ボタン、または「エクスポート (JSON)」ボタン
-- エクスポート実行時は IndexedDB に保存された transcript / translation が JSON として DL される
+- main window 上部の「停止」ボタンでセッションを停止できる
+- 停止後は同じ window がフォーム状態に戻り、新規セッション開始フローに戻る
+- エクスポート / 複数同時セッション UI は後続 PR で追加予定 (MVP scope 外)
 
 ## 8. よくあるハマり所 (Troubleshooting)
 
-| 症状                                                            | 原因                                                     | 対応                                                                                                 |
-| --------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| SW コンソールに `PERAPERA_RELAY_ACCESS_TOKEN is not configured` | wxt.config.ts に define が無い                           | 5.1 Option A を適用し、env set して再 build                                                          |
-| Popup で「開始」後に `relay: 401 Unauthorized`                  | relay-api の `ACCESS_TOKENS` と不一致                    | 両側を同じ値に揃える (`dev-access-token` 既定)                                                       |
-| WebSocket が即 1006 で切断される                                | `STREAM_TOKEN_SECRET` が 32 文字未満                     | 32+ chars に修正して relay 再起動                                                                    |
-| `Failed to register service worker`                             | 既存 unpacked が衝突                                     | chrome://extensions で旧版を削除 → 再 load                                                           |
-| 翻訳が出ず transcript だけ表示                                  | DeepL API Key が無効 or 無料枠超過                       | DeepL console でキー確認、DEEPL_BASE_URL が Free 用になっているか確認                                |
-| `CORS: chrome-extension://<id> blocked`                         | `PERAPERA_RELAY_API_BASE_URL` が build 時 env と食い違い | build 時に export した origin と実 Relay URL を揃え再 build (`host_permissions` は env から自動導出) |
-| tab capture で「このタブは対象外」                              | `activeTab` パーミッションの tab でない                  | 拡張アイコンをクリックしてから Popup で開始 (activeTab は user gesture で grant)                     |
-| 翻訳が遅い / タイムアウト                                       | Provider 応答遅延                                        | `pino` SW コンソールで `STT-*` / `TRANSLATION-*` エラーコードを確認、degraded 遷移発生               |
+| 症状                                                            | 原因                                                     | 対応                                                                                                      |
+| --------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| SW コンソールに `PERAPERA_RELAY_ACCESS_TOKEN is not configured` | wxt.config.ts に define が無い                           | 5.1 Option A を適用し、env set して再 build                                                               |
+| Popup で「開始」後に `relay: 401 Unauthorized`                  | relay-api の `ACCESS_TOKENS` と不一致                    | 両側を同じ値に揃える (`dev-access-token` 既定)                                                            |
+| WebSocket が即 1006 で切断される                                | `STREAM_TOKEN_SECRET` が 32 文字未満                     | 32+ chars に修正して relay 再起動                                                                         |
+| `Failed to register service worker`                             | 既存 unpacked が衝突                                     | chrome://extensions で旧版を削除 → 再 load                                                                |
+| 翻訳が出ず transcript だけ表示                                  | DeepL API Key が無効 or 無料枠超過                       | DeepL console でキー確認、DEEPL_BASE_URL が Free 用になっているか確認                                     |
+| `CORS: chrome-extension://<id> blocked`                         | `PERAPERA_RELAY_API_BASE_URL` が build 時 env と食い違い | build 時に export した origin と実 Relay URL を揃え再 build (`host_permissions` は env から自動導出)      |
+| tab capture で「このタブは対象外」                              | `activeTab` パーミッションの tab でない                  | 対象タブを前面にして拡張アイコンをクリック (activeTab は user gesture で grant、main window 起動時に取得) |
+| 翻訳が遅い / タイムアウト                                       | Provider 応答遅延                                        | `pino` SW コンソールで `STT-*` / `TRANSLATION-*` エラーコードを確認、degraded 遷移発生                    |
 
 ## 9. 開発中の繰り返し workflow
 

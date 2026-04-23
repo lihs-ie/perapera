@@ -214,11 +214,11 @@ test.describe('perapera golden path (live API, opt-in)', () => {
         );
     }
 
-    // 4. Popup page を background 経由 dispatch の context として使う
+    // 4. Main window page を background 経由 dispatch の context として使う
     //    (chrome.runtime.sendMessage は同一 context の listener に routing されない
-    //    ため、SW から SW へは send 不可。popup は別 context なので通る。)
+    //    ため、SW から SW へは send 不可。main window は別 context なので通る。)
     const popupPage = await context.newPage();
-    await popupPage.goto(`chrome-extension://${extensionId}/popup.html`);
+    await popupPage.goto(`chrome-extension://${extensionId}/main.html`);
     await popupPage.locator('#root > *').first().waitFor({ timeout: 10_000 });
 
     const startInput: StartSourceSessionInput = {

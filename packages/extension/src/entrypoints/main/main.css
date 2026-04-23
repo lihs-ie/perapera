@@ -1,0 +1,315 @@
+@import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/fonts.css');
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-h3);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.info > .title {
+  flex: 1 1 auto;
+  display: block;
+}
+
+.info > .badge {
+  flex: 0 0 auto;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs, 4px);
+  flex: 0 0 auto;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--color-surface-muted, rgba(0, 0, 0, 0.05));
+}
+
+.iconButton[data-variant='danger'] {
+  color: var(--color-danger);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-family-numeric);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-numeric);
+  color: var(--color-text-inverse);
+  background: var(--color-state-neutral);
+}
+
+.badge[data-variant='active'] {
+  background: var(--color-active);
+}
+.badge[data-variant='pending'] {
+  background: var(--color-pending);
+}
+.badge[data-variant='degraded'] {
+  background: var(--color-degraded);
+}
+.badge[data-variant='error'] {
+  background: var(--color-error);
+}
+.badge[data-variant='stopped'] {
+  background: var(--color-stopped);
+}
+.badge[data-variant='neutral'] {
+  background: var(--color-neutral);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+  min-height: 0;
+}
+
+/*
+ * stream variant: 自身が scroll container として動作する (TranscriptPairStream
+ * が onScroll で stick-to-bottom を判定するため、scroll は本 element で発火)。
+ * display: flex / flex-direction: column で empty 時に placeholder を中央寄せ、
+ * 通常時は .list が積まれた content が自然に縦に並ぶ。
+ */
+.body[data-variant='stream'] {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.body[data-variant='stream'] > .empty {
+  flex: 1;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.input,
+.select {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+.input:focus,
+.select:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.button[data-variant='secondary'] {
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.button[data-variant='danger'] {
+  background: var(--color-danger);
+  color: var(--color-danger-fg);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selector > .field {
+  flex: 1 1 45%;
+  min-width: 140px;
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+}
+
+.label[data-variant='speaker'] {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.original {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.translation {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.original[data-partial='true'] {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.translation[data-partial='true'] {
+  opacity: 0.7;
+}
+
+.message {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+  padding: var(--space-sm);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.message[role='alert'] {
+  color: var(--color-danger);
+  background: rgba(220, 38, 38, 0.06);
+}
+
+.message[data-variant='success'] {
+  color: #065f46;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-md);
+  color: var(--color-text-muted);
+  text-align: center;
+}
