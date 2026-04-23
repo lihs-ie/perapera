@@ -1,9 +1,9 @@
 ---
 title: ドメイン層設計書
-version: '0.1.0'
+version: '0.2.0'
 status: draft
 created: '2026-04-21'
-last_updated: '2026-04-21'
+last_updated: '2026-04-24'
 author: 'Codex'
 ---
 
@@ -68,15 +68,17 @@ graph TD
 
 ## 3. ユビキタス言語
 
-| 用語             | 英語名              | 定義                                           | コンテキスト       | 関連要件                                                            |
-| ---------------- | ------------------- | ---------------------------------------------- | ------------------ | ------------------------------------------------------------------- |
-| 音声ソース       | AudioSource         | タブ音声、マイク、共有音声など、入力の起点     | セッション管理     | [REQ-001](../01-requirements/requirements-specification.md#req-001) |
-| ソースセッション | SourceSession       | 1 音声ソースに対する開始から停止までの処理単位 | セッション管理     | [REQ-001](../01-requirements/requirements-specification.md#req-001) |
-| 部分字幕         | Partial Transcript  | 発話途中の暫定字幕                             | 字幕ストリーム     | [REQ-003](../01-requirements/requirements-specification.md#req-003) |
-| 確定字幕         | Final Transcript    | 区切り確定後の原文字幕                         | 字幕ストリーム     | [REQ-003](../01-requirements/requirements-specification.md#req-003) |
-| 翻訳字幕         | Translation Segment | 確定字幕に対応する翻訳結果                     | 字幕ストリーム     | [REQ-005](../01-requirements/requirements-specification.md#req-005) |
-| オーバーレイ設定 | OverlaySettings     | 位置、透明度、表示行数などの表示設定           | 表示・エクスポート | [REQ-007](../01-requirements/requirements-specification.md#req-007) |
-| 劣化運転         | Degraded Mode       | 翻訳停止時に文字起こしのみ継続する状態         | セッション管理     | [REQ-009](../01-requirements/requirements-specification.md#req-009) |
+| 用語                     | 英語名                     | 定義                                                             | コンテキスト       | 関連要件                                                                  |
+| ------------------------ | -------------------------- | ---------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------- |
+| 音声ソース               | AudioSource                | タブ音声、マイク、共有音声など、入力の起点                       | セッション管理     | [REQ-001](../01-requirements/requirements-specification.md#req-001)       |
+| ソースセッション         | SourceSession              | 1 音声ソースに対する開始から停止までの処理単位                   | セッション管理     | [REQ-001](../01-requirements/requirements-specification.md#req-001)       |
+| 部分字幕                 | Partial Transcript         | 発話途中の暫定字幕                                               | 字幕ストリーム     | [REQ-003](../01-requirements/requirements-specification.md#req-003)       |
+| 確定字幕                 | Final Transcript           | 区切り確定後の原文字幕                                           | 字幕ストリーム     | [REQ-003](../01-requirements/requirements-specification.md#req-003)       |
+| 翻訳字幕                 | Translation Segment        | 確定字幕に対応する翻訳結果                                       | 字幕ストリーム     | [REQ-005](../01-requirements/requirements-specification.md#req-005)       |
+| オーバーレイ設定         | OverlaySettings            | 位置、透明度、表示行数などの表示設定                             | 表示・エクスポート | [REQ-007](../01-requirements/requirements-specification.md#req-007)       |
+| 劣化運転                 | Degraded Mode              | 翻訳停止時に文字起こしのみ継続する状態                           | セッション管理     | [REQ-009](../01-requirements/requirements-specification.md#req-009)       |
+| エンドポインティング方針 | Endpointing Policy         | STT プロバイダが文末と判定する無音長・句読点感度・最小発話長の束 | セッション管理     | [REQ-NF-018](../01-requirements/requirements-specification.md#req-nf-018) |
+| 翻訳文脈窓               | Translation Context Window | 翻訳時に直前 N 個の確定字幕を文脈として渡すためのポリシー        | 字幕ストリーム     | [REQ-NF-019](../01-requirements/requirements-specification.md#req-nf-019) |
 
 ## 4. 集約設計
 
@@ -99,11 +101,15 @@ classDiagram
         +sourceType: SourceType
         +state: SessionState
         +languagePair: LanguagePair
+        +endpointing: EndpointingPolicy
+        +translationContext: TranslationContextWindow
         +start() void
         +pause() void
         +resume() void
         +markDegraded() void
         +stop() void
+        +updateEndpointing(policy: EndpointingPolicy) void
+        +updateTranslationContext(window: TranslationContextWindow) void
     }
 
     class TranscriptStream {
@@ -112,6 +118,7 @@ classDiagram
         +appendPartial(segment: TranscriptSegment) void
         +finalizeSegment(segment: TranscriptSegment) void
         +attachTranslation(segmentId: SegmentId, translation: TranslationSegment) void
+        +recentFinalTail(maxSegments: number) List~TranscriptSegment~
     }
 
     class TranscriptSegment {
@@ -151,12 +158,13 @@ classDiagram
 
 ##### 不変条件リスト
 
-| No. | 不変条件                                                                                                 | 検証タイミング   | 違反時の振る舞い   |
-| --- | -------------------------------------------------------------------------------------------------------- | ---------------- | ------------------ |
-| 1   | `sessionId` と `sourceId` の組み合わせは不変であること                                                   | セッション生成後 | ドメイン例外を送出 |
-| 2   | `idle -> requesting_permission -> connecting -> capturing/transcribing/translating` の順序を崩さないこと | 状態変更時       | ドメイン例外を送出 |
-| 3   | `degraded` は翻訳障害時のみ遷移可能であること                                                            | 劣化運転移行時   | ドメイン例外を送出 |
-| 4   | `stopped` 後に再度 `resume` できないこと                                                                 | 再開要求時       | ドメイン例外を送出 |
+| No. | 不変条件                                                                                                         | 検証タイミング                                          | 違反時の振る舞い   |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------ |
+| 1   | `sessionId` と `sourceId` の組み合わせは不変であること                                                           | セッション生成後                                        | ドメイン例外を送出 |
+| 2   | `idle -> requesting_permission -> connecting -> capturing/transcribing/translating` の順序を崩さないこと         | 状態変更時                                              | ドメイン例外を送出 |
+| 3   | `degraded` は翻訳障害時のみ遷移可能であること                                                                    | 劣化運転移行時                                          | ドメイン例外を送出 |
+| 4   | `stopped` 後に再度 `resume` できないこと                                                                         | 再開要求時                                              | ドメイン例外を送出 |
+| 5   | `endpointing` / `translationContext` は `stopped` 前のみ変更可能であること (変更は次の utterance から反映される) | `updateEndpointing` / `updateTranslationContext` 実行時 | ドメイン例外を送出 |
 
 ##### トランザクション境界
 
@@ -167,11 +175,12 @@ classDiagram
 
 ##### 不変条件リスト
 
-| No. | 不変条件                                           | 検証タイミング           | 違反時の振る舞い   |
-| --- | -------------------------------------------------- | ------------------------ | ------------------ |
-| 1   | 同一 `segmentId` の確定字幕は 1 回のみであること   | `finalizeSegment` 実行時 | ドメイン例外を送出 |
-| 2   | `translation.final` は確定済み字幕にのみ紐づくこと | 翻訳追加時               | ドメイン例外を送出 |
-| 3   | 部分字幕の `revision` は単調増加すること           | 部分字幕更新時           | ドメイン例外を送出 |
+| No. | 不変条件                                                                                                 | 検証タイミング           | 違反時の振る舞い                  |
+| --- | -------------------------------------------------------------------------------------------------------- | ------------------------ | --------------------------------- |
+| 1   | 同一 `segmentId` の確定字幕は 1 回のみであること                                                         | `finalizeSegment` 実行時 | ドメイン例外を送出                |
+| 2   | `translation.final` は確定済み字幕にのみ紐づくこと                                                       | 翻訳追加時               | ドメイン例外を送出                |
+| 3   | 部分字幕の `revision` は単調増加すること                                                                 | 部分字幕更新時           | ドメイン例外を送出                |
+| 4   | `recentFinalTail(n)` はメモリ内の確定済み系列を返し、`n` を超えない。永続層を参照しない (ホットパス遵守) | 翻訳発火前のクエリ時     | クエリ時に例外なし (空配列で安全) |
 
 ##### トランザクション境界
 
@@ -189,23 +198,26 @@ classDiagram
 
 ## 6. 値オブジェクト
 
-| ID     | 名前            | 所属集約                                    | 等価性基準                   | バリデーションルール            |
-| ------ | --------------- | ------------------------------------------- | ---------------------------- | ------------------------------- |
-| DD-230 | SessionId       | ソースセッション集約                        | 文字列値の一致               | 空文字不可                      |
-| DD-231 | SourceId        | ソースセッション集約                        | 文字列値の一致               | 空文字不可                      |
-| DD-232 | LanguagePair    | ソースセッション集約 / 拡張プロファイル集約 | 入力言語と翻訳先言語の一致   | BCP-47 または許可済みコードのみ |
-| DD-233 | SessionState    | ソースセッション集約                        | 状態値の一致                 | 定義済み状態のみ                |
-| DD-234 | OverlaySettings | 拡張プロファイル集約                        | 位置・透明度・表示行数の一致 | 透明度 0〜1、行数 1 以上        |
-| DD-235 | TimestampRange  | 字幕ストリーム集約                          | 開始 / 終了オフセットの一致  | `start <= end`                  |
+| ID     | 名前                     | 所属集約                                    | 等価性基準                                                          | バリデーションルール                                                                                                                     |
+| ------ | ------------------------ | ------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| DD-230 | SessionId                | ソースセッション集約                        | 文字列値の一致                                                      | 空文字不可                                                                                                                               |
+| DD-231 | SourceId                 | ソースセッション集約                        | 文字列値の一致                                                      | 空文字不可                                                                                                                               |
+| DD-232 | LanguagePair             | ソースセッション集約 / 拡張プロファイル集約 | 入力言語と翻訳先言語の一致                                          | BCP-47 または許可済みコードのみ                                                                                                          |
+| DD-233 | SessionState             | ソースセッション集約                        | 状態値の一致                                                        | 定義済み状態のみ                                                                                                                         |
+| DD-234 | OverlaySettings          | 拡張プロファイル集約                        | 位置・透明度・表示行数の一致                                        | 透明度 0〜1、行数 1 以上                                                                                                                 |
+| DD-235 | TimestampRange           | 字幕ストリーム集約                          | 開始 / 終了オフセットの一致                                         | `start <= end`                                                                                                                           |
+| DD-236 | EndpointingPolicy        | ソースセッション集約                        | `silenceThresholdMs` / `punctuationAware` / `minUtteranceMs` の一致 | `silenceThresholdMs` は 200〜1200ms（既定 600）、`minUtteranceMs` は 100〜3000ms（既定 500）、`punctuationAware` は boolean（既定 true） |
+| DD-237 | TranslationContextWindow | ソースセッション集約                        | `maxSegments` / `includeTranslatedText` の一致                      | `maxSegments` は 0〜5（既定 3）、`includeTranslatedText` は boolean（既定 true）                                                         |
 
 ## 7. ドメインサービス
 
-| ID     | 名前                         | 責務                                                        | 関連集約                                           |
-| ------ | ---------------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| DD-240 | SessionConcurrencyPolicy     | 同時アクティブセッション数が上限 3 を超えないことを保証する | ソースセッション集約                               |
-| DD-241 | SessionStateTransitionPolicy | 状態遷移の妥当性を検証する                                  | ソースセッション集約                               |
-| DD-242 | ExportAssemblyService        | 字幕・翻訳系列を TXT / JSON 用に整形する                    | 字幕ストリーム集約、表示・エクスポートコンテキスト |
-| DD-243 | LanguageRoutingPolicy        | 自動判定有無と既定設定から有効な言語設定を決定する          | ソースセッション集約、拡張プロファイル集約         |
+| ID     | 名前                         | 責務                                                                                                               | 関連集約                                           |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| DD-240 | SessionConcurrencyPolicy     | 同時アクティブセッション数が上限 3 を超えないことを保証する                                                        | ソースセッション集約                               |
+| DD-241 | SessionStateTransitionPolicy | 状態遷移の妥当性を検証する                                                                                         | ソースセッション集約                               |
+| DD-242 | ExportAssemblyService        | 字幕・翻訳系列を TXT / JSON 用に整形する                                                                           | 字幕ストリーム集約、表示・エクスポートコンテキスト |
+| DD-243 | LanguageRoutingPolicy        | 自動判定有無と既定設定から有効な言語設定を決定する                                                                 | ソースセッション集約、拡張プロファイル集約         |
+| DD-244 | EndpointingPolicyResolver    | 拡張プロファイル既定値とセッション個別設定から、有効な `EndpointingPolicy` / `TranslationContextWindow` を合成する | ソースセッション集約、拡張プロファイル集約         |
 
 ## 8. ドメインイベント
 
@@ -289,6 +301,7 @@ classDiagram
 
 ## 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容 |
-| ---------- | ---------- | ------ | -------- |
-| 0.1.0      | 2026-04-21 | Codex  | 初版作成 |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                                                                                                        |
+| ---------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                                                                                                        |
+| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: DD-236 `EndpointingPolicy` / DD-237 `TranslationContextWindow` 追加、DD-244 `EndpointingPolicyResolver` 追加、`SourceSession` に endpointing / translationContext 属性と不変条件 5 を追加、`TranscriptStream` に `recentFinalTail` クエリと不変条件 4 を追加 |

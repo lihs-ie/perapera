@@ -1,9 +1,9 @@
 ---
 title: 実装タスク一覧
-version: '0.1.0'
+version: '0.2.0'
 status: draft
 created: '2026-04-21'
-last_updated: '2026-04-21'
+last_updated: '2026-04-24'
 author: 'Codex'
 ---
 
@@ -423,6 +423,75 @@ feat(domain): IMPL-110 SourceSession aggregate root
 
 ---
 
+## 12. Phase 4.1: セグメント連続性追補
+
+**ステータス: 📋 計画 (2026-04-24 追加)**
+
+背景: REQ-NF-018 / REQ-NF-019 / RISK-008 に対応し、息継ぎによる文分断が字幕・
+翻訳品質を下げる問題を緩和する。設計変更は [設計追補 PR](../03-detailed-design/domain.md#変更履歴) を参照。
+
+方針: **案 A (STT endpointing 制御) + 案 C (翻訳 context) を MVP 必須**、
+**案 B (Relay hold window) は feature flag で opt-in、MVP 外**、案 D は不採用。
+詳細は [プラン](../../../.claude/plans/jolly-questing-codd.md)。
+
+### 12.1 Phase 1 拡張 (ドメイン層)
+
+| ID       | タスク                                                                             | 関連 DD         |
+| -------- | ---------------------------------------------------------------------------------- | --------------- |
+| IMPL-109 | `EndpointingPolicy` / `TranslationContextWindow` 値オブジェクト                    | DD-236 / DD-237 |
+| IMPL-117 | `SourceSession` 集約に endpointing / translationContext 属性 追加と不変条件 5 追加 | DD-210 (v0.2.0) |
+| IMPL-124 | `EndpointingPolicyResolver` ドメインサービス                                       | DD-244          |
+
+### 12.2 Phase 2 拡張 (アプリケーション層)
+
+| ID       | タスク                                                                                                                                | 関連 DD           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| IMPL-217 | `HandleTranscriptFinalUseCase` を `recentFinalTail` → `translate({precedingContext})` の処理順序に変更 (メモリ先取り、IndexedDB 後続) | DD-305 (v0.2.0)   |
+| IMPL-218 | `UpdateSourceSettingsUseCase` に endpointing / translationContext 受付を追加                                                          | DD-303 (v0.2.0)   |
+| IMPL-222 | `StartSourceSessionInput` / `UpdateSourceSettingsInput` / `HandleTranscriptFinalInput` の DTO 拡張 (Zod)                              | DTO-I-301/303/305 |
+
+### 12.3 Phase 3 拡張 (インフラ層・拡張側)
+
+| ID       | タスク                                                                                                                              | 関連 DB         |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| IMPL-318 | `IndexedDbSessionStore` の `sessions` ストアに endpointing / context カラム (`null` 許容) 追加と `onupgradeneeded` マイグレーション | DB-001 (v0.2.0) |
+| IMPL-319 | `ChromeLocalSettingsStore` に `settings.stt.*` / `settings.translation.*` キー追加 (Zod schema 検証)                                | DB-005 (v0.2.0) |
+
+### 12.4 Phase 4 拡張 (Relay API)
+
+| ID       | タスク                                                                                                                                               | 関連 API / DD     |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| IMPL-404 | `ComposeTranslationContextUseCase` (Relay メモリ内 session state から直近 final を取得)                                                              | use-case.md §11.1 |
+| IMPL-405 | `POST /sessions` の body Zod schema に `endpointing` / `translationContext` (optional) を追加、既定値を反映                                          | API-002 (v0.2.0)  |
+| IMPL-447 | `StreamingSttProviderAdapter` に provider 別 endpointing マッピングを実装 (Deepgram / Google STT / AWS Transcribe)。未対応フィールドは `logger.info` | DD-412 (v0.2.0)   |
+| IMPL-448 | `TranslationProviderAdapter` に `precedingContext` 反映。LLM 系は system prompt に挿入、NMT 系は無視。応答に `contextSegmentIds` を付与              | DD-413 (v0.2.0)   |
+| IMPL-449 | `transcript.final` / `translation.final` 送信イベントに `endpointingTrigger` / `precedingSegmentId` / `contextSegmentIds` を付与                     | API §6.3 (v0.2.0) |
+
+### 12.5 Phase 5 拡張 (プレゼンテーション層)
+
+| ID       | タスク                                                                                                  | 関連 SCR         |
+| -------- | ------------------------------------------------------------------------------------------------------- | ---------------- |
+| IMPL-529 | SCR-003 ソース設定ビューに「詳細」折り畳みセクションを追加 (endpointing / 翻訳文脈 スライダー / トグル) | SCR-003 (v0.3.0) |
+| IMPL-539 | SCR-004 翻訳オーバーレイに連結表示ルール (`precedingSegmentId` に基づく fade、文脈ありアイコン) を実装  | SCR-004 (v0.3.0) |
+
+### 12.6 後続 (MVP 外、opt-in)
+
+| ID       | タスク                                                                                                                       | 関連               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| IMPL-460 | Relay hold-window (案 B) feature flag 実装。`relay.hold_window_ms` で 150ms 以下のインメモリ hold、`POST /sessions` で有効化 | acl.md §6.3 (拡張) |
+
+### 12.7 テスト追加
+
+| ID       | タスク                                                                                    | 関連                   |
+| -------- | ----------------------------------------------------------------------------------------- | ---------------------- |
+| IMPL-609 | E2E: 息継ぎ入り音声フィクスチャで `silenceThresholdMs=800` → 1 seg、`=200` → 2 seg を検証 | TST-003 / TST-005 拡張 |
+| IMPL-625 | 性能: `silenceThresholdMs=200` + `precedingContext.max=5` 悪条件で翻訳 p95 < 800ms        | TST-NF-002 派生        |
+
+**Phase 4.1 完了基準**: 上記 IMPL 全項目 (IMPL-460 除く) が develop にマージされ、
+IMPL-609 の E2E が緑、IMPL-625 の性能 SLO を達成。設計文書 (`domain.md` / `acl.md` / `use-case.md` / `api-specification.md` / `database-design.md` / `ui-ux-design.md` / `requirements-specification.md`) が v0.2.0 以降に更新されている。
+
+---
+
 ## 11. 関連文書
 
 - 設計文書全 11 章 (`01-requirements/` 〜 `11-persona-design/`)
@@ -433,6 +502,7 @@ feat(domain): IMPL-110 SourceSession aggregate root
 
 ## 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容 |
-| ---------- | ---------- | ------ | -------- |
-| 0.1.0      | 2026-04-21 | Codex  | 初版作成 |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                  |
+| ---------- | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                  |
+| 0.2.0      | 2026-04-24 | Codex  | §12 Phase 4.1「セグメント連続性追補」を追加: IMPL-109 / 117 / 124 / 217 / 218 / 222 / 318 / 319 / 404 / 405 / 447 / 448 / 449 / 529 / 539 / 609 / 625 を登録、IMPL-460 (案 B) を MVP 外 opt-in として記載 |

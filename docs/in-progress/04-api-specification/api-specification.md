@@ -227,18 +227,23 @@ HTTP レートリミット応答には次のヘッダーを含める。
 
 **リクエストボディ:**
 
-| フィールド                | 型             | 必須 | 説明                                     |
-| ------------------------- | -------------- | ---- | ---------------------------------------- |
-| `sourceType`              | string         | Yes  | `tab` / `microphone` / `desktop`         |
-| `displayName`             | string         | Yes  | UI 表示用のソース名                      |
-| `sourceLanguage`          | string \| null | No   | 入力言語。自動判定時は `null`            |
-| `autoDetectLanguage`      | boolean        | Yes  | 入力言語の自動判定有無                   |
-| `targetLanguage`          | string         | Yes  | 翻訳先言語                               |
-| `overlayTarget.kind`      | string         | Yes  | `tab` / `extension-monitor`              |
-| `overlayTarget.tabId`     | integer        | No   | `kind=tab` の場合の対象タブ ID           |
-| `overlayTarget.pageId`    | string         | No   | `kind=extension-monitor` の場合の固定 ID |
-| `client.extensionVersion` | string         | Yes  | 拡張機能バージョン                       |
-| `client.protocolVersion`  | string         | Yes  | API プロトコルバージョン                 |
+| フィールド                                 | 型             | 必須 | 説明                                             |
+| ------------------------------------------ | -------------- | ---- | ------------------------------------------------ |
+| `sourceType`                               | string         | Yes  | `tab` / `microphone` / `desktop`                 |
+| `displayName`                              | string         | Yes  | UI 表示用のソース名                              |
+| `sourceLanguage`                           | string \| null | No   | 入力言語。自動判定時は `null`                    |
+| `autoDetectLanguage`                       | boolean        | Yes  | 入力言語の自動判定有無                           |
+| `targetLanguage`                           | string         | Yes  | 翻訳先言語                                       |
+| `overlayTarget.kind`                       | string         | Yes  | `tab` / `extension-monitor`                      |
+| `overlayTarget.tabId`                      | integer        | No   | `kind=tab` の場合の対象タブ ID                   |
+| `overlayTarget.pageId`                     | string         | No   | `kind=extension-monitor` の場合の固定 ID         |
+| `client.extensionVersion`                  | string         | Yes  | 拡張機能バージョン                               |
+| `client.protocolVersion`                   | string         | Yes  | API プロトコルバージョン                         |
+| `endpointing.silenceThresholdMs`           | integer        | No   | 200〜1200、既定 600。STT が文末と判定する無音長  |
+| `endpointing.punctuationAware`             | boolean        | No   | 既定 true。句読点を文末判定に利用するか          |
+| `endpointing.minUtteranceMs`               | integer        | No   | 100〜3000、既定 500。最小発話長 (これ未満は保留) |
+| `translationContext.maxSegments`           | integer        | No   | 0〜5、既定 3。翻訳時に渡す直前確定字幕の数       |
+| `translationContext.includeTranslatedText` | boolean        | No   | 既定 true。context に訳済みテキストも含めるか    |
 
 **リクエスト例:**
 
@@ -256,9 +261,22 @@ HTTP レートリミット応答には次のヘッダーを含める。
   "client": {
     "extensionVersion": "0.1.0",
     "protocolVersion": "1.0"
+  },
+  "endpointing": {
+    "silenceThresholdMs": 800,
+    "punctuationAware": true,
+    "minUtteranceMs": 500
+  },
+  "translationContext": {
+    "maxSegments": 3,
+    "includeTranslatedText": true
   }
 }
 ```
+
+`endpointing` / `translationContext` はすべて省略可能で、未指定の場合は Relay API
+がプロファイル既定値を適用する。既存クライアント (v0.1 準拠) は送信しなくて
+よい。
 
 **成功レスポンス（201 Created）:**
 
@@ -511,14 +529,16 @@ WebSocket セッション開始受理イベント。
 
 確定字幕イベント。翻訳はこのイベント受信後に直ちに開始される。
 
-| フィールド              | 型             | 説明                         |
-| ----------------------- | -------------- | ---------------------------- |
-| `payload.segmentId`     | string         | 字幕セグメント ID            |
-| `payload.text`          | string         | 確定原文                     |
-| `payload.language`      | string \| null | 確定した入力言語             |
-| `payload.startOffsetMs` | integer        | セッション開始からの開始位置 |
-| `payload.endOffsetMs`   | integer        | セッション開始からの終了位置 |
-| `payload.finalizedAt`   | string         | 確定時刻                     |
+| フィールド                   | 型             | 説明                                                                                                                                            |
+| ---------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payload.segmentId`          | string         | 字幕セグメント ID                                                                                                                               |
+| `payload.text`               | string         | 確定原文                                                                                                                                        |
+| `payload.language`           | string \| null | 確定した入力言語                                                                                                                                |
+| `payload.startOffsetMs`      | integer        | セッション開始からの開始位置                                                                                                                    |
+| `payload.endOffsetMs`        | integer        | セッション開始からの終了位置                                                                                                                    |
+| `payload.finalizedAt`        | string         | 確定時刻                                                                                                                                        |
+| `payload.endpointingTrigger` | string \| null | `silence` / `punctuation` / `max_duration` / `provider_default`。プロバイダが final と判定した理由。未対応プロバイダの場合は `provider_default` |
+| `payload.precedingSegmentId` | string \| null | 同一発話連鎖における直前確定字幕の `segmentId`。ストリーム先頭では `null`                                                                       |
 
 ```json
 {
@@ -532,7 +552,9 @@ WebSocket セッション開始受理イベント。
     "language": "en-US",
     "startOffsetMs": 3820,
     "endOffsetMs": 5120,
-    "finalizedAt": "2026-04-20T12:35:01.208Z"
+    "finalizedAt": "2026-04-20T12:35:01.208Z",
+    "endpointingTrigger": "silence",
+    "precedingSegmentId": null
   }
 }
 ```
@@ -541,14 +563,15 @@ WebSocket セッション開始受理イベント。
 
 翻訳字幕イベント。必ず `transcript.final` の `segmentId` を参照する。
 
-| フィールド                | 型             | 説明                                      |
-| ------------------------- | -------------- | ----------------------------------------- |
-| `payload.translationId`   | string         | 翻訳イベント ID                           |
-| `payload.sourceSegmentId` | string         | 対応する原文セグメント ID                 |
-| `payload.text`            | string         | 翻訳結果                                  |
-| `payload.sourceLanguage`  | string \| null | 入力言語                                  |
-| `payload.targetLanguage`  | string         | 翻訳先言語                                |
-| `payload.latencyMs`       | integer        | `transcript.final` から翻訳完了までの時間 |
+| フィールド                  | 型             | 説明                                                                                                                         |
+| --------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `payload.translationId`     | string         | 翻訳イベント ID                                                                                                              |
+| `payload.sourceSegmentId`   | string         | 対応する原文セグメント ID                                                                                                    |
+| `payload.text`              | string         | 翻訳結果                                                                                                                     |
+| `payload.sourceLanguage`    | string \| null | 入力言語                                                                                                                     |
+| `payload.targetLanguage`    | string         | 翻訳先言語                                                                                                                   |
+| `payload.latencyMs`         | integer        | `transcript.final` から翻訳完了までの時間                                                                                    |
+| `payload.contextSegmentIds` | string[]       | 翻訳時に参照した直前確定字幕の `segmentId` 配列。LLM 系プロバイダで context を渡せた場合に埋め、NMT 系や未対応の場合は空配列 |
 
 ```json
 {
@@ -562,7 +585,8 @@ WebSocket セッション開始受理イベント。
     "text": "本日はご参加ありがとうございます。",
     "sourceLanguage": "en-US",
     "targetLanguage": "ja-JP",
-    "latencyMs": 476
+    "latencyMs": 476,
+    "contextSegmentIds": []
   }
 }
 ```
@@ -622,6 +646,8 @@ WebSocket セッション開始受理イベント。
 - 翻訳が 800ms を超過した場合、該当セグメントの翻訳は打ち切り、`session.error` と `session.state.changed(degraded)` を返す
 - `degraded` 状態でも後続の `transcript.final` は継続する
 - 翻訳プロバイダが回復した場合、Relay API は後続セグメントから `translation.final` を再開できる
+- `payload.endpointingTrigger` / `payload.precedingSegmentId` / `payload.contextSegmentIds` は v0.2 で追加された追補フィールドであり、v0.1 クライアントは受信時に無視してよい (後方互換)
+- `endpointing.*` / `translationContext.*` を `POST /sessions` で省略した場合、Relay API は拡張プロファイル既定値を適用する。STT プロバイダが `endpointing.*` の一部フィールド (例: `minUtteranceMs`) に対応しない場合、Relay は `logger.info({ reason: 'unsupported_endpointing_field' })` を記録したうえで接続を継続する (fatal ではない)
 
 ### 6.5 劣化運転時の扱い
 
@@ -634,6 +660,7 @@ WebSocket セッション開始受理イベント。
 
 ## 7. 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容 |
-| ---------- | ---------- | ------ | -------- |
-| 0.1.0      | 2026-04-20 | Codex  | 初版作成 |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                                                                                      |
+| ---------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-20 | Codex  | 初版作成                                                                                                                                                                                                                                                                      |
+| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: `POST /sessions` に `endpointing` / `translationContext` を追加、`transcript.final` payload に `endpointingTrigger` / `precedingSegmentId` 追加、`translation.final` payload に `contextSegmentIds` 追加。全フィールド optional で後方互換 |

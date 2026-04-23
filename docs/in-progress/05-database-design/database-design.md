@@ -1,8 +1,8 @@
 ---
 title: データベース設計書
-version: '0.1.0'
+version: '0.2.0'
 created: 2026-04-21
-last_updated: 2026-04-21
+last_updated: 2026-04-24
 status: draft
 author: Codex
 ---
@@ -124,19 +124,22 @@ MVP の物理設計では、リレーショナル DB のテーブルではなく
 
 セッションメタデータを保持する object store。
 
-| フィールド名     | データ型       | NULL | デフォルト | 説明                             |
-| ---------------- | -------------- | ---- | ---------- | -------------------------------- |
-| `sessionId`      | string         | NO   | -          | 主キー                           |
-| `sourceId`       | string         | NO   | -          | 音声ソース識別子                 |
-| `sourceType`     | string         | NO   | -          | `tab` / `microphone` / `desktop` |
-| `displayName`    | string         | NO   | -          | UI 表示名                        |
-| `state`          | string         | NO   | `idle`     | セッション状態                   |
-| `sourceLanguage` | string \| null | YES  | `null`     | 入力言語                         |
-| `targetLanguage` | string         | NO   | -          | 翻訳先言語                       |
-| `startedAt`      | string         | NO   | -          | 開始日時                         |
-| `endedAt`        | string \| null | YES  | `null`     | 停止日時                         |
-| `createdAt`      | string         | NO   | -          | 作成日時                         |
-| `updatedAt`      | string         | NO   | -          | 更新日時                         |
+| フィールド名                  | データ型        | NULL | デフォルト | 説明                                                                       |
+| ----------------------------- | --------------- | ---- | ---------- | -------------------------------------------------------------------------- |
+| `sessionId`                   | string          | NO   | -          | 主キー                                                                     |
+| `sourceId`                    | string          | NO   | -          | 音声ソース識別子                                                           |
+| `sourceType`                  | string          | NO   | -          | `tab` / `microphone` / `desktop`                                           |
+| `displayName`                 | string          | NO   | -          | UI 表示名                                                                  |
+| `state`                       | string          | NO   | `idle`     | セッション状態                                                             |
+| `sourceLanguage`              | string \| null  | YES  | `null`     | 入力言語                                                                   |
+| `targetLanguage`              | string          | NO   | -          | 翻訳先言語                                                                 |
+| `startedAt`                   | string          | NO   | -          | 開始日時                                                                   |
+| `endedAt`                     | string \| null  | YES  | `null`     | 停止日時                                                                   |
+| `endpointingSilenceMs`        | number \| null  | YES  | `null`     | セッション個別の endpointing 無音長。`null` の場合はプロファイル既定を使用 |
+| `endpointingPunctuationAware` | boolean \| null | YES  | `null`     | セッション個別の句読点感度。`null` の場合はプロファイル既定を使用          |
+| `translationContextSegments`  | number \| null  | YES  | `null`     | セッション個別の翻訳 context 段数。`null` の場合はプロファイル既定を使用   |
+| `createdAt`                   | string          | NO   | -          | 作成日時                                                                   |
+| `updatedAt`                   | string          | NO   | -          | 更新日時                                                                   |
 
 **インデックス:**
 
@@ -202,14 +205,19 @@ MVP の物理設計では、リレーショナル DB のテーブルではなく
 
 ### DB-005: chrome.storage.local keys {#db-005}
 
-| キー                                      | 型             | 用途                   |
-| ----------------------------------------- | -------------- | ---------------------- |
-| `settings.language.defaultSourceLanguage` | string \| null | 既定入力言語           |
-| `settings.language.defaultTargetLanguage` | string         | 既定翻訳先言語         |
-| `settings.language.autoDetectEnabled`     | boolean        | 自動判定既定値         |
-| `settings.overlay.defaultOpacity`         | number         | 既定透明度             |
-| `settings.overlay.defaultMaxLines`        | number         | 既定表示行数           |
-| `settings.overlay.defaultMode`            | string         | 原文 / 翻訳 / 両方表示 |
+| キー                                                | 型             | 用途                                          |
+| --------------------------------------------------- | -------------- | --------------------------------------------- |
+| `settings.language.defaultSourceLanguage`           | string \| null | 既定入力言語                                  |
+| `settings.language.defaultTargetLanguage`           | string         | 既定翻訳先言語                                |
+| `settings.language.autoDetectEnabled`               | boolean        | 自動判定既定値                                |
+| `settings.overlay.defaultOpacity`                   | number         | 既定透明度                                    |
+| `settings.overlay.defaultMaxLines`                  | number         | 既定表示行数                                  |
+| `settings.overlay.defaultMode`                      | string         | 原文 / 翻訳 / 両方表示                        |
+| `settings.stt.defaultSilenceThresholdMs`            | number         | 200〜1200、既定 600。無音での文末判定時間     |
+| `settings.stt.defaultPunctuationAware`              | boolean        | 既定 true。句読点を文末判定に利用するか       |
+| `settings.stt.defaultMinUtteranceMs`                | number         | 100〜3000、既定 500。最小発話長               |
+| `settings.translation.defaultContextSegments`       | number         | 0〜5、既定 3。翻訳時の直前確定字幕参照段数    |
+| `settings.translation.defaultIncludeTranslatedText` | boolean        | 既定 true。context に訳済みテキストも含めるか |
 
 ## 6. インデックス設計
 
@@ -241,6 +249,12 @@ MVP の物理設計では、リレーショナル DB のテーブルではなく
 - 初期化時に旧バージョンからの移行処理を実行する
 - 破壊的変更が必要な場合は、旧データをエクスポート可能な状態を維持する
 
+### 7.3 v0.1 → v0.2 マイグレーション (セグメント連続性)
+
+- `sessions` store に追加されたカラム (`endpointingSilenceMs` / `endpointingPunctuationAware` / `translationContextSegments`) は `null` で default 埋めし、既存レコードは挙動不変
+- `chrome.storage.local` の新規キー (`settings.stt.*` / `settings.translation.*`) は未設定時はアプリ側で既定値を適用し、読み書きはどちらも Zod schema で検証
+- 後方互換のためデータ変換処理は不要、`onupgradeneeded` でカラム追加のみ実施
+
 ## 8. データ保全方針
 
 ### 8.1 バックアップ
@@ -265,6 +279,7 @@ MVP の物理設計では、リレーショナル DB のテーブルではなく
 
 ## 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容 |
-| ---------- | ---------- | ------ | -------- |
-| 0.1.0      | 2026-04-21 | Codex  | 初版作成 |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                     |
+| ---------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                     |
+| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: DB-001 `sessions` に endpointing / context カラムを追加、DB-005 に `settings.stt.*` / `settings.translation.*` キーを追加、§7.3 に v0.1 → v0.2 マイグレーション方針を追加 |
