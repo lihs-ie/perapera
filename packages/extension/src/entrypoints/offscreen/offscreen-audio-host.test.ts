@@ -27,6 +27,7 @@ const buildFakeContext = (
     sampleRate,
     audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
     close: closeFn,
+    destination: {},
     createMediaStreamSource: vi.fn(() => ({})),
     closeFn,
   };
@@ -242,6 +243,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => ({})),
       closeFn: vi.fn(),
     };
@@ -266,6 +268,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => ({})),
       closeFn: vi.fn(),
     };
@@ -291,6 +294,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => ({
         connect: vi.fn(),
         disconnect: vi.fn(),
@@ -318,6 +322,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource,
     };
     const factory = vi.fn<AudioContextFactory>(() => context);
@@ -346,7 +351,10 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
 
     expect(createMediaStreamSource).toHaveBeenCalledWith(mediaStream);
     expect(workletNodeFactory).toHaveBeenCalledWith(context, 'perapera-audio-processor');
+    // source は worklet と context.destination の両方に connect される
+    // (worklet: PCM 抽出で STT 送信、destination: tab 音声を speaker に戻す)
     expect(sourceNode.connect).toHaveBeenCalledWith(workletNode);
+    expect(sourceNode.connect).toHaveBeenCalledWith(context.destination);
     expect(host.hasWorkletConnected(identifierA)).toBe(true);
   });
 
@@ -361,6 +369,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => sourceNode),
     };
     const factory = vi.fn<AudioContextFactory>(() => context);
@@ -401,6 +410,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => sourceNode),
     };
     const factory = vi.fn<AudioContextFactory>(() => context);
@@ -456,6 +466,7 @@ describe('createOffscreenAudioHost (IMPL-561)', () => {
       sampleRate: 16000,
       audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => sourceNode),
     };
     const factory = vi.fn<AudioContextFactory>(() => context);

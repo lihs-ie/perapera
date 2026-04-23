@@ -25,6 +25,7 @@ const createMockContext = (): MockContext => {
       addModule: vi.fn((_url: string) => Promise.resolve()),
     },
     close: vi.fn(() => Promise.resolve()),
+    destination: {},
     createMediaStreamSource: vi.fn((_stream: MediaStream) => ({
       connect: vi.fn(),
       disconnect: vi.fn(),
