@@ -200,12 +200,15 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       expect(socket?.sentMessages.length).toBeGreaterThan(0);
       const first = socket?.sentMessages[0] ?? '';
       const parsed: unknown = JSON.parse(first);
+      // Relay client-events.ts sessionStartPayload が必須する 4 field を全て含むか
       expect(parsed).toMatchObject({
         eventType: 'session.start',
         sessionId: SESSION_ID,
         payload: {
           sourceLanguage: 'en-US',
+          autoDetectLanguage: false,
           targetLanguage: 'ja-JP',
+          translationEnabled: true,
         },
       });
     });
