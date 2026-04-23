@@ -94,18 +94,32 @@ export const createAudioFrameForwardReceiver = (
   deps: AudioFrameForwardReceiverDependencies,
 ): AudioFrameForwardReceiver => {
   const logWarn = deps.logWarn ?? defaultLogWarn;
+  const frameCountBySession = new Map<string, number>();
   return {
     receive: (rawMessage) => {
       const parsed = tryParseAudioFrameForwardMessage(rawMessage);
       if (parsed === null) {
         return okAsync<'forwarded' | 'ignored', DomainError>('ignored');
       }
+      const sessionId = parsed.envelope.sessionIdentifier;
+      const prev = frameCountBySession.get(sessionId) ?? 0;
+      const next = prev + 1;
+      frameCountBySession.set(sessionId, next);
+      if (next === 1) {
+        console.log(
+          `[audio-frame-forward-receiver] FIRST frame received for ${sessionId} — forwarding to relay`,
+        );
+      } else if (next % 50 === 0) {
+        console.log(
+          `[audio-frame-forward-receiver] frames forwarded for ${sessionId}: ${String(next)}`,
+        );
+      }
       return deps.relayGateway
         .sendAudioFrame(parsed.envelope)
         .map((): 'forwarded' | 'ignored' => 'forwarded')
         .orElse((error): ResultAsync<'forwarded' | 'ignored', DomainError> => {
           logWarn(
-            `[perapera] audio-frame-forward-receiver sendAudioFrame failed for ${parsed.envelope.sessionIdentifier}: ${
+            `[perapera] audio-frame-forward-receiver sendAudioFrame failed for ${sessionId}: ${
               'kind' in error ? error.kind : String(error)
             }`,
           );
