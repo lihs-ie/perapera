@@ -47,10 +47,15 @@ export type HandleTranscriptFinalInput = {
     | undefined;
 };
 
+// NOTE: `text` は空文字列許容。`session-command-service` が
+// `translation.final` RelayEvent 受信時、`toTranslationFinalInput` 経由で
+// 空 text + translation 付き input を本 UseCase に渡す経路があるため。
+// use case 側で text.length === 0 時は finalizeSegment を skip し、
+// 既に final 化された segment に translation のみ attach する。
 const handleTranscriptFinalInputSchema = z.object({
   sessionId: z.string().min(1),
   segmentId: z.string().min(1),
-  text: z.string().min(1),
+  text: z.string(),
   timeRange: timeRangeSchema,
   translation: translationPayloadSchema.optional(),
 });

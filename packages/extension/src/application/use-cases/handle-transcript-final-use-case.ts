@@ -107,13 +107,21 @@ export const createHandleTranscriptFinalUseCase = (
               endMs: parsed.timeRange.endMs,
             }).asyncAndThen((timeRange) =>
               findOrCreateTranscriptStream(deps.transcriptStreamRepository, sessionIdentifier)
-                .andThen((stream) =>
-                  finalizeSegment(stream, {
+                .andThen((stream): ResultAsync<TranscriptStream, DomainError> => {
+                  // `translation.final` 受信時は session-command-service 経由で
+                  // text='' + translation 付きの input が渡される。既に別経路で
+                  // 同 segment が final 化されている想定なので finalizeSegment を
+                  // skip して、後続 andThen の attachTranslationToSegment へ流す。
+                  if (parsed.text.length === 0) {
+                    return okAsync(stream);
+                  }
+                  const finalized = finalizeSegment(stream, {
                     segmentIdentifier,
                     text: parsed.text,
                     timeRange,
-                  }),
-                )
+                  });
+                  return finalized.isOk() ? okAsync(finalized.value) : errAsync(finalized.error);
+                })
                 .andThen((finalizedStream): ResultAsync<TranscriptStream, DomainError> => {
                   if (parsed.translation?.status === 'completed') {
                     return attachTranslationToSegment(finalizedStream, {
