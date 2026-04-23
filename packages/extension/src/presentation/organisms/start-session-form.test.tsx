@@ -72,7 +72,13 @@ describe('StartSessionForm organism (IMPL-540)', () => {
     );
     const client = buildClient(startFn);
     const onStarted = vi.fn();
-    render(<StartSessionForm client={client} onStarted={onStarted} />);
+    render(
+      <StartSessionForm
+        client={client}
+        onStarted={onStarted}
+        resolveActiveTabId={() => Promise.resolve(42)}
+      />,
+    );
     await userEvent.type(screen.getByRole('textbox', { name: '表示名' }), 'YouTube Live');
     await userEvent.click(screen.getByRole('button', { name: '開始' }));
     await waitFor(() => expect(startFn).toHaveBeenCalledOnce());
@@ -83,10 +89,37 @@ describe('StartSessionForm organism (IMPL-540)', () => {
         sourceLanguage: 'en-US',
         targetLanguage: 'ja-JP',
         autoDetectLanguage: false,
-        overlayTarget: { kind: 'extension-monitor' },
+        overlayTarget: { kind: 'tab', tabId: 42 },
       }),
     );
     await waitFor(() => expect(onStarted).toHaveBeenCalledOnce());
+  });
+
+  it('falls back to extension-monitor when active tab id is unresolved for tab source', async () => {
+    const startFn = vi.fn(() =>
+      Promise.resolve<BackgroundResponse<StartSourceSessionResult>>({
+        ok: true,
+        value: { sessionId: 's-2', state: 'requesting_permission', startedAt: 'now' },
+      }),
+    );
+    const client = buildClient(startFn);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {
+      /* swallow */
+    });
+    try {
+      render(<StartSessionForm client={client} resolveActiveTabId={() => Promise.resolve(null)} />);
+      await userEvent.type(screen.getByRole('textbox', { name: '表示名' }), 'Fallback');
+      await userEvent.click(screen.getByRole('button', { name: '開始' }));
+      await waitFor(() => expect(startFn).toHaveBeenCalledOnce());
+      expect(startFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: 'tab',
+          overlayTarget: { kind: 'extension-monitor', pageId: 'monitor' },
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('sends sourceLanguage=null when autoDetect is on', async () => {
