@@ -122,10 +122,26 @@ const toTranslationFinalInput = (
 export const createSessionCommandService = (
   deps: SessionCommandServiceDependencies,
 ): SessionCommandService => ({
-  startSource: (input) => deps.startSourceSessionUseCase(input),
-  stopSource: (input) => deps.stopSourceSessionUseCase(input),
+  startSource: (input) => {
+    console.log('[session-command-service] startSource received:', {
+      sourceType: input.sourceType,
+      target: input.targetLanguage,
+    });
+    return deps.startSourceSessionUseCase(input).map((output) => {
+      console.log('[session-command-service] startSource ok:', {
+        sessionId: output.sessionId,
+        state: output.state,
+      });
+      return output;
+    });
+  },
+  stopSource: (input) => {
+    console.log('[session-command-service] stopSource received:', input);
+    return deps.stopSourceSessionUseCase(input);
+  },
   applySourceSettings: (input) => deps.updateSourceSettingsUseCase(input),
   handleRelayEvent: (event) => {
+    console.log('[session-command-service] relay event:', event.type);
     switch (event.type) {
       case 'transcript.partial': {
         const input = toPartialInput(event, deps.clock());

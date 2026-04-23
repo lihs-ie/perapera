@@ -1,6 +1,6 @@
-import { type ResultAsync } from 'neverthrow';
+import { ResultAsync } from 'neverthrow';
 import { type SessionIdentifier } from '../../domain/session/session-identifier';
-import { type DomainError } from '../../domain/shared/errors';
+import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
 import { type OffscreenCommand } from '../../entrypoints/offscreen/offscreen-commands';
 
 /**
@@ -45,11 +45,49 @@ export type OffscreenCommandSender = Readonly<{
 
 export type OffscreenCommandSenderDependencies = Readonly<{
   bridge: RuntimeMessageBridge;
+  /**
+   * Offscreen document の存在を保証する idempotent な Promise factory。
+   * send 前に必ず await され、receiver 不在での `chrome.runtime.sendMessage`
+   * 失敗 (`Receiving end does not exist`) を防ぐ。未指定なら skip (test seam)。
+   * production では `offscreenLifecycle.ensure` を渡す。
+   */
+  ensureOffscreen?: () => Promise<void>;
+  /**
+   * 開発時のフロー追跡用。production の `console.log` が default。
+   */
+  logDebug?: (message: string) => void;
 }>;
+
+const defaultLogDebug = (message: string): void => {
+  console.log(message);
+};
 
 export const createOffscreenCommandSender = (
   deps: OffscreenCommandSenderDependencies,
 ): OffscreenCommandSender => {
+  const logDebug = deps.logDebug ?? defaultLogDebug;
+
+  const sendAfterEnsure = (
+    command: OffscreenCommand,
+    label: string,
+  ): ResultAsync<void, DomainError> => {
+    const ensurePromise =
+      deps.ensureOffscreen === undefined ? Promise.resolve() : deps.ensureOffscreen();
+    return ResultAsync.fromPromise(
+      ensurePromise,
+      (cause): DomainError =>
+        invariantViolationError({
+          invariant: 'offscreen-ensure',
+          details: `${label}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        }),
+    ).andThen(() => {
+      logDebug(
+        `[perapera] offscreen-command-sender sending ${command.type} (${label}) after ensure()`,
+      );
+      return deps.bridge.sendMessage(command);
+    });
+  };
+
   return {
     openAudioContext: (sessionIdentifier, options) => {
       const base: {
@@ -60,10 +98,10 @@ export const createOffscreenCommandSender = (
       } = { type: 'offscreen.audio.open', sessionIdentifier };
       if (options?.sampleRateHz !== undefined) base.sampleRateHz = options.sampleRateHz;
       if (options?.tabStreamId !== undefined) base.tabStreamId = options.tabStreamId;
-      return deps.bridge.sendMessage(base satisfies OffscreenCommand);
+      return sendAfterEnsure(base satisfies OffscreenCommand, 'openAudioContext');
     },
     closeAudioContext: (sessionIdentifier) =>
-      deps.bridge.sendMessage({ type: 'offscreen.audio.close', sessionIdentifier }),
-    ping: () => deps.bridge.sendMessage({ type: 'offscreen.ping' }),
+      sendAfterEnsure({ type: 'offscreen.audio.close', sessionIdentifier }, 'closeAudioContext'),
+    ping: () => sendAfterEnsure({ type: 'offscreen.ping' }, 'ping'),
   };
 };
