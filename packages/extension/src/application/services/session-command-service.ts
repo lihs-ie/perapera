@@ -141,7 +141,16 @@ export const createSessionCommandService = (
   },
   applySourceSettings: (input) => deps.updateSourceSettingsUseCase(input),
   handleRelayEvent: (event) => {
-    console.log('[session-command-service] relay event:', event.type);
+    if (event.type === 'session.error') {
+      console.error('[session-command-service] relay session.error:', {
+        code: event.code,
+        message: event.message,
+        retryable: event.retryable,
+        fatal: event.fatal,
+      });
+    } else {
+      console.log('[session-command-service] relay event:', event.type);
+    }
     switch (event.type) {
       case 'transcript.partial': {
         const input = toPartialInput(event, deps.clock());
