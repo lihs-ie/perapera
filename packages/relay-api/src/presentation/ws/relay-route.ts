@@ -290,6 +290,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
 
       // per-connection state
       let activeStream: ActiveStream | null = null;
+      let audioFrameReceivedCount = 0;
       /**
        * `session.start` を受信してから `sttPort.openStream` が resolve するまで
        * の一時状態。この間 `audio.frame` が届いても `SESSION_NOT_READY` を
@@ -371,6 +372,14 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
         event: Extract<ClientEvent, { eventType: 'session.start' }>,
       ): void => {
         if (activeStream !== null || sttOpening) {
+          request.log.warn(
+            {
+              sessionId: context.sessionId,
+              activeStream: activeStream !== null,
+              sttOpening,
+            },
+            'session.start received while stream already active/opening — rejecting',
+          );
           sendSessionError(socket, context, nextSequence, deps.clock, {
             code: 'INVALID_STATE_TRANSITION',
             message: 'session.start received while stream is already active',
@@ -379,6 +388,15 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
           });
           return;
         }
+        request.log.info(
+          {
+            sessionId: context.sessionId,
+            sourceLanguage: event.payload.sourceLanguage,
+            targetLanguage: event.payload.targetLanguage,
+            autoDetect: event.payload.autoDetectLanguage,
+          },
+          'session.start accepted — opening STT stream',
+        );
         sttOpening = true;
         // JWT claims / session.start payload どちらからも language を決定
         const sourceLanguage =
@@ -404,7 +422,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
               sttOpening = false;
               // pending frame を flush (rate limit は既に consume 済、再度は不要)
               if (pendingFrames.length > 0) {
-                request.log.debug(
+                request.log.info(
                   { count: pendingFrames.length, sessionId: context.sessionId },
                   'flushing pending audio.frame buffer after session.start',
                 );
@@ -440,6 +458,14 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       ): void => {
         // session.start 未受信 / 既受信で STT open 待ち / ストリーム確立済 の 3 状態を分岐
         if (activeStream === null && !sttOpening) {
+          request.log.warn(
+            {
+              sessionId: context.sessionId,
+              chunkId: event.payload.chunkId,
+              phase: 'handleAudioFrame: no session.start received yet',
+            },
+            'REJECTING audio.frame — activeStream=null, sttOpening=false',
+          );
           sendSessionError(socket, context, nextSequence, deps.clock, {
             code: 'SESSION_NOT_READY',
             message: 'audio.frame received before session.start',
@@ -486,6 +512,33 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       };
 
       const dispatchClientEvent = (event: ClientEvent): void => {
+        // 診断: 全 client event を info level で出す (頻度の高い audio.frame は
+        // 1 件目と 10 件ごとに間引き)。
+        if (event.eventType === 'audio.frame') {
+          audioFrameReceivedCount += 1;
+          if (audioFrameReceivedCount === 1 || audioFrameReceivedCount % 10 === 0) {
+            request.log.info(
+              {
+                sessionId: context.sessionId,
+                activeStream: activeStream !== null,
+                sttOpening,
+                pendingCount: pendingFrames.length,
+                totalReceived: audioFrameReceivedCount,
+              },
+              'audio.frame received (sample)',
+            );
+          }
+        } else {
+          request.log.info(
+            {
+              sessionId: context.sessionId,
+              eventType: event.eventType,
+              activeStream: activeStream !== null,
+              sttOpening,
+            },
+            'client event received',
+          );
+        }
         switch (event.eventType) {
           case 'session.ping':
             socket.send(
