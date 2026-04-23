@@ -199,19 +199,28 @@ export const createRelayWebSocketGateway = (
                 );
                 socket.removeEventListener('open', onOpen);
                 const sequence = 0;
-                socket.send(
-                  buildEnvelope(
-                    'session.start',
-                    session.sessionIdentifier,
-                    sequence,
-                    toIsoString(deps.clock),
-                    {
-                      sourceLanguage: session.languagePair.source,
-                      targetLanguage: session.languagePair.target,
-                      translationEnabled: true,
-                    },
-                  ),
+                const sessionStartEnvelope = buildEnvelope(
+                  'session.start',
+                  session.sessionIdentifier,
+                  sequence,
+                  toIsoString(deps.clock),
+                  {
+                    // Relay (client-events.ts `sessionStartPayload`) は
+                    // `sourceLanguage?: string | null`、`autoDetectLanguage: boolean`
+                    // (必須)、`targetLanguage: string`、`translationEnabled: boolean`
+                    // を期待。`autoDetectLanguage` を欠かすと Zod parse fail で
+                    // VALIDATION_ERROR になり、以降 audio.frame が
+                    // SESSION_NOT_READY 連続発火する。
+                    sourceLanguage: session.languagePair.source,
+                    autoDetectLanguage: false,
+                    targetLanguage: session.languagePair.target,
+                    translationEnabled: true,
+                  },
                 );
+                console.log(
+                  `[relay-gateway] sending session.start (${String(sessionStartEnvelope.length)} bytes)`,
+                );
+                socket.send(sessionStartEnvelope);
                 const connection: SessionConnection = {
                   socket,
                   sequence: sequence + 1,
