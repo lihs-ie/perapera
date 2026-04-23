@@ -123,7 +123,12 @@ describe('createHandleTranscriptPartialUseCase (IMPL-213, DD-304)', () => {
     if (result.isErr()) expect(result.error.type).toBe('validation');
   });
 
-  it('returns session-not-found when stream repository reports missing session', async () => {
+  it('auto-creates empty stream and succeeds when repository reports missing session (append-only semantic)', async () => {
+    // Repository は append-only 設計のため findBySessionId で 0 row 時は not-found
+    // を返す。handle-transcript-partial はこれを initial state として空 stream を
+    // 合成し、続けて appendPartial で persist することで「最初の partial」を
+    // 受け入れる。
+    const appendPartialMock = vi.fn(() => okAsync<void, DomainError>(undefined));
     const deps = buildDependencies({
       transcriptStreamRepository: {
         findBySessionId: vi.fn(() =>
@@ -131,7 +136,7 @@ describe('createHandleTranscriptPartialUseCase (IMPL-213, DD-304)', () => {
             notFoundError({ resourceType: 'TranscriptStream', identifier: SESSION_ID }),
           ),
         ),
-        appendPartial: vi.fn(() => okAsync(undefined)),
+        appendPartial: appendPartialMock,
         appendFinal: vi.fn(() => okAsync(undefined)),
         appendTranslation: vi.fn(() => okAsync(undefined)),
       },
@@ -144,8 +149,8 @@ describe('createHandleTranscriptPartialUseCase (IMPL-213, DD-304)', () => {
       text: 'hello',
       timeRange: { startMs: 0, endMs: 1000 },
     });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.type).toBe('session-not-found');
+    expect(result.isOk()).toBe(true);
+    expect(appendPartialMock).toHaveBeenCalledTimes(1);
   });
 
   it('still succeeds when overlayPresenter.render fails (hot-path not rolled back)', async () => {

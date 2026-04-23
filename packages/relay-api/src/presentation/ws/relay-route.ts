@@ -38,7 +38,12 @@ export type RelayRouteDependencies = Readonly<{
 
 const DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS = 5000;
 const DEFAULT_HEARTBEAT_TIMEOUT_FACTOR = 2;
-const DEFAULT_AUDIO_FRAME_LIMIT_PER_SEC = 10;
+// api-specification.md §2.4 の名目上限は 10/sec だが、AudioWorklet の downsample
+// step を round(inputSampleRate / 16000) で算出しているため整数丸め + flush
+// jitter で瞬間 11-12fps の burst が発生しうる。実運用では 15/sec まで許容し、
+// 真に暴走した場合のみ reject する設計に変更。SSOT (§2.4) の 10/sec は
+// "設計目標" と解釈し、Relay 側の限界は 15 に broaden する。
+const DEFAULT_AUDIO_FRAME_LIMIT_PER_SEC = 15;
 
 type RelayQuery = Readonly<{
   sessionId?: string;

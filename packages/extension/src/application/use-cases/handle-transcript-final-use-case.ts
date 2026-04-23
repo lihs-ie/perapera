@@ -1,14 +1,18 @@
-import { okAsync, type ResultAsync } from 'neverthrow';
+import { errAsync, okAsync, type ResultAsync } from 'neverthrow';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
 import { type TranscriptStreamRepository } from '../../domain/repositories/transcript-stream-repository';
 import { parseSegmentIdentifier } from '../../domain/transcript/segment-identifier';
 import { createTimestampRange } from '../../domain/transcript/timestamp-range';
 import {
   attachTranslationToSegment,
+  createTranscriptStream,
   finalizeSegment,
   type TranscriptStream,
 } from '../../domain/transcript/transcript-stream';
-import { parseSessionIdentifier } from '../../domain/session/session-identifier';
+import {
+  parseSessionIdentifier,
+  type SessionIdentifier,
+} from '../../domain/session/session-identifier';
 import { describeDomainError, type DomainError } from '../../domain/shared/errors';
 import {
   parseHandleTranscriptFinalInput,
@@ -36,6 +40,26 @@ export type HandleTranscriptFinalUseCase = (
 const logWarn = (scope: string) => (error: DomainError) => {
   console.warn(`[use-case:handle-transcript-final] ${scope} failed:`, describeDomainError(error));
 };
+
+/**
+ * Repository not-found を空 TranscriptStream に合成 (handle-transcript-partial
+ * と同じパターン)。session.final は partial の後に来る想定だが、partial が
+ * repo に persist される前 (非同期) に final が来る race を防ぐためここでも
+ * 空 fallback を採用する。
+ */
+const findOrCreateTranscriptStream = (
+  repository: TranscriptStreamRepository,
+  sessionIdentifier: SessionIdentifier,
+): ResultAsync<TranscriptStream, DomainError> =>
+  repository
+    .findBySessionId(sessionIdentifier)
+    .orElse((error): ResultAsync<TranscriptStream, DomainError> => {
+      if (error.kind === 'not-found' && error.resourceType === 'TranscriptStream') {
+        const created = createTranscriptStream({ sessionIdentifier });
+        return created.isOk() ? okAsync(created.value) : errAsync(created.error);
+      }
+      return errAsync(error);
+    });
 
 const resolveOverlaySettings = (
   settingsStore: SettingsStore,
@@ -82,8 +106,7 @@ export const createHandleTranscriptFinalUseCase = (
               startMs: parsed.timeRange.startMs,
               endMs: parsed.timeRange.endMs,
             }).asyncAndThen((timeRange) =>
-              deps.transcriptStreamRepository
-                .findBySessionId(sessionIdentifier)
+              findOrCreateTranscriptStream(deps.transcriptStreamRepository, sessionIdentifier)
                 .andThen((stream) =>
                   finalizeSegment(stream, {
                     segmentIdentifier,
