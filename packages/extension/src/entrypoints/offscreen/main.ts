@@ -18,7 +18,7 @@ import { parseOffscreenCommand } from './offscreen-commands';
  * MVP スコープ: AudioContext 確保までの shell。PCM 転送 / AudioWorklet 配線は
  * Phase 6 integration で追加予定。
  */
-console.log('[perapera] offscreen document loaded');
+console.log('[perapera] ---- offscreen document loaded ----');
 
 const WORKLET_MODULE_URL = (() => {
   try {
@@ -27,15 +27,40 @@ const WORKLET_MODULE_URL = (() => {
     return '/perapera-audio-processor.js';
   }
 })();
+console.log('[perapera] offscreen worklet url:', WORKLET_MODULE_URL);
+
+const frameCountBySession = new Map<string, number>();
 
 const host = createOffscreenAudioHost({
   audioContextFactory: defaultAudioContextFactory,
   tabStreamApi: defaultTabStreamApi,
   workletModuleUrl: WORKLET_MODULE_URL,
   workletNodeFactory: defaultWorkletNodeFactory,
+  // console.debug は Chrome DevTools の 'verbose' level を有効化しないと
+  // 見えないため、トラブルシュート中は info level の console.log に昇格。
+  logger: {
+    debug: (message) => {
+      console.log(message);
+    },
+    warn: (message) => {
+      console.warn(message);
+    },
+  },
   // IMPL-617: worklet frame を SW へ転送。chrome.runtime.sendMessage で
   // broadcast し、SW の audio.frame.forward listener が audioFramePump に流す。
   onAudioFrame: (sessionIdentifier, data) => {
+    const prev = frameCountBySession.get(sessionIdentifier) ?? 0;
+    const next = prev + 1;
+    frameCountBySession.set(sessionIdentifier, next);
+    if (next === 1) {
+      console.log(
+        `[perapera] offscreen FIRST AUDIO FRAME for ${sessionIdentifier} — pipeline active`,
+      );
+    } else if (next % 50 === 0) {
+      console.log(
+        `[perapera] offscreen audio frames forwarded for ${sessionIdentifier}: ${String(next)}`,
+      );
+    }
     void chrome.runtime
       .sendMessage({
         type: 'audio.frame.forward',
@@ -58,6 +83,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // ため silent ignore。return false で async 応答しないことを宣言。
     return false;
   }
+  console.log('[perapera] offscreen dispatch command:', parsed.value.type);
   host.dispatch(parsed.value);
   sendResponse({ ok: true });
   return false;
