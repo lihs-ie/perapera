@@ -49,12 +49,16 @@ const transcriptFinalPayload = z.object({
   finalizedAt: isoSchema,
 });
 
+// Relay `buildTranslationFinal` は DeepL の `detectedSourceLanguage` を
+// そのまま載せる (`string | null`) ため、null 許容が必須。また DeepL が無音 /
+// 極短セグメントで空文字列 text を返すケースがあるため、text も min 制約を
+// 外して受け取り、空なら UI 層で skip する (hot path を止めない)。
 const translationFinalPayload = z.object({
   translationId: z.string().min(1),
   sourceSegmentId: z.string().min(1),
-  text: z.string().min(1),
+  text: z.string(),
   targetLanguage: z.string().min(1),
-  sourceLanguage: z.string().optional(),
+  sourceLanguage: z.string().nullable().optional(),
 });
 
 const stateChangedPayload = z.object({

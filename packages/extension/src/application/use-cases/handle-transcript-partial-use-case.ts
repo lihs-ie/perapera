@@ -1,10 +1,17 @@
-import { okAsync, type ResultAsync } from 'neverthrow';
+import { errAsync, okAsync, type ResultAsync } from 'neverthrow';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
 import { type TranscriptStreamRepository } from '../../domain/repositories/transcript-stream-repository';
 import { parseSegmentIdentifier } from '../../domain/transcript/segment-identifier';
 import { createTimestampRange } from '../../domain/transcript/timestamp-range';
-import { appendPartialTranscriptSegment } from '../../domain/transcript/transcript-stream';
-import { parseSessionIdentifier } from '../../domain/session/session-identifier';
+import {
+  appendPartialTranscriptSegment,
+  createTranscriptStream,
+  type TranscriptStream,
+} from '../../domain/transcript/transcript-stream';
+import {
+  parseSessionIdentifier,
+  type SessionIdentifier,
+} from '../../domain/session/session-identifier';
 import { describeDomainError, type DomainError } from '../../domain/shared/errors';
 import {
   parseHandleTranscriptPartialInput,
@@ -36,6 +43,28 @@ const logWarn = (scope: string) => (error: DomainError) => {
  * 設定ストアから overlay 設定を取得。not-found や失敗時は sensible default に
  * フォールバックする (ホットパスで stuck しない)。
  */
+/**
+ * Repository が not-found の場合は session に紐づく空の TranscriptStream を
+ * 作成して返す。IndexedDB は append-only のため findBySessionId で 0 row なら
+ * NotFoundError が返るが、これは「まだ transcript 未着」の意味で、使い手
+ * (handle use case) にとっては**正常な初回 state**。空集約を合成して続行する
+ * ことで、start session 時に pre-create しなくてよくなる (append-only の
+ * spirit を維持)。
+ */
+const findOrCreateTranscriptStream = (
+  repository: TranscriptStreamRepository,
+  sessionIdentifier: SessionIdentifier,
+): ResultAsync<TranscriptStream, DomainError> =>
+  repository
+    .findBySessionId(sessionIdentifier)
+    .orElse((error): ResultAsync<TranscriptStream, DomainError> => {
+      if (error.kind === 'not-found' && error.resourceType === 'TranscriptStream') {
+        const created = createTranscriptStream({ sessionIdentifier });
+        return created.isOk() ? okAsync(created.value) : errAsync(created.error);
+      }
+      return errAsync(error);
+    });
+
 const resolveOverlaySettings = (
   settingsStore: SettingsStore,
 ): ResultAsync<OverlaySettings, DomainError> =>
@@ -72,8 +101,7 @@ export const createHandleTranscriptPartialUseCase = (
               startMs: parsed.timeRange.startMs,
               endMs: parsed.timeRange.endMs,
             }).asyncAndThen((timeRange) =>
-              deps.transcriptStreamRepository
-                .findBySessionId(sessionIdentifier)
+              findOrCreateTranscriptStream(deps.transcriptStreamRepository, sessionIdentifier)
                 .andThen((stream) =>
                   appendPartialTranscriptSegment(stream, {
                     segmentIdentifier,
