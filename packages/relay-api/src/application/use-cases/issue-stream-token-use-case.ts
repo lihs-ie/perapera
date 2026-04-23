@@ -80,6 +80,7 @@ const toSessionClaims = (session: RelaySession): Readonly<Record<string, unknown
   translationContext: {
     maxSegments: session.translationContext.maxSegments,
     includeTranslatedText: session.translationContext.includeTranslatedText,
+    holdWindowMs: session.translationContext.holdWindowMs,
   },
 });
 

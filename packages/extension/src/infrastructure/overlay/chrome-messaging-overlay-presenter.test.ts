@@ -56,6 +56,8 @@ describe('createChromeMessagingOverlayPresenter (IMPL-331)', () => {
           translatedText: 'こんにちは',
           targetLanguage: 'ja-JP',
           isFinal: true,
+          precedingSegmentIdentifier: null,
+          hasTranslationContext: false,
         },
       ],
     });

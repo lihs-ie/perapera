@@ -23,6 +23,7 @@ describe('SttPort contract', () => {
         startOffsetMs: 0,
         endOffsetMs: 200,
         finalizedAt: '2026-04-21T00:00:00.000Z',
+        endpointingTrigger: 'provider_default',
       },
     ];
     const handle: SttStreamHandle = {

@@ -36,6 +36,8 @@ const sampleLine: OverlayLine = {
   translatedText: 'こんにちは',
   targetLanguage: 'ja-JP',
   isFinal: true,
+  precedingSegmentIdentifier: null,
+  hasTranslationContext: false,
 };
 
 const sampleModel: OverlayRenderModel = {
@@ -74,6 +76,8 @@ describe('OverlayPresenter (DD-108)', () => {
         translatedText: null,
         targetLanguage: null,
         isFinal: false,
+        precedingSegmentIdentifier: null,
+        hasTranslationContext: false,
       };
       const translationOnly: OverlayLine = {
         segmentIdentifier,
@@ -81,6 +85,8 @@ describe('OverlayPresenter (DD-108)', () => {
         translatedText: 'こんにちは',
         targetLanguage: 'ja-JP',
         isFinal: true,
+        precedingSegmentIdentifier: null,
+        hasTranslationContext: false,
       };
       expect(originalOnly.translatedText).toBeNull();
       expect(translationOnly.originalText).toBeNull();

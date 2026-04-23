@@ -18,6 +18,15 @@ const SETTINGS: DefaultSettingsResult = {
     showOriginalText: true,
     showTranslatedText: true,
   },
+  endpointing: {
+    silenceThresholdMs: 600,
+    punctuationAware: true,
+    minUtteranceMs: 500,
+  },
+  translationContext: {
+    maxSegments: 3,
+    includeTranslatedText: true,
+  },
   relayOverride: null,
 };
 
@@ -38,6 +47,8 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
   ),
   saveDefaultLanguagePair: vi.fn(() => Promise.resolve(SAVED_ACK)),
   saveDefaultOverlaySettings: vi.fn(() => Promise.resolve(SAVED_ACK)),
+  saveDefaultEndpointingPolicy: vi.fn(() => Promise.resolve(SAVED_ACK)),
+  saveDefaultTranslationContextWindow: vi.fn(() => Promise.resolve(SAVED_ACK)),
   saveRelayConnectionOverride: vi.fn(() => Promise.resolve(SAVED_ACK)),
   clearRelayConnectionOverride: vi.fn(() => Promise.resolve(SAVED_ACK)),
   ...overrides,
@@ -159,6 +170,15 @@ describe('SettingsView organism', () => {
               fontScale: 1.5,
               showOriginalText: false,
               showTranslatedText: true,
+            },
+            endpointing: {
+              silenceThresholdMs: 800,
+              punctuationAware: true,
+              minUtteranceMs: 500,
+            },
+            translationContext: {
+              maxSegments: 5,
+              includeTranslatedText: true,
             },
             relayOverride: null,
           },

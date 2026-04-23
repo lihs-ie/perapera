@@ -8,6 +8,13 @@ import { type DomainError } from '../../domain/shared/errors';
  *   単調増加。`text` は最新全文を表す (差分ではなく累積)
  * - `final`: 確定字幕。1 つの `segmentId` につき 1 回発行される
  */
+/**
+ * IMPL-449: STT プロバイダが final と判定した理由。adapter が provider 固有信号
+ * (例: Deepgram `speech_final`) をこの列挙へ正規化する。プロバイダが信号を
+ * 返さない場合は `provider_default` に落として後方互換を保つ。
+ */
+export type EndpointingTrigger = 'silence' | 'punctuation' | 'max_duration' | 'provider_default';
+
 export type TranscriptEvent =
   | Readonly<{
       type: 'partial';
@@ -26,6 +33,7 @@ export type TranscriptEvent =
       startOffsetMs: number;
       endOffsetMs: number;
       finalizedAt: string;
+      endpointingTrigger: EndpointingTrigger;
     }>;
 
 /**

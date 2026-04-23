@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../atoms/button';
+import { Checkbox } from '../atoms/checkbox';
 import { Label } from '../atoms/label';
 import { TextInput } from '../atoms/text-input';
 import { useBackgroundCommand } from '../hooks/use-background-command';
 import { useBackgroundQuery } from '../hooks/use-background-query';
 import {
   type BackgroundClient,
+  type DefaultEndpointingPolicyInput,
   type DefaultLanguagePairInput,
   type DefaultOverlaySettingsInput,
   type DefaultSettingsResult,
+  type DefaultTranslationContextWindowInput,
   type RelayConnectionOverrideInput,
 } from '../infrastructure/background-client';
 import { LanguagePairSelector } from '../molecules/language-pair-selector';
@@ -29,6 +32,25 @@ const DEFAULT_OVERLAY_FORM_VALUES: OverlaySettingsFormValues = {
   fontScale: 1,
   showOriginalText: true,
   showTranslatedText: true,
+};
+
+const DEFAULT_ENDPOINTING_FORM: DefaultEndpointingPolicyInput = {
+  silenceThresholdMs: 600,
+  punctuationAware: true,
+  minUtteranceMs: 500,
+};
+
+const DEFAULT_TRANSLATION_CONTEXT_FORM: DefaultTranslationContextWindowInput = {
+  maxSegments: 3,
+  includeTranslatedText: true,
+};
+
+const clampInt = (value: number, min: number, max: number): number => {
+  if (Number.isNaN(value)) return min;
+  const int = Math.round(value);
+  if (int < min) return min;
+  if (int > max) return max;
+  return int;
 };
 
 const toOverlayFormValues = (
@@ -70,6 +92,10 @@ export function SettingsView(props: Props) {
   });
   const saveLanguageCommand = useBackgroundCommand(props.client.saveDefaultLanguagePair);
   const saveOverlayCommand = useBackgroundCommand(props.client.saveDefaultOverlaySettings);
+  const saveEndpointingCommand = useBackgroundCommand(props.client.saveDefaultEndpointingPolicy);
+  const saveTranslationContextCommand = useBackgroundCommand(
+    props.client.saveDefaultTranslationContextWindow,
+  );
   const saveRelayCommand = useBackgroundCommand(props.client.saveRelayConnectionOverride);
   const clearRelayCommand = useBackgroundCommand(() => props.client.clearRelayConnectionOverride());
 
@@ -79,6 +105,11 @@ export function SettingsView(props: Props) {
   );
   const [overlayPositionPreset, setOverlayPositionPreset] =
     useState<DefaultSettingsResult['overlaySettings']['positionPreset']>('bottom');
+  const [endpointingValues, setEndpointingValues] =
+    useState<DefaultEndpointingPolicyInput>(DEFAULT_ENDPOINTING_FORM);
+  const [translationContextValues, setTranslationContextValues] =
+    useState<DefaultTranslationContextWindowInput>(DEFAULT_TRANSLATION_CONTEXT_FORM);
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(false);
   const [relayBaseUrl, setRelayBaseUrl] = useState<string>('');
   const [relayAccessToken, setRelayAccessToken] = useState<string>('');
   const [relayOverrideActive, setRelayOverrideActive] = useState<boolean>(false);
@@ -91,6 +122,15 @@ export function SettingsView(props: Props) {
     setLanguagePair(data.languagePair);
     setOverlayValues(toOverlayFormValues(data.overlaySettings));
     setOverlayPositionPreset(data.overlaySettings.positionPreset);
+    setEndpointingValues({
+      silenceThresholdMs: data.endpointing.silenceThresholdMs,
+      punctuationAware: data.endpointing.punctuationAware,
+      minUtteranceMs: data.endpointing.minUtteranceMs,
+    });
+    setTranslationContextValues({
+      maxSegments: data.translationContext.maxSegments,
+      includeTranslatedText: data.translationContext.includeTranslatedText,
+    });
     if (data.relayOverride !== null) {
       setRelayBaseUrl(data.relayOverride.baseUrl);
       setRelayAccessToken(data.relayOverride.accessToken);
@@ -114,7 +154,10 @@ export function SettingsView(props: Props) {
   }, []);
 
   const isSavingDefaults =
-    saveLanguageCommand.state.status === 'pending' || saveOverlayCommand.state.status === 'pending';
+    saveLanguageCommand.state.status === 'pending' ||
+    saveOverlayCommand.state.status === 'pending' ||
+    saveEndpointingCommand.state.status === 'pending' ||
+    saveTranslationContextCommand.state.status === 'pending';
   const isRelayBusy =
     saveRelayCommand.state.status === 'pending' || clearRelayCommand.state.status === 'pending';
   const samePair = languagePair.source === languagePair.target;
@@ -129,34 +172,45 @@ export function SettingsView(props: Props) {
       positionPreset: overlayPositionPreset,
       ...overlayValues,
     };
-    const [languageResponse, overlayResponse] = await Promise.all([
-      saveLanguageCommand.execute(languagePair),
-      saveOverlayCommand.execute(overlayInput),
-    ]);
-    if (languageResponse.ok && overlayResponse.ok) {
+    const [languageResponse, overlayResponse, endpointingResponse, contextResponse] =
+      await Promise.all([
+        saveLanguageCommand.execute(languagePair),
+        saveOverlayCommand.execute(overlayInput),
+        saveEndpointingCommand.execute(endpointingValues),
+        saveTranslationContextCommand.execute(translationContextValues),
+      ]);
+    const allOk =
+      languageResponse.ok && overlayResponse.ok && endpointingResponse.ok && contextResponse.ok;
+    if (allOk) {
       setSaveResultMessage('設定を保存しました。');
     } else {
-      const languageError = languageResponse.ok ? null : languageResponse.error.message;
-      const overlayError = overlayResponse.ok ? null : overlayResponse.error.message;
-      setSaveResultMessage(
-        ['保存に失敗しました:', languageError, overlayError]
-          .filter((line) => line !== null)
-          .join(' / '),
-      );
+      const errors = [
+        languageResponse.ok ? null : languageResponse.error.message,
+        overlayResponse.ok ? null : overlayResponse.error.message,
+        endpointingResponse.ok ? null : endpointingResponse.error.message,
+        contextResponse.ok ? null : contextResponse.error.message,
+      ].filter((line): line is string => line !== null);
+      setSaveResultMessage(['保存に失敗しました:', ...errors].join(' / '));
     }
   }, [
+    endpointingValues,
     languagePair,
     overlayPositionPreset,
     overlayValues,
     samePair,
+    saveEndpointingCommand,
     saveLanguageCommand,
     saveOverlayCommand,
+    saveTranslationContextCommand,
+    translationContextValues,
   ]);
 
   const handleReset = useCallback(() => {
     setLanguagePair(DEFAULT_LANGUAGE_PAIR);
     setOverlayValues(DEFAULT_OVERLAY_FORM_VALUES);
     setOverlayPositionPreset('bottom');
+    setEndpointingValues(DEFAULT_ENDPOINTING_FORM);
+    setTranslationContextValues(DEFAULT_TRANSLATION_CONTEXT_FORM);
     setSaveResultMessage('既定値に戻しました。保存ボタンで確定します。');
   }, []);
 
@@ -243,6 +297,104 @@ export function SettingsView(props: Props) {
             onChange={handleOverlayChange}
             disabled={isSavingDefaults}
           />
+        </section>
+
+        <section className="section" aria-label="詳細 (セグメント連続性)">
+          <h3 className="subtitle">
+            <button
+              type="button"
+              className="toggle"
+              aria-expanded={advancedOpen}
+              onClick={() => {
+                setAdvancedOpen((prev) => !prev);
+              }}
+            >
+              詳細 (息継ぎで途切れるときに調整) {advancedOpen ? '▾' : '▸'}
+            </button>
+          </h3>
+          {advancedOpen ? (
+            <div className="advanced" data-testid="advanced-section">
+              <div className="field">
+                <Label htmlFor="endpointing-silence">無音での文末判定時間 (ms)</Label>
+                <TextInput
+                  id="endpointing-silence"
+                  ariaLabel="silenceThresholdMs"
+                  type="number"
+                  value={String(endpointingValues.silenceThresholdMs)}
+                  onChange={(next) => {
+                    setEndpointingValues((prev) => ({
+                      ...prev,
+                      silenceThresholdMs: clampInt(Number(next), 200, 1200),
+                    }));
+                  }}
+                  disabled={isSavingDefaults}
+                />
+                <p className="hint">200〜1200ms (既定 600)。長めにすると息継ぎで途切れにくい。</p>
+              </div>
+              <div className="field">
+                <Label htmlFor="endpointing-punctuation">句読点感度</Label>
+                <Checkbox
+                  id="endpointing-punctuation"
+                  ariaLabel="punctuationAware"
+                  checked={endpointingValues.punctuationAware}
+                  onChange={(checked) => {
+                    setEndpointingValues((prev) => ({ ...prev, punctuationAware: checked }));
+                  }}
+                  disabled={isSavingDefaults}
+                />
+              </div>
+              <div className="field">
+                <Label htmlFor="endpointing-min-utterance">最小発話長 (ms)</Label>
+                <TextInput
+                  id="endpointing-min-utterance"
+                  ariaLabel="minUtteranceMs"
+                  type="number"
+                  value={String(endpointingValues.minUtteranceMs)}
+                  onChange={(next) => {
+                    setEndpointingValues((prev) => ({
+                      ...prev,
+                      minUtteranceMs: clampInt(Number(next), 100, 3000),
+                    }));
+                  }}
+                  disabled={isSavingDefaults}
+                />
+                <p className="hint">100〜3000ms (既定 500)。</p>
+              </div>
+              <div className="field">
+                <Label htmlFor="translation-context-max">翻訳の文脈保持 (segment 数)</Label>
+                <TextInput
+                  id="translation-context-max"
+                  ariaLabel="maxSegments"
+                  type="number"
+                  value={String(translationContextValues.maxSegments)}
+                  onChange={(next) => {
+                    setTranslationContextValues((prev) => ({
+                      ...prev,
+                      maxSegments: clampInt(Number(next), 0, 5),
+                    }));
+                  }}
+                  disabled={isSavingDefaults}
+                />
+                <p className="hint">0〜5 (既定 3)。0 は文脈を渡さない従来挙動。</p>
+              </div>
+              <div className="field">
+                <Label htmlFor="translation-context-include">訳文も文脈に含める</Label>
+                <Checkbox
+                  id="translation-context-include"
+                  ariaLabel="includeTranslatedText"
+                  checked={translationContextValues.includeTranslatedText}
+                  onChange={(checked) => {
+                    setTranslationContextValues((prev) => ({
+                      ...prev,
+                      includeTranslatedText: checked,
+                    }));
+                  }}
+                  disabled={isSavingDefaults}
+                />
+              </div>
+              <p className="hint">設定変更は次のセッション開始から反映されます。</p>
+            </div>
+          ) : null}
         </section>
 
         {saveResultMessage !== null ? (

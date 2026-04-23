@@ -26,6 +26,12 @@ export const projectOverlayRenderModel = (params: {
   const capped = sortedSegments.slice(-settings.maxLines);
 
   const lines: OverlayLine[] = [];
+  // IMPL-539: overlay 連結表示のため、時系列で直前に並ぶ final segment の
+  // `segmentIdentifier` を `precedingSegmentIdentifier` に入れる (暫定ヒューリスティック)。
+  // 精密には Relay が `transcript.final.precedingSegmentId` を送って UseCase が
+  // 保持するのが理想だが、現行 TranscriptSegment 集約には persist しないため、
+  // projector 内で末尾の final を参照する形で代替する。partial は null。
+  let lastFinalIdentifier: OverlayLine['segmentIdentifier'] | null = null;
   for (const segment of capped) {
     const originalText = settings.showOriginalText ? segment.text : null;
     let translatedText: string | null = null;
@@ -37,14 +43,24 @@ export const projectOverlayRenderModel = (params: {
         targetLanguage = translation.targetLanguage;
       }
     }
-    if (originalText === null && translatedText === null) continue;
+    if (originalText === null && translatedText === null) {
+      if (segment.isFinal) lastFinalIdentifier = segment.segmentIdentifier;
+      continue;
+    }
+    const precedingSegmentIdentifier = segment.isFinal ? lastFinalIdentifier : null;
     lines.push({
       segmentIdentifier: segment.segmentIdentifier,
       originalText,
       translatedText,
       targetLanguage,
       isFinal: segment.isFinal,
+      precedingSegmentIdentifier,
+      // TranslationSegment は contextSegmentIds を保持しない (追加せずに済ませるため)
+      // 将来的に Relay からの `translation.final.contextSegmentIds` をドメインに載せた
+      // 時点で true にする余地を残す。現状は常に false。
+      hasTranslationContext: false,
     });
+    if (segment.isFinal) lastFinalIdentifier = segment.segmentIdentifier;
   }
 
   return {

@@ -111,6 +111,15 @@ const defaultSettingsOutputSchema = z.object({
     showOriginalText: z.boolean(),
     showTranslatedText: z.boolean(),
   }),
+  endpointing: z.object({
+    silenceThresholdMs: z.number().int(),
+    punctuationAware: z.boolean(),
+    minUtteranceMs: z.number().int(),
+  }),
+  translationContext: z.object({
+    maxSegments: z.number().int(),
+    includeTranslatedText: z.boolean(),
+  }),
   relayOverride: z
     .object({
       baseUrl: z.string().url(),
@@ -198,6 +207,15 @@ export type DefaultOverlaySettingsInput = Readonly<{
   showOriginalText: boolean;
   showTranslatedText: boolean;
 }>;
+export type DefaultEndpointingPolicyInput = Readonly<{
+  silenceThresholdMs: number;
+  punctuationAware: boolean;
+  minUtteranceMs: number;
+}>;
+export type DefaultTranslationContextWindowInput = Readonly<{
+  maxSegments: number;
+  includeTranslatedText: boolean;
+}>;
 export type RelayConnectionOverrideInput = Readonly<{
   baseUrl: string;
   accessToken: string;
@@ -225,6 +243,12 @@ export type BackgroundClient = Readonly<{
   ) => Promise<BackgroundResponse<SavedAckResult>>;
   saveDefaultOverlaySettings: (
     input: DefaultOverlaySettingsInput,
+  ) => Promise<BackgroundResponse<SavedAckResult>>;
+  saveDefaultEndpointingPolicy: (
+    input: DefaultEndpointingPolicyInput,
+  ) => Promise<BackgroundResponse<SavedAckResult>>;
+  saveDefaultTranslationContextWindow: (
+    input: DefaultTranslationContextWindowInput,
   ) => Promise<BackgroundResponse<SavedAckResult>>;
   saveRelayConnectionOverride: (
     input: RelayConnectionOverrideInput,
@@ -276,6 +300,14 @@ export const createBackgroundClient = (
     sendTyped(sender, { type: 'command.save-default-language-pair', input }, savedAckSchema),
   saveDefaultOverlaySettings: (input) =>
     sendTyped(sender, { type: 'command.save-default-overlay-settings', input }, savedAckSchema),
+  saveDefaultEndpointingPolicy: (input) =>
+    sendTyped(sender, { type: 'command.save-default-endpointing-policy', input }, savedAckSchema),
+  saveDefaultTranslationContextWindow: (input) =>
+    sendTyped(
+      sender,
+      { type: 'command.save-default-translation-context-window', input },
+      savedAckSchema,
+    ),
   saveRelayConnectionOverride: (input) =>
     sendTyped(sender, { type: 'command.save-relay-connection-override', input }, savedAckSchema),
   clearRelayConnectionOverride: () =>

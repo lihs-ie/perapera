@@ -6,8 +6,12 @@ export type Props = Readonly<{
   disabled?: boolean;
   ariaLabel?: string;
   maxLength?: number;
-  /** default 'text'。secret 入力用に 'password' を指定できる */
-  type?: 'text' | 'password';
+  /** default 'text'。secret 入力用に 'password'、数値入力用に 'number' を指定できる */
+  type?: 'text' | 'password' | 'number';
+  /** type='number' 用の範囲指定 */
+  min?: number;
+  max?: number;
+  step?: number;
 }>;
 
 /**
@@ -25,6 +29,9 @@ export function TextInput(props: Props) {
       disabled={props.disabled === true}
       aria-label={props.ariaLabel}
       maxLength={props.maxLength}
+      min={props.min}
+      max={props.max}
+      step={props.step}
       onChange={(event) => {
         props.onChange(event.target.value);
       }}

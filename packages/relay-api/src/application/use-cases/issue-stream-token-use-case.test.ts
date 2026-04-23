@@ -99,6 +99,7 @@ describe('createIssueStreamTokenUseCase (IMPL-401, stateless)', () => {
       translationContext: {
         maxSegments: 3,
         includeTranslatedText: true,
+        holdWindowMs: 0,
       },
     });
   });

@@ -65,6 +65,8 @@ type DeepgramMessage = {
     alternatives?: DeepgramMessageAlternative[];
   };
   is_final?: boolean;
+  /** Deepgram: silence detection で文末と判定 (utterance boundary) */
+  speech_final?: boolean;
   start?: number;
   duration?: number;
 };
@@ -118,6 +120,8 @@ const parseDeepgramMessage = (raw: string): DeepgramMessage | null => {
   }
   const isFinal = extractBoolean(parsed, 'is_final');
   if (isFinal !== undefined) message.is_final = isFinal;
+  const speechFinal = extractBoolean(parsed, 'speech_final');
+  if (speechFinal !== undefined) message.speech_final = speechFinal;
   const start = extractNumber(parsed, 'start');
   if (start !== undefined) message.start = start;
   const duration = extractNumber(parsed, 'duration');
@@ -208,6 +212,16 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
         const endMs = startMs + durMs;
         if (parsed.is_final === true) {
           const segmentId = pendingSegmentId ?? segmentIdFactory();
+          // IMPL-449: Deepgram の `speech_final=true` は silence detection で
+          // 文末と判定したことを意味するため `'silence'` に mapping。
+          // それ以外は is_final=true のみで、Deepgram が max-segment や句読点
+          // などで切った可能性があるが、本 SDK の信号としては区別不能のため
+          // `'provider_default'` に落とす。
+          const endpointingTrigger: TranscriptEvent extends infer E
+            ? E extends { endpointingTrigger: infer T }
+              ? T
+              : never
+            : never = parsed.speech_final === true ? 'silence' : 'provider_default';
           pushEvent({
             type: 'final',
             segmentId,
@@ -216,6 +230,7 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
             startOffsetMs: startMs,
             endOffsetMs: endMs,
             finalizedAt: clock(),
+            endpointingTrigger,
           });
           pendingSegmentId = null;
           partialRevision = 0;

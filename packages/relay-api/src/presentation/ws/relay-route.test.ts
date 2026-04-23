@@ -455,6 +455,7 @@ describe('WebSocket /relay route', () => {
           startOffsetMs: 0,
           endOffsetMs: 1000,
           finalizedAt: '2026-04-21T00:00:00.000Z',
+          endpointingTrigger: 'silence',
         },
       ];
       const sttPort = createMockSttProvider({ transcripts: scriptedTranscripts });

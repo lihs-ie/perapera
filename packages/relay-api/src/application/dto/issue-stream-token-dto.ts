@@ -32,6 +32,8 @@ const translationContextWindowInputSchema = z
   .object({
     maxSegments: z.number().int().min(0).max(5).optional(),
     includeTranslatedText: z.boolean().optional(),
+    /** IMPL-460: 0〜150ms (既定 0 = 無効、feature flag) */
+    holdWindowMs: z.number().int().min(0).max(150).optional(),
   })
   .optional();
 

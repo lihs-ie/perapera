@@ -85,6 +85,7 @@ export type CreateRelaySessionParams = {
     | {
         maxSegments?: number | undefined;
         includeTranslatedText?: boolean | undefined;
+        holdWindowMs?: number | undefined;
       }
     | undefined;
 };

@@ -65,6 +65,8 @@ export function TranscriptPairStream(props: Props) {
                 originalText={line.originalText}
                 translatedText={line.translatedText}
                 isFinal={line.isFinal}
+                connectedToPrevious={line.precedingSegmentIdentifier !== null}
+                hasTranslationContext={line.hasTranslationContext}
               />
             ))}
           </div>

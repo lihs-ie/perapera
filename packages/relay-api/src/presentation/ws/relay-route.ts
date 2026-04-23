@@ -143,6 +143,7 @@ const extractTranslationContextFromClaims = (
     maxSegments: typeof raw.maxSegments === 'number' ? raw.maxSegments : undefined,
     includeTranslatedText:
       typeof raw.includeTranslatedText === 'boolean' ? raw.includeTranslatedText : undefined,
+    holdWindowMs: typeof raw.holdWindowMs === 'number' ? raw.holdWindowMs : undefined,
   });
   return result.isOk() ? result.value : DEFAULT_TRANSLATION_CONTEXT_WINDOW;
 };
@@ -217,6 +218,7 @@ const emitTranscriptFinal = (
   clock: () => string,
   event: Extract<TranscriptEvent, { type: 'final' }>,
   precedingSegmentId: string | null,
+  endpointingTrigger: Extract<TranscriptEvent, { type: 'final' }>['endpointingTrigger'],
 ): void => {
   socket.send(
     serializeServerEvent(
@@ -230,9 +232,8 @@ const emitTranscriptFinal = (
         startOffsetMs: event.startOffsetMs,
         endOffsetMs: event.endOffsetMs,
         finalizedAt: event.finalizedAt,
-        // IMPL-447: STT が endpointingTrigger を提供しないため provider_default 固定。
-        // 将来プロバイダ側から取得できるようになったら ACL 層で mapping する。
-        endpointingTrigger: 'provider_default',
+        // IMPL-449: STT adapter が speech_final 等から正規化した値を使用。
+        endpointingTrigger,
         precedingSegmentId,
       }),
     ),
@@ -415,6 +416,62 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
        * final が来たら TranslationPort へ投げ、成功した translation.final を
        * 送信 (失敗は log.warn、接続は維持)。
        */
+      // IMPL-460: hold-window (Option B feature flag)。
+      // `holdWindowMs > 0` のとき、新 final 受信から一定時間内に別 final が
+      // 届いたら、テキストを空白で連結して 1 回の translate() に統合する。
+      // translation.final の sourceSegmentId は最後の final のもの、
+      // contextSegmentIds は translate() が受けた precedingContext の ids を返す。
+      let pendingTranslation: {
+        // 発火対象の segmentIds (連結された順)
+        segmentIds: readonly string[];
+        // 連結済み source text
+        text: string;
+        sourceLanguage: string | null;
+        targetLanguage: string;
+        // merge 時に先頭 final で撮った precedingContext を再利用する
+        precedingContext: readonly PrecedingContext[];
+      } | null = null;
+      let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const dispatchTranslation = async (
+        snapshot: NonNullable<typeof pendingTranslation>,
+      ): Promise<void> => {
+        const finalSegmentId = snapshot.segmentIds[snapshot.segmentIds.length - 1] ?? '';
+        const translationResult = await deps.translationPort.translate({
+          text: snapshot.text,
+          sourceLanguage: snapshot.sourceLanguage,
+          targetLanguage: snapshot.targetLanguage,
+          precedingContext: snapshot.precedingContext,
+        });
+        if (translationResult.isErr()) {
+          request.log.warn(
+            {
+              err: translationResult.error,
+              segmentIds: snapshot.segmentIds,
+            },
+            'translation failed — skipping translation.final',
+          );
+          return;
+        }
+        const contextSegmentIds = translationResult.value.contextSegmentIds ?? [];
+        emitTranslationFinal(socket, context, nextSequence, deps.clock, {
+          translationId: translationIdFactory(),
+          sourceSegmentId: finalSegmentId,
+          text: translationResult.value.text,
+          sourceLanguage: translationResult.value.detectedSourceLanguage,
+          targetLanguage: snapshot.targetLanguage,
+          latencyMs: translationResult.value.latencyMs,
+          contextSegmentIds,
+        });
+        // merge 対象の全 segment に translatedText を反映する (次 final の
+        // context に使えるよう)。複数 segment にも同じ訳文をコピーする。
+        finalTail = finalTail.map((entry) =>
+          snapshot.segmentIds.includes(entry.segmentId)
+            ? { ...entry, translatedText: translationResult.value.text }
+            : entry,
+        );
+      };
+
       const runTranscriptLoop = (stream: ActiveStream): void => {
         void (async () => {
           for await (const event of stream.handle.events) {
@@ -436,11 +493,10 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                 deps.clock,
                 event,
                 precedingSegmentId,
+                event.endpointingTrigger,
               );
 
               // IMPL-404 / IMPL-448: 翻訳 context を組み立てる (maxSegments=0 なら空)。
-              // composeContext は固定の includeTranslatedText 設定に従い、必要なら
-              // translatedText フィールドを落とす。
               const precedingContext = composeTranslationContext({
                 finalTail,
                 maxSegments: effectiveTranslationContext.maxSegments,
@@ -456,42 +512,61 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
               finalTail = [...finalTail, newEntry];
               trimFinalTail();
 
-              // 翻訳は fire-and-forget (ホットパス、結果は translation.final で送信)
-              void (async () => {
-                const translationResult = await deps.translationPort.translate({
+              const holdWindowMs = effectiveTranslationContext.holdWindowMs;
+              if (holdWindowMs <= 0) {
+                // 従来パス: 即時 translate 発火 (fire-and-forget)。
+                void dispatchTranslation({
+                  segmentIds: [event.segmentId],
                   text: event.text,
                   sourceLanguage: stream.sourceLanguage,
                   targetLanguage: stream.targetLanguage,
                   precedingContext,
                 });
-                if (translationResult.isErr()) {
-                  request.log.warn(
-                    { err: translationResult.error, segmentId: event.segmentId },
-                    'translation failed — skipping translation.final',
-                  );
-                  return;
-                }
-                const contextSegmentIds = translationResult.value.contextSegmentIds ?? [];
-                emitTranslationFinal(socket, context, nextSequence, deps.clock, {
-                  translationId: translationIdFactory(),
-                  sourceSegmentId: event.segmentId,
-                  text: translationResult.value.text,
-                  sourceLanguage: translationResult.value.detectedSourceLanguage,
-                  targetLanguage: stream.targetLanguage,
-                  latencyMs: translationResult.value.latencyMs,
-                  contextSegmentIds,
-                });
-                // IMPL-404: 自 segment の translatedText を finalTail に反映し、
-                // 次 final の context に使えるようにする。
-                finalTail = finalTail.map((entry) =>
-                  entry.segmentId === event.segmentId
-                    ? { ...entry, translatedText: translationResult.value.text }
-                    : entry,
-                );
-              })();
+                continue;
+              }
+
+              // IMPL-460: hold-window 有効時。既存 pending を cancel して新 final を
+              // merge。precedingContext は merge 開始時点のものを固定利用する
+              // (merge 対象 final を context に含めないため)。
+              if (pendingTimer !== null) {
+                clearTimeout(pendingTimer);
+                pendingTimer = null;
+              }
+              pendingTranslation =
+                pendingTranslation === null
+                  ? {
+                      segmentIds: [event.segmentId],
+                      text: event.text,
+                      sourceLanguage: stream.sourceLanguage,
+                      targetLanguage: stream.targetLanguage,
+                      precedingContext,
+                    }
+                  : {
+                      segmentIds: [...pendingTranslation.segmentIds, event.segmentId],
+                      text: `${pendingTranslation.text} ${event.text}`,
+                      sourceLanguage: pendingTranslation.sourceLanguage,
+                      targetLanguage: pendingTranslation.targetLanguage,
+                      precedingContext: pendingTranslation.precedingContext,
+                    };
+              const snapshotForTimer = pendingTranslation;
+              pendingTimer = setTimeout(() => {
+                pendingTranslation = null;
+                pendingTimer = null;
+                void dispatchTranslation(snapshotForTimer);
+              }, holdWindowMs);
             } catch (cause) {
               request.log.error({ err: cause }, 'transcript loop iteration failed');
             }
+          }
+          // stream 終了時に pending があれば強制 flush
+          if (pendingTimer !== null) {
+            clearTimeout(pendingTimer);
+            pendingTimer = null;
+          }
+          if (pendingTranslation !== null) {
+            const snapshot = pendingTranslation;
+            pendingTranslation = null;
+            void dispatchTranslation(snapshot);
           }
         })();
       };
