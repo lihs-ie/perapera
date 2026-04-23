@@ -31,18 +31,43 @@ export const floatToPcm16 = (float32: Float32Array): Int16Array => {
 
 /**
  * Int16 PCM を Base64 文字列に encode する。
- * AudioWorklet / browser / node (vitest) すべてで動作する最小実装として
- * Uint8Array → 8bit char → btoa を使う。
+ *
+ * AudioWorkletGlobalScope には `btoa` が**無い** (W3C 仕様上 Window/Worker のみ)
+ * ため、pure JS の RFC 4648 §4 準拠エンコーダを実装する。worklet 側
+ * (`packages/extension/src/public/perapera-audio-processor.js`) と同一ロジックで
+ * mirror すること (両方とも import 禁止コンテキストのため 1:1 複製)。
  */
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 export const int16ToBase64 = (int16: Int16Array): string => {
   const bytes = new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength);
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  let result = '';
+  let i = 0;
+  const len = bytes.length;
+  while (i < len - 2) {
+    const b0 = bytes[i] ?? 0;
+    const b1 = bytes[i + 1] ?? 0;
+    const b2 = bytes[i + 2] ?? 0;
+    result += BASE64_ALPHABET[b0 >> 2];
+    result += BASE64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)];
+    result += BASE64_ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)];
+    result += BASE64_ALPHABET[b2 & 0x3f];
+    i += 3;
   }
-  if (typeof btoa === 'function') return btoa(binary);
-  // Node 20+ (vitest) には btoa グローバルがあるが、念のため fallback
-  return Buffer.from(binary, 'binary').toString('base64');
+  if (i < len) {
+    const b0 = bytes[i] ?? 0;
+    result += BASE64_ALPHABET[b0 >> 2];
+    if (i + 1 < len) {
+      const b1 = bytes[i + 1] ?? 0;
+      result += BASE64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)];
+      result += BASE64_ALPHABET[(b1 & 0x0f) << 2];
+      result += '=';
+    } else {
+      result += BASE64_ALPHABET[(b0 & 0x03) << 4];
+      result += '==';
+    }
+  }
+  return result;
 };
 
 /**

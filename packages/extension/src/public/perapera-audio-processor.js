@@ -48,14 +48,41 @@ const floatToPcm16 = (float32) => {
   return int16;
 };
 
+// AudioWorkletGlobalScope には `btoa` が存在しない (W3C 仕様上は
+// Window/Worker のみ)。Chrome 検証でも ReferenceError になるため、pure JS の
+// base64 エンコーダを inline 実装する。RFC 4648 §4 準拠、padding 付き。
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 const int16ToBase64 = (int16) => {
   const bytes = new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
+  let result = '';
+  let i = 0;
+  const len = bytes.length;
+  while (i < len - 2) {
+    const b0 = bytes[i];
+    const b1 = bytes[i + 1];
+    const b2 = bytes[i + 2];
+    result += BASE64_ALPHABET[b0 >> 2];
+    result += BASE64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)];
+    result += BASE64_ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)];
+    result += BASE64_ALPHABET[b2 & 0x3f];
+    i += 3;
   }
-  // AudioWorklet コンテキストには btoa が存在する (W3C 仕様)
-  return btoa(binary);
+  // 末尾 1〜2 byte の padding
+  if (i < len) {
+    const b0 = bytes[i];
+    result += BASE64_ALPHABET[b0 >> 2];
+    if (i + 1 < len) {
+      const b1 = bytes[i + 1];
+      result += BASE64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)];
+      result += BASE64_ALPHABET[(b1 & 0x0f) << 2];
+      result += '=';
+    } else {
+      result += BASE64_ALPHABET[(b0 & 0x03) << 4];
+      result += '==';
+    }
+  }
+  return result;
 };
 
 class PeraperaAudioProcessor extends AudioWorkletProcessor {
