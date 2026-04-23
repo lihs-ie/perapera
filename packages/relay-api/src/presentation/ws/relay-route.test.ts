@@ -1,11 +1,15 @@
 import fastifyWebsocket from '@fastify/websocket';
-import { errAsync, ok, okAsync } from 'neverthrow';
+import { errAsync, ok, ok as okResult, okAsync, ResultAsync, type Result } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
 import { type JwtVerifiedPayload, type JwtVerifier } from '../../application/ports/jwt-verifier';
-import { type SttPort, type TranscriptEvent } from '../../application/ports/stt-port';
+import {
+  type SttPort,
+  type SttStreamHandle,
+  type TranscriptEvent,
+} from '../../application/ports/stt-port';
 import { type TranslationPort } from '../../application/ports/translation-port';
 import { type IssueStreamTokenUseCase } from '../../application/use-cases/issue-stream-token-use-case';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
@@ -532,6 +536,127 @@ describe('WebSocket /relay route', () => {
         eventType: 'session.error',
         payload: { code: 'SESSION_NOT_READY' },
       });
+      ws.close();
+    }, 10000);
+
+    it('buffers audio.frame sent during STT openStream delay and flushes after session.start resolves', async () => {
+      // STT の openStream を 200ms 遅延させる = session.start → audio.frame の
+      // race を再現。遅延中に送られた frame は pending queue に積まれ、
+      // openStream 解決後に handle.sendFrame へ flush される。
+      const sendFrameCalls: { audioBase64: string; chunkId: string }[] = [];
+      let resolveOpen: ((handle: SttStreamHandle) => void) | null = null;
+      const slowSttPort: SttPort = {
+        openStream: () => {
+          const handle: SttStreamHandle = {
+            sendFrame: (frame) => {
+              sendFrameCalls.push(frame);
+              return okResult(undefined);
+            },
+            close: () => okAsync<void, DomainError>(undefined),
+            events: {
+              [Symbol.asyncIterator]: () => ({
+                next: (): Promise<IteratorResult<TranscriptEvent>> =>
+                  new Promise<IteratorResult<TranscriptEvent>>(() => {
+                    // 無限保留 (このテストでは transcript を検証しない)
+                  }),
+              }),
+            },
+          };
+          return new ResultAsync<SttStreamHandle, DomainError>(
+            new Promise<Result<SttStreamHandle, DomainError>>((resolve) => {
+              resolveOpen = (h) => {
+                resolve(okResult(h));
+              };
+              setTimeout(() => {
+                if (resolveOpen !== null) {
+                  const capture = resolveOpen;
+                  resolveOpen = null;
+                  capture(handle);
+                }
+              }, 200);
+            }),
+          );
+        },
+      };
+      harness = await startApp(okVerifier, { sttPort: slowSttPort });
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      // session.start を先に送信 (STT は 200ms かけて開く)
+      ws.send(
+        JSON.stringify({
+          eventType: 'session.start',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sourceLanguage: 'en-US',
+            autoDetectLanguage: false,
+            targetLanguage: 'ja-JP',
+            translationEnabled: true,
+          },
+        }),
+      );
+
+      // 直後に audio.frame を 2 件送る (STT 未準備で buffer されるはず)
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 2,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_1',
+            audioBase64: 'AAAA=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 3,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_2',
+            audioBase64: 'BBBB=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+
+      // 500ms 待って STT open + flush 完了を期待
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 500);
+      });
+
+      // session.error は届かない想定: queue.next(100) で timeout 期待
+      let errorThrown = false;
+      try {
+        const maybeError = await queue.next(100);
+        expect(maybeError).not.toMatchObject({ eventType: 'session.error' });
+      } catch {
+        // timeout は期待通り (session.error が来なかった証拠)
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(true);
+
+      // sendFrame が 2 回呼ばれていること (flush された)
+      expect(sendFrameCalls).toHaveLength(2);
+      expect(sendFrameCalls[0]?.chunkId).toBe('chk_1');
+      expect(sendFrameCalls[1]?.chunkId).toBe('chk_2');
+
       ws.close();
     }, 10000);
   });

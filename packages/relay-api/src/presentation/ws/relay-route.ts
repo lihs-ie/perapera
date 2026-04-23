@@ -290,9 +290,21 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
 
       // per-connection state
       let activeStream: ActiveStream | null = null;
+      /**
+       * `session.start` を受信してから `sttPort.openStream` が resolve するまで
+       * の一時状態。この間 `audio.frame` が届いても `SESSION_NOT_READY` を
+       * 返さず、`pendingFrames` に buffer する。client (browser extension) は
+       * WebSocket の onopen 直後に session.start → audio.frame を連続 post する
+       * ため、STT 接続の async レイテンシを server 側で吸収する必要がある
+       * (api-specification §6 のメッセージ順序契約に準拠)。
+       */
+      let sttOpening = false;
+      const MAX_PENDING_FRAMES = 50; // 100ms * 50 = 5s バッファ上限
+      let pendingFrames: { audioBase64: string; chunkId: string }[] = [];
       const audioFrameBucket = createRateBucket(audioFrameLimit, 1000);
 
       const closeActiveStream = (): void => {
+        pendingFrames = [];
         if (activeStream === null) return;
         const handle = activeStream.handle;
         activeStream = null;
@@ -358,7 +370,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       const handleSessionStart = (
         event: Extract<ClientEvent, { eventType: 'session.start' }>,
       ): void => {
-        if (activeStream !== null) {
+        if (activeStream !== null || sttOpening) {
           sendSessionError(socket, context, nextSequence, deps.clock, {
             code: 'INVALID_STATE_TRANSITION',
             message: 'session.start received while stream is already active',
@@ -367,6 +379,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
           });
           return;
         }
+        sttOpening = true;
         // JWT claims / session.start payload どちらからも language を決定
         const sourceLanguage =
           event.payload.sourceLanguage ??
@@ -388,9 +401,29 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                 sourceLanguage: autoDetectLanguage ? null : sourceLanguage,
               };
               activeStream = stream;
+              sttOpening = false;
+              // pending frame を flush (rate limit は既に consume 済、再度は不要)
+              if (pendingFrames.length > 0) {
+                request.log.debug(
+                  { count: pendingFrames.length, sessionId: context.sessionId },
+                  'flushing pending audio.frame buffer after session.start',
+                );
+                for (const frame of pendingFrames) {
+                  const flushResult = handle.sendFrame(frame);
+                  if (flushResult.isErr()) {
+                    request.log.warn(
+                      { err: flushResult.error },
+                      'stt sendFrame failed during pending flush',
+                    );
+                  }
+                }
+                pendingFrames = [];
+              }
               runTranscriptLoop(stream);
             },
             (err) => {
+              sttOpening = false;
+              pendingFrames = [];
               request.log.error({ err }, 'stt openStream failed');
               sendSessionError(socket, context, nextSequence, deps.clock, {
                 code: 'STT_ERROR',
@@ -405,7 +438,8 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       const handleAudioFrame = (
         event: Extract<ClientEvent, { eventType: 'audio.frame' }>,
       ): void => {
-        if (activeStream === null) {
+        // session.start 未受信 / 既受信で STT open 待ち / ストリーム確立済 の 3 状態を分岐
+        if (activeStream === null && !sttOpening) {
           sendSessionError(socket, context, nextSequence, deps.clock, {
             code: 'SESSION_NOT_READY',
             message: 'audio.frame received before session.start',
@@ -421,6 +455,21 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
             retryable: true,
             fatal: false,
           });
+          return;
+        }
+        if (activeStream === null) {
+          // STT open 待ちの間は buffer。上限超過で drop (hot path を止めない)
+          if (pendingFrames.length < MAX_PENDING_FRAMES) {
+            pendingFrames.push({
+              audioBase64: event.payload.audioBase64,
+              chunkId: event.payload.chunkId,
+            });
+          } else {
+            request.log.warn(
+              { count: pendingFrames.length, chunkId: event.payload.chunkId },
+              'pending audio.frame buffer full — dropping frame during STT open',
+            );
+          }
           return;
         }
         const result = activeStream.handle.sendFrame({
