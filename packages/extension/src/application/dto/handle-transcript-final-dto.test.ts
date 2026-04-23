@@ -54,15 +54,23 @@ describe('HandleTranscriptFinalDTO (DD-305)', () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it('rejects empty text (final segment must have content)', () => {
+    it('accepts empty text (translation-only path marker)', () => {
+      // session-command-service.toTranslationFinalInput が translation.final
+      // RelayEvent 受信時に text='' + translation 付き input を合成する経路
+      // (DD-305 §6.2 結果整合性)。Use case 側で text.length === 0 のとき
+      // finalizeSegment を skip する前提で、DTO は空 text を受け入れる必要がある。
       const result = parseHandleTranscriptFinalInput({
         sessionId: SESSION_ID,
         segmentId: SEGMENT_ID,
         text: '',
         timeRange: { startMs: 0, endMs: 1000 },
+        translation: { targetLanguage: 'ja-JP', text: 'こんにちは', status: 'completed' },
       });
-      expect(result.isErr()).toBe(true);
-      if (result.isErr()) expect(result.error.kind).toBe('validation');
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.text).toBe('');
+        expect(result.value.translation?.text).toBe('こんにちは');
+      }
     });
 
     it('rejects unknown translation.status', () => {

@@ -12,6 +12,7 @@ import { createTimestampRange } from '../../domain/transcript/timestamp-range';
 import {
   appendPartialTranscriptSegment,
   createTranscriptStream,
+  finalizeSegment,
   type TranscriptStream,
 } from '../../domain/transcript/transcript-stream';
 import { type OverlayPresenter } from '../ports/overlay-presenter';
@@ -32,6 +33,15 @@ const buildStreamWithPartial = (): TranscriptStream => {
     segmentIdentifier: SEGMENT_ID,
     revision: 1,
     text: 'hello',
+    timeRange: createTimestampRange({ startMs: 0, endMs: 1000 })._unsafeUnwrap(),
+  })._unsafeUnwrap();
+};
+
+const buildStreamWithFinal = (): TranscriptStream => {
+  const base = buildStreamWithPartial();
+  return finalizeSegment(base, {
+    segmentIdentifier: SEGMENT_ID,
+    text: 'hello world',
     timeRange: createTimestampRange({ startMs: 0, endMs: 1000 })._unsafeUnwrap(),
   })._unsafeUnwrap();
 };
@@ -158,17 +168,36 @@ describe('createHandleTranscriptFinalUseCase (IMPL-214, DD-305)', () => {
     expect(deps.transcriptStreamRepository.appendTranslation).not.toHaveBeenCalled();
   });
 
-  it('returns validation error when text is empty', async () => {
-    const deps = buildDependencies();
+  it('accepts empty text with translation (translation-only path)', async () => {
+    // text='' は session-command-service.toTranslationFinalInput が
+    // translation.final RelayEvent 受信時に合成する marker。Use case は
+    // finalizeSegment を skip し、既に別経路で final 化された segment に
+    // translation だけを attach する。stream は prior transcript.final で
+    // final 化された segment を持つ想定。
+    const deps = buildDependencies({
+      transcriptStreamRepository: {
+        findBySessionId: vi.fn(() => okAsync(buildStreamWithFinal())),
+        appendPartial: vi.fn(() => okAsync<void, DomainError>(undefined)),
+        appendFinal: vi.fn(() => okAsync<void, DomainError>(undefined)),
+        appendTranslation: vi.fn(() => okAsync<void, DomainError>(undefined)),
+      },
+    });
     const useCase = createHandleTranscriptFinalUseCase(deps);
     const result = await useCase({
       sessionId: SESSION_ID,
       segmentId: SEGMENT_ID,
       text: '',
       timeRange: { startMs: 0, endMs: 1000 },
+      translation: {
+        targetLanguage: 'ja-JP',
+        text: 'こんにちは',
+        status: 'completed',
+      },
     });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) expect(result.error.type).toBe('validation');
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      expect(result.value.translationStatus).toBe('completed');
+    }
   });
 
   it('still succeeds when overlay render fails (hot-path not rolled back)', async () => {
