@@ -49,6 +49,7 @@ const createTestPorts = (overrides: Partial<ExtensionRuntimePorts> = {}): Extens
       sampleRate: 16000,
       audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
       close: vi.fn(() => Promise.resolve()),
+      destination: {},
       createMediaStreamSource: vi.fn(() => ({})),
     })),
     webSocketFactory: vi.fn(() => ({

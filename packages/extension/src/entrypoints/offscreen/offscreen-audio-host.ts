@@ -167,7 +167,29 @@ export const createOffscreenAudioHost = (
         entry.context,
         deps.workletProcessorName ?? DEFAULT_WORKLET_PROCESSOR_NAME,
       );
+      // fan-out: source を (1) worklet (PCM 抽出 → STT 送信) と
+      // (2) AudioContext.destination (speaker monitor) の両方に繋ぐ。
+      //
+      // Chrome の `chrome.tabCapture.getMediaStreamId` + `getUserMedia` で
+      // 取得した tab MediaStream は、取得時点でタブ元音声を通常の output
+      // から **切り離す** (= タブ音声が聞こえなくなる)。再生を復元するには
+      // 取得先の AudioContext `destination` に明示的に繋ぎ直す必要がある。
+      //
+      // worklet は PCM を `port.postMessage` で送るだけで output buffer を
+      // 書き込まないため `workletNode.connect(destination)` では音声は戻らない。
+      // したがって source を destination に**並列**接続する。
       sourceNode.connect(workletNode);
+      try {
+        sourceNode.connect(entry.context.destination);
+      } catch (cause) {
+        // destination への接続失敗は致命的ではない (音声が聞こえないだけで
+        // transcription は動く) ため warn のみ
+        logger.warn(
+          `[perapera] offscreen-audio-host destination monitor connect failed for ${sessionIdentifier}: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        );
+      }
       // IMPL-617: worklet processor から送られてくる frame を上位層 (SW) に
       // 転送する。onAudioFrame callback が注入されているときのみ listener を
       // 設定。callback 例外で listener が外れないよう try/catch で囲む。

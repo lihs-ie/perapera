@@ -6,6 +6,7 @@ const buildFakeContext = (): AudioContextLike => ({
   sampleRate: 16000,
   audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
   close: vi.fn(() => Promise.resolve()),
+  destination: {},
   createMediaStreamSource: vi.fn(() => ({})),
 });
 

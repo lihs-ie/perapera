@@ -15,6 +15,13 @@ export type AudioContextLike = {
   readonly audioWorklet: {
     addModule: (url: string) => Promise<void>;
   };
+  /**
+   * AudioContext の default output destination (speaker)。
+   * tab capture で得た MediaStream の音声を speaker に戻すため、source node を
+   * worklet と並列に destination にも connect する必要がある
+   * (offscreen-audio-host.ts `connectWorklet` 参照)。
+   */
+  readonly destination: unknown;
   close: () => Promise<void>;
   createMediaStreamSource: (stream: MediaStream) => unknown;
 };
