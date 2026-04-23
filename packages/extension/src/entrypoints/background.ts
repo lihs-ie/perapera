@@ -55,7 +55,14 @@ const WORKLET_MODULE_URL = (() => {
 })();
 
 export default defineBackground(() => {
-  console.log('[perapera] background service worker loaded');
+  console.log('[perapera] ---- background service worker loaded ----');
+  console.log('[perapera] runtime config:', {
+    relayApiBaseUrl: RELAY_API_BASE_URL,
+    hasAccessToken: RELAY_ACCESS_TOKEN.length > 0,
+    accessTokenLength: RELAY_ACCESS_TOKEN.length,
+    extensionVersion: EXTENSION_VERSION,
+    workletModuleUrl: WORKLET_MODULE_URL,
+  });
 
   if (RELAY_ACCESS_TOKEN.length === 0) {
     console.error(
@@ -70,8 +77,31 @@ export default defineBackground(() => {
     offscreenApi: defaultOffscreenApi,
     documentUrl: chrome.runtime.getURL('/offscreen.html'),
   });
-  void offscreen.ensure().catch((cause: unknown) => {
-    console.error('[perapera] offscreen ensure failed:', cause);
+
+  // ensure Promise を cache して開始フローと SW 初期化の両方で共有する。
+  // 単一 Promise を await することで idempotent かつ並行呼び出し安全。
+  let offscreenEnsurePromise: Promise<void> | null = null;
+  const ensureOffscreenReady = (): Promise<void> => {
+    if (offscreenEnsurePromise === null) {
+      console.log('[perapera] offscreen.ensure() start');
+      offscreenEnsurePromise = offscreen.ensure().then(
+        () => {
+          console.log('[perapera] offscreen.ensure() done');
+        },
+        (cause: unknown) => {
+          console.error('[perapera] offscreen.ensure() failed:', cause);
+          // 次回再試行できるよう cache を破棄
+          offscreenEnsurePromise = null;
+          throw cause instanceof Error ? cause : new Error(String(cause));
+        },
+      );
+    }
+    return offscreenEnsurePromise;
+  };
+
+  // SW 起動時に fire-and-forget で ensure を開始 (popup のクリック前に完了することを期待)
+  void ensureOffscreenReady().catch(() => {
+    // 失敗は console.error で記録済。session 開始時に再試行される
   });
 
   const config: ExtensionRuntimeConfig = {
@@ -80,9 +110,11 @@ export default defineBackground(() => {
     extensionVersion: EXTENSION_VERSION,
     protocolVersion: '1.0',
     workletModuleUrl: WORKLET_MODULE_URL,
+    ensureOffscreen: ensureOffscreenReady,
   };
   const ports = createProductionRuntimePorts();
   const app: ExtensionApp = createExtensionApp(config, ports);
+  console.log('[perapera] ExtensionApp composed');
 
   // SW 再起動時に IndexedDB に残存していた orphan active session を stopped 化
   // (IMPL-603, 設計論点 §10)。ensure() の完了を待たずに並列実行してよい

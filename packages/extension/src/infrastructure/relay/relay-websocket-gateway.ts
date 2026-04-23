@@ -172,10 +172,17 @@ export const createRelayWebSocketGateway = (
   };
 
   return {
-    openSession: (session) =>
-      deps.tokenIssuer(session).andThen(
-        ({ streamToken, relayUrl, sessionId }): ResultAsync<void, DomainError> =>
-          ResultAsync.fromPromise<void, DomainError>(
+    openSession: (session) => {
+      console.log(
+        `[relay-gateway] openSession start (local sessionId=${session.sessionIdentifier})`,
+      );
+      return deps
+        .tokenIssuer(session)
+        .andThen(({ streamToken, relayUrl, sessionId }): ResultAsync<void, DomainError> => {
+          console.log(
+            `[relay-gateway] token issued (relayUrl=${relayUrl}, serverSessionId=${sessionId})`,
+          );
+          return ResultAsync.fromPromise<void, DomainError>(
             new Promise<void>((resolve, reject) => {
               const url = wsEndpointBuilder({
                 relayUrl,
@@ -183,9 +190,13 @@ export const createRelayWebSocketGateway = (
                 streamToken,
                 protocolVersion: deps.protocolVersion,
               });
+              console.log(`[relay-gateway] connecting WebSocket to ${url}`);
               const socket = deps.webSocketFactory(url);
 
               const onOpen = (): void => {
+                console.log(
+                  `[relay-gateway] WebSocket open (session=${session.sessionIdentifier})`,
+                );
                 socket.removeEventListener('open', onOpen);
                 const sequence = 0;
                 socket.send(
@@ -217,8 +228,17 @@ export const createRelayWebSocketGateway = (
                 resolve();
               };
               socket.addEventListener('open', onOpen);
-              socket.addEventListener('error', () => {
+              socket.addEventListener('error', (event) => {
+                console.error('[relay-gateway] WebSocket error before open:', event);
                 reject(new Error('WebSocket error before open'));
+              });
+              socket.addEventListener('close', (event) => {
+                const code = event instanceof CloseEvent ? String(event.code) : 'unknown';
+                const reason =
+                  event instanceof CloseEvent && event.reason.length > 0 ? event.reason : '-';
+                console.log(
+                  `[relay-gateway] WebSocket close (session=${session.sessionIdentifier}, code=${code}, reason=${reason})`,
+                );
               });
             }),
             (cause) =>
@@ -226,8 +246,9 @@ export const createRelayWebSocketGateway = (
                 invariant: 'relay-handshake-failed',
                 details: cause instanceof Error ? cause.message : 'unknown error',
               }),
-          ),
-      ),
+          );
+        });
+    },
 
     sendAudioFrame: (frame: AudioFrameEnvelope) => {
       const connection = connections.get(frame.sessionIdentifier);

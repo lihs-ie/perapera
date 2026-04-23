@@ -138,6 +138,13 @@ export type ExtensionRuntimeConfig = Readonly<{
   databaseName?: string;
   /** AudioWorklet module URL (通常 `chrome.runtime.getURL('/audio-worklet.js')`) */
   workletModuleUrl: string;
+  /**
+   * Offscreen document の存在を保証する idempotent Promise factory。
+   * `offscreenCommandSender` から送信前に呼ばれる。未指定ならチェックなし
+   * (test の最小 wire / 単純 smoke 用)。production は `offscreenLifecycle.ensure`
+   * を渡す。
+   */
+  ensureOffscreen?: () => Promise<void>;
   /** SourceSession → displayName (default: sourceType 名) */
   resolveDisplayName?: (session: SourceSession) => string;
   /** SourceSession → overlayTarget (default: `{ kind: 'extension-monitor', pageId: 'monitor' }`) */
@@ -311,6 +318,7 @@ export const createExtensionApp = (
   );
   const offscreenCommandSender: OffscreenCommandSender = createOffscreenCommandSender({
     bridge: runtimeMessageBridge,
+    ...(config.ensureOffscreen !== undefined ? { ensureOffscreen: config.ensureOffscreen } : {}),
   });
   const tabStreamIdResolver = createChromeTabStreamIdResolver(ports.tabCaptureApi);
   const audioFrameForwardReceiver: AudioFrameForwardReceiver = createAudioFrameForwardReceiver({
