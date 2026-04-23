@@ -148,8 +148,16 @@ export const createRelayWebSocketGateway = (
       return;
     }
     if (parseResult.value === null) return; // session.pong, silently drop
+    // Relay 側の envelope は server-issued sessionId (token.sub = /POST sessions で
+    // 発行された id) を載せるが、extension の repository / UseCase / registry は
+    // すべて **local sessionId** (`SourceSession.sessionIdentifier`) を primary
+    // key として扱う。dispatchMessage の closure からは local id が分かっている
+    // ので、ここで parsed event の sessionIdentifier を local id に差し替える。
+    // これをしないと handleTranscriptPartialUseCase などが server id で repo を
+    // 引き `TranscriptStream not found` を返してしまう。
+    const localEvent = { ...parseResult.value, sessionIdentifier };
     for (const listener of connection.listeners) {
-      listener(parseResult.value);
+      listener(localEvent);
     }
   };
 
