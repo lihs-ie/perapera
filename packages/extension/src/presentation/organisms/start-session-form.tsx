@@ -14,11 +14,13 @@ import { LanguagePairSelector } from '../molecules/language-pair-selector';
 import { SourceTypeSelector } from '../molecules/source-type-selector';
 
 /**
- * Active tab resolver. Popup 側 (React context) は `chrome.tabs.query` を
- * 呼ぶことで現在 active な tab の id を取得できる。tabCapture source では
- * その id を `overlayTarget: { kind: 'tab', tabId }` として Background に渡し、
- * Background 側 `chrome.tabCapture.getMediaStreamId({targetTabId})` で
- * MediaStream を掴むチェーンに接続される。
+ * Active tab resolver。main window からは `currentWindow: true` だと main
+ * window 自身の tab が返ってしまうため、以下の順で解決する:
+ *
+ * 1. `chrome.storage.session.lastActiveTabId` (background.ts の
+ *    `chrome.action.onClicked` listener が記録した、activeTab granted 元)
+ * 2. `chrome.tabs.query({ active: true, lastFocusedWindow: true })` (main
+ *    window 以前に focus していた window の active tab)
  *
  * test では fake (vi.fn(() => Promise.resolve(42))) を注入可能。
  */
@@ -26,18 +28,46 @@ export type ActiveTabResolver = () => Promise<number | null>;
 
 const defaultActiveTabResolver: ActiveTabResolver = async () => {
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const stored = await chrome.storage.session?.get('lastActiveTabId');
+    if (stored !== undefined && typeof stored.lastActiveTabId === 'number') {
+      console.log(
+        '[start-session-form] resolved tabId from storage.session:',
+        stored.lastActiveTabId,
+      );
+      return stored.lastActiveTabId;
+    }
+  } catch (cause) {
+    console.warn('[start-session-form] storage.session.get failed:', cause);
+  }
+  try {
+    // windowType: 'normal' で main window (popup type) を除外。main window が
+    // lastFocusedWindow だと自身の main.html tab を誤って拾って tab capture が
+    // 空になる問題を防ぐ。
+    const tabs = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+      windowType: 'normal',
+    });
     const first = tabs[0];
-    return typeof first?.id === 'number' ? first.id : null;
-  } catch {
+    if (typeof first?.id === 'number') {
+      console.log('[start-session-form] resolved tabId via chrome.tabs.query:', first.id);
+      return first.id;
+    }
+    console.warn('[start-session-form] chrome.tabs.query returned no matching normal tab');
+    return null;
+  } catch (cause) {
+    console.warn('[start-session-form] chrome.tabs.query failed:', cause);
     return null;
   }
 };
 
 export type Props = Readonly<{
   client: BackgroundClient;
-  onStarted?: (result: StartSourceSessionResult) => void;
+  onStarted?: (result: StartSourceSessionResult, input: StartSourceSessionInput) => void;
   resolveActiveTabId?: ActiveTabResolver;
+  /** 初期値。SettingsStore から取得した既定言語ペアを適用するため */
+  initialSourceLanguage?: string | undefined;
+  initialTargetLanguage?: string | undefined;
 }>;
 
 const DEFAULT_SOURCE_LANGUAGE = 'en-US';
@@ -59,8 +89,12 @@ export function StartSessionForm(props: Props) {
   const [sourceType, setSourceType] = useState<SourceType>('tab');
   const [displayName, setDisplayName] = useState('');
   const [autoDetect, setAutoDetect] = useState(false);
-  const [sourceLanguage, setSourceLanguage] = useState<string>(DEFAULT_SOURCE_LANGUAGE);
-  const [targetLanguage, setTargetLanguage] = useState<string>(DEFAULT_TARGET_LANGUAGE);
+  const [sourceLanguage, setSourceLanguage] = useState<string>(
+    props.initialSourceLanguage ?? DEFAULT_SOURCE_LANGUAGE,
+  );
+  const [targetLanguage, setTargetLanguage] = useState<string>(
+    props.initialTargetLanguage ?? DEFAULT_TARGET_LANGUAGE,
+  );
 
   const command = useBackgroundCommand(props.client.startSourceSession);
 
@@ -100,7 +134,7 @@ export function StartSessionForm(props: Props) {
       const input: StartSourceSessionInput = { ...baseInput, overlayTarget };
       const response = await command.execute(input);
       if (response.ok && props.onStarted !== undefined) {
-        props.onStarted(response.value);
+        props.onStarted(response.value, input);
       }
     })();
   };

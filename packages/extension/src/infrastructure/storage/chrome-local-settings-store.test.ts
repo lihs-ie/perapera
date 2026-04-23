@@ -12,12 +12,14 @@ const OVERLAY_KEY = 'settings.overlay.defaultOverlaySettings';
 type MockAdapter = ChromeStorageAdapter & {
   get: ReturnType<typeof vi.fn<ChromeStorageAdapter['get']>>;
   set: ReturnType<typeof vi.fn<ChromeStorageAdapter['set']>>;
+  remove: ReturnType<typeof vi.fn<ChromeStorageAdapter['remove']>>;
 };
 
 const buildAdapter = (): MockAdapter => {
   const get = vi.fn<ChromeStorageAdapter['get']>(() => Promise.resolve({}));
   const set = vi.fn<ChromeStorageAdapter['set']>(() => Promise.resolve());
-  return { get, set };
+  const remove = vi.fn<ChromeStorageAdapter['remove']>(() => Promise.resolve());
+  return { get, set, remove };
 };
 
 describe('createChromeLocalSettingsStore (IMPL-311, DD-107 / DB-005)', () => {

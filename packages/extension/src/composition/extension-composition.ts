@@ -93,6 +93,7 @@ import {
   createBrowserWebSocketFactory,
   type WebSocketFactory,
 } from '../infrastructure/relay/websocket-factory';
+import { type SettingsStore } from '../application/ports/settings-store';
 import {
   createChromeLocalExtensionProfileRepository,
   createChromeLocalSettingsStore,
@@ -221,6 +222,7 @@ export type ExtensionApp = Readonly<{
   orphanSessionCleanup: OrphanSessionCleanupService;
   ensureDefaultProfile: EnsureDefaultProfile;
   transcriptAssembler: TranscriptAssembler;
+  settingsStore: SettingsStore;
   close: () => Promise<void>;
 }>;
 
@@ -270,6 +272,12 @@ export const createExtensionApp = (
     resolveDisplayName: config.resolveDisplayName ?? DEFAULT_RESOLVE_DISPLAY_NAME,
     resolveOverlayTarget: config.resolveOverlayTarget ?? DEFAULT_RESOLVE_OVERLAY_TARGET,
     resolveAutoDetectLanguage: config.resolveAutoDetectLanguage ?? DEFAULT_RESOLVE_AUTO_DETECT,
+    // Issue 107 Step B: settingsStore に user override があれば毎リクエスト
+    // 前に差し替える (再起動不要で設定反映)。
+    resolveOverride: async () => {
+      const result = await settingsStore.getRelayConnectionOverride();
+      return result.isOk() ? result.value : null;
+    },
     fetchImpl: ports.fetchImpl,
   });
   // WS 接続先は Relay が `POST /sessions` レスポンスで返す `relayUrl`
@@ -415,6 +423,7 @@ export const createExtensionApp = (
     orphanSessionCleanup,
     ensureDefaultProfile,
     transcriptAssembler,
+    settingsStore,
     close: async () => {
       relaySessionSubscriber.stopAll();
       audioFramePump.stopAll();

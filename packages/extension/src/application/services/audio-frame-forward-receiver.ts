@@ -99,6 +99,20 @@ export const createAudioFrameForwardReceiver = (
     receive: (rawMessage) => {
       const parsed = tryParseAudioFrameForwardMessage(rawMessage);
       if (parsed === null) {
+        // 他 message type との listener 共有のため null は silent ignore が基本。
+        // ただし type 自体が audio.frame.forward なのに parse に失敗している
+        // 場合は schema drift / sessionIdentifier 不正が疑わしいので warn 化。
+        if (
+          typeof rawMessage === 'object' &&
+          rawMessage !== null &&
+          'type' in rawMessage &&
+          Reflect.get(rawMessage, 'type') === 'audio.frame.forward'
+        ) {
+          console.warn(
+            '[audio-frame-forward-receiver] schema parse failed for audio.frame.forward — dropping',
+            rawMessage,
+          );
+        }
         return okAsync<'forwarded' | 'ignored', DomainError>('ignored');
       }
       const sessionId = parsed.envelope.sessionIdentifier;

@@ -87,12 +87,52 @@ const getSessionMonitorStateRequestSchema = z.object({
   }),
 });
 
+const getDefaultSettingsRequestSchema = z.object({
+  type: z.literal('query.get-default-settings'),
+  input: z.object({}).optional(),
+});
+
+const defaultLanguagePairPayloadSchema = z.object({
+  source: bcp47Schema,
+  target: bcp47Schema,
+});
+
+const saveDefaultLanguagePairRequestSchema = z.object({
+  type: z.literal('command.save-default-language-pair'),
+  input: defaultLanguagePairPayloadSchema,
+});
+
+const saveDefaultOverlaySettingsRequestSchema = z.object({
+  type: z.literal('command.save-default-overlay-settings'),
+  input: overlaySettingsPayloadSchema,
+});
+
+const relayOverridePayloadSchema = z.object({
+  baseUrl: z.string().url(),
+  accessToken: z.string().min(16),
+});
+
+const saveRelayConnectionOverrideRequestSchema = z.object({
+  type: z.literal('command.save-relay-connection-override'),
+  input: relayOverridePayloadSchema,
+});
+
+const clearRelayConnectionOverrideRequestSchema = z.object({
+  type: z.literal('command.clear-relay-connection-override'),
+  input: z.object({}).optional(),
+});
+
 export const backgroundRequestSchema = z.discriminatedUnion('type', [
   startSourceSessionRequestSchema,
   stopSourceSessionRequestSchema,
   updateSourceSettingsRequestSchema,
   exportSessionResultRequestSchema,
   getSessionMonitorStateRequestSchema,
+  getDefaultSettingsRequestSchema,
+  saveDefaultLanguagePairRequestSchema,
+  saveDefaultOverlaySettingsRequestSchema,
+  saveRelayConnectionOverrideRequestSchema,
+  clearRelayConnectionOverrideRequestSchema,
 ]);
 
 export type BackgroundRequest = z.infer<typeof backgroundRequestSchema>;

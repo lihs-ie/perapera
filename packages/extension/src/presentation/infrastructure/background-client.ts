@@ -98,6 +98,31 @@ const exportSessionResultOutputSchema = z.object({
 });
 export type ExportSessionResultResult = z.infer<typeof exportSessionResultOutputSchema>;
 
+const defaultSettingsOutputSchema = z.object({
+  languagePair: z.object({
+    source: z.string().min(1),
+    target: z.string().min(1),
+  }),
+  overlaySettings: z.object({
+    positionPreset: z.enum(['top', 'bottom', 'floating']),
+    opacity: z.number().min(0).max(1),
+    maxLines: z.number().int().min(1),
+    fontScale: z.number().positive(),
+    showOriginalText: z.boolean(),
+    showTranslatedText: z.boolean(),
+  }),
+  relayOverride: z
+    .object({
+      baseUrl: z.string().url(),
+      accessToken: z.string().min(1),
+    })
+    .nullable(),
+});
+export type DefaultSettingsResult = z.infer<typeof defaultSettingsOutputSchema>;
+
+const savedAckSchema = z.object({ saved: z.literal(true) });
+export type SavedAckResult = z.infer<typeof savedAckSchema>;
+
 const sessionMonitorStateOutputSchema = z.object({
   sessions: z.array(
     z.object({
@@ -164,6 +189,20 @@ const sendTyped = async <Schema extends z.ZodTypeAny>(
   }
 };
 
+export type DefaultLanguagePairInput = Readonly<{ source: string; target: string }>;
+export type DefaultOverlaySettingsInput = Readonly<{
+  positionPreset: 'top' | 'bottom' | 'floating';
+  opacity: number;
+  maxLines: number;
+  fontScale: number;
+  showOriginalText: boolean;
+  showTranslatedText: boolean;
+}>;
+export type RelayConnectionOverrideInput = Readonly<{
+  baseUrl: string;
+  accessToken: string;
+}>;
+
 export type BackgroundClient = Readonly<{
   startSourceSession: (
     input: StartSourceSessionInput,
@@ -180,6 +219,17 @@ export type BackgroundClient = Readonly<{
   getSessionMonitorState: (
     input: GetSessionMonitorStateInput,
   ) => Promise<BackgroundResponse<SessionMonitorStateResult>>;
+  getDefaultSettings: () => Promise<BackgroundResponse<DefaultSettingsResult>>;
+  saveDefaultLanguagePair: (
+    input: DefaultLanguagePairInput,
+  ) => Promise<BackgroundResponse<SavedAckResult>>;
+  saveDefaultOverlaySettings: (
+    input: DefaultOverlaySettingsInput,
+  ) => Promise<BackgroundResponse<SavedAckResult>>;
+  saveRelayConnectionOverride: (
+    input: RelayConnectionOverrideInput,
+  ) => Promise<BackgroundResponse<SavedAckResult>>;
+  clearRelayConnectionOverride: () => Promise<BackgroundResponse<SavedAckResult>>;
 }>;
 
 /**
@@ -220,4 +270,14 @@ export const createBackgroundClient = (
       { type: 'query.get-session-monitor-state', input },
       sessionMonitorStateOutputSchema,
     ),
+  getDefaultSettings: () =>
+    sendTyped(sender, { type: 'query.get-default-settings' }, defaultSettingsOutputSchema),
+  saveDefaultLanguagePair: (input) =>
+    sendTyped(sender, { type: 'command.save-default-language-pair', input }, savedAckSchema),
+  saveDefaultOverlaySettings: (input) =>
+    sendTyped(sender, { type: 'command.save-default-overlay-settings', input }, savedAckSchema),
+  saveRelayConnectionOverride: (input) =>
+    sendTyped(sender, { type: 'command.save-relay-connection-override', input }, savedAckSchema),
+  clearRelayConnectionOverride: () =>
+    sendTyped(sender, { type: 'command.clear-relay-connection-override' }, savedAckSchema),
 });

@@ -23,6 +23,10 @@ const createFakeStorage = (): ChromeStorageAdapter => {
       }
       return Promise.resolve();
     },
+    remove: (keys) => {
+      for (const key of keys) store.delete(key);
+      return Promise.resolve();
+    },
   };
 };
 

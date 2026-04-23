@@ -1,12 +1,11 @@
 export {
-  createContentScriptOverlayPresenter,
-  type ContentScriptOverlayPresenterDependencies,
-  type OverlayView,
-  type OverlayViewFactory,
-} from './content-script-overlay-presenter';
+  createChromeMessagingOverlayPresenter,
+  defaultOverlayMessagingBridge,
+  type ChromeMessagingOverlayPresenterDependencies,
+  type OverlayCommand,
+  type OverlayMessagingBridge,
+} from './chrome-messaging-overlay-presenter';
 export {
-  createDefaultOverlayViewFactory,
-  defaultOverlayDocumentApi,
-  type DefaultOverlayViewFactoryDependencies,
-  type OverlayDocumentApi,
-} from './default-overlay-view';
+  parseOverlayCommand,
+  type OverlayCommand as OverlayCommandValidated,
+} from './overlay-commands';

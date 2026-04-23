@@ -46,6 +46,17 @@ export type OverlayTargetDescriptor =
   | Readonly<{ kind: 'tab'; tabId: number }>
   | Readonly<{ kind: 'extension-monitor'; pageId: string }>;
 
+/**
+ * User override。composition 側で settingsStore から読み込んだ override を
+ * 注入する。`null` を返すと env default (`baseUrl` / `accessToken`) が使われる。
+ * request 直前に毎回呼ばれるため、SettingsView で保存したら次の session.start
+ * で即反映される (再起動不要)。
+ */
+export type RelayConnectionResolver = () => Promise<{
+  baseUrl: string;
+  accessToken: string;
+} | null>;
+
 export type FetchStreamTokenIssuerConfig = Readonly<{
   /** Relay API base URL (http:// or https://、末尾 / なし) */
   baseUrl: string;
@@ -61,6 +72,11 @@ export type FetchStreamTokenIssuerConfig = Readonly<{
   resolveOverlayTarget: (session: SourceSession) => OverlayTargetDescriptor;
   /** SourceSession → autoDetectLanguage フラグ */
   resolveAutoDetectLanguage: (session: SourceSession) => boolean;
+  /**
+   * Optional。request 直前に呼ばれ、非 null なら baseUrl / accessToken を
+   * 差し替える (SettingsStore 由来の user override)。
+   */
+  resolveOverride?: RelayConnectionResolver;
   /** Production は global `fetch`、test では in-memory fake を注入 */
   fetchImpl?: typeof fetch;
 }>;
@@ -118,21 +134,45 @@ export const createFetchStreamTokenIssuer = (
   config: FetchStreamTokenIssuerConfig,
 ): StreamTokenIssuer => {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const endpoint = `${config.baseUrl}/sessions`;
+
+  const resolveEffectiveConnection = async (): Promise<{
+    baseUrl: string;
+    accessToken: string;
+  }> => {
+    if (config.resolveOverride === undefined) {
+      return { baseUrl: config.baseUrl, accessToken: config.accessToken };
+    }
+    try {
+      const override = await config.resolveOverride();
+      if (override !== null) return override;
+    } catch (cause) {
+      console.warn(
+        '[fetch-stream-token-issuer] resolveOverride threw; falling back to env defaults:',
+        cause instanceof Error ? cause.message : String(cause),
+      );
+    }
+    return { baseUrl: config.baseUrl, accessToken: config.accessToken };
+  };
 
   return (session) => {
     const body = buildRequestBody(session, config);
-    return ResultAsync.fromPromise<Response, DomainError>(
-      fetchImpl(endpoint, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${config.accessToken}`,
-        },
-        body: JSON.stringify(body),
-      }),
-      toInvariant('network'),
+    return ResultAsync.fromPromise<{ baseUrl: string; accessToken: string }, DomainError>(
+      resolveEffectiveConnection(),
+      toInvariant('resolve-override'),
     )
+      .andThen((effective) =>
+        ResultAsync.fromPromise<Response, DomainError>(
+          fetchImpl(`${effective.baseUrl}/sessions`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${effective.accessToken}`,
+            },
+            body: JSON.stringify(body),
+          }),
+          toInvariant('network'),
+        ),
+      )
       .andThen((response): ResultAsync<unknown, DomainError> => {
         if (!response.ok) {
           return errAsync<unknown, DomainError>(

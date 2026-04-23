@@ -91,6 +91,9 @@ const buildDependencies = (
     saveDefaultLanguagePair: vi.fn(() => okAsync(undefined)),
     getDefaultOverlaySettings: vi.fn(() => okAsync(overlaySettings)),
     saveDefaultOverlaySettings: vi.fn(() => okAsync(undefined)),
+    getRelayConnectionOverride: vi.fn(() => okAsync(null)),
+    saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
+    clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
   };
   return {
     transcriptStreamRepository,

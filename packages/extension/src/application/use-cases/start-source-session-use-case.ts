@@ -157,10 +157,27 @@ export const createStartSourceSessionUseCase = (
                                 parsed.overlayTarget.tabId !== undefined
                                   ? parsed.overlayTarget.tabId
                                   : undefined;
+                              console.log(
+                                '[use-case:start-source-session] tab-stream-id chain preconditions',
+                                {
+                                  sourceType: parsed.sourceType,
+                                  overlayTargetKind: parsed.overlayTarget.kind,
+                                  targetTabId,
+                                  hasResolver: deps.tabStreamIdResolver !== undefined,
+                                },
+                              );
                               const tabStreamIdChain: ResultAsync<string | undefined, ChainError> =
                                 targetTabId !== undefined && deps.tabStreamIdResolver !== undefined
                                   ? deps.tabStreamIdResolver
                                       .resolve(targetTabId)
+                                      .map((streamId): string | undefined => {
+                                        console.log(
+                                          `[use-case:start-source-session] tab-stream-id resolved for tab ${String(
+                                            targetTabId,
+                                          )} → ${streamId.slice(0, 8)}...`,
+                                        );
+                                        return streamId;
+                                      })
                                       .orElse(
                                         (error): ResultAsync<string | undefined, ChainError> => {
                                           console.warn(
@@ -171,15 +188,25 @@ export const createStartSourceSessionUseCase = (
                                           return okAsync<string | undefined, ChainError>(undefined);
                                         },
                                       )
-                                  : okAsync<string | undefined, ChainError>(undefined);
-                              return tabStreamIdChain.andThen((tabStreamId) =>
-                                deps.offscreenCommandSender
+                                  : (() => {
+                                      console.warn(
+                                        '[use-case:start-source-session] tab-stream-id chain skipped; audio frames will NOT flow',
+                                      );
+                                      return okAsync<string | undefined, ChainError>(undefined);
+                                    })();
+                              return tabStreamIdChain.andThen((tabStreamId) => {
+                                console.log(
+                                  `[use-case:start-source-session] offscreen.openAudioContext (tabStreamId=${
+                                    tabStreamId !== undefined ? 'present' : 'absent'
+                                  })`,
+                                );
+                                return deps.offscreenCommandSender
                                   .openAudioContext(
                                     connecting.sessionIdentifier,
                                     tabStreamId !== undefined ? { tabStreamId } : undefined,
                                   )
-                                  .map(() => activeCapture),
-                              );
+                                  .map(() => activeCapture);
+                              });
                             })
                             .andThen((activeCapture) => {
                               deps.audioFramePump.start(

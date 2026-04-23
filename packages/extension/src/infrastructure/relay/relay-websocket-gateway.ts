@@ -138,6 +138,9 @@ export const createRelayWebSocketGateway = (
   const heartbeatMs = deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
   const wsEndpointBuilder = deps.wsEndpointBuilder ?? defaultWsEndpointBuilder;
   const connections = new Map<SessionIdentifier, SessionConnection>();
+  // diagnostic 用: session ごとに sendAudioFrame が呼ばれた回数を数えて
+  // 最初の 1 件と 50 件ごとに log。hot path の console flooding を避ける。
+  const sendAudioFrameCount = new Map<SessionIdentifier, number>();
 
   const dispatchMessage = (sessionIdentifier: SessionIdentifier, data: string): void => {
     const connection = connections.get(sessionIdentifier);
@@ -269,7 +272,25 @@ export const createRelayWebSocketGateway = (
 
     sendAudioFrame: (frame: AudioFrameEnvelope) => {
       const connection = connections.get(frame.sessionIdentifier);
+      const prevCount = sendAudioFrameCount.get(frame.sessionIdentifier) ?? 0;
+      const nextCount = prevCount + 1;
+      sendAudioFrameCount.set(frame.sessionIdentifier, nextCount);
+      const shouldLog = nextCount === 1 || nextCount % 50 === 0;
+      if (shouldLog) {
+        console.log(
+          `[relay-gateway] sendAudioFrame #${String(nextCount)} (seq=${String(
+            frame.sequenceNumber,
+          )}, session=${frame.sessionIdentifier.slice(0, 8)}..., readyState=${String(
+            connection?.socket.readyState ?? 'no-conn',
+          )})`,
+        );
+      }
       if (connection === undefined) {
+        if (nextCount === 1) {
+          console.warn(
+            `[relay-gateway] sendAudioFrame: NO connection for ${frame.sessionIdentifier} — openSession not run yet?`,
+          );
+        }
         return errAsync<void, DomainError>(
           invariantViolationError({
             invariant: 'relay-no-active-session',
@@ -278,6 +299,13 @@ export const createRelayWebSocketGateway = (
         );
       }
       if (connection.socket.readyState !== 1) {
+        if (nextCount === 1) {
+          console.warn(
+            `[relay-gateway] sendAudioFrame: socket readyState=${String(
+              connection.socket.readyState,
+            )} — not OPEN`,
+          );
+        }
         return errAsync<void, DomainError>(
           invariantViolationError({
             invariant: 'relay-socket-not-open',
@@ -294,15 +322,35 @@ export const createRelayWebSocketGateway = (
         frameDurationMs: frame.durationMs,
         capturedAt: frame.capturedAt,
       };
-      connection.socket.send(
-        buildEnvelope(
-          'audio.frame',
-          frame.sessionIdentifier,
-          connection.sequence++,
-          toIsoString(deps.clock),
-          payload,
-        ),
-      );
+      try {
+        connection.socket.send(
+          buildEnvelope(
+            'audio.frame',
+            frame.sessionIdentifier,
+            connection.sequence++,
+            toIsoString(deps.clock),
+            payload,
+          ),
+        );
+      } catch (cause) {
+        console.warn(
+          `[relay-gateway] socket.send threw for ${frame.sessionIdentifier}:`,
+          cause instanceof Error ? cause.message : String(cause),
+        );
+        return errAsync<void, DomainError>(
+          invariantViolationError({
+            invariant: 'relay-socket-send-failed',
+            details: cause instanceof Error ? cause.message : 'unknown send error',
+          }),
+        );
+      }
+      if (shouldLog) {
+        console.log(
+          `[relay-gateway] audio.frame sent #${String(nextCount)} (seq=${String(
+            frame.sequenceNumber,
+          )})`,
+        );
+      }
       return okAsync(undefined);
     },
 

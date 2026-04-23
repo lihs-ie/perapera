@@ -4,6 +4,7 @@ import {
   type ExtensionApp,
   type ExtensionRuntimeConfig,
 } from '../composition/extension-composition';
+import { createMainWindowLifecycle, defaultWindowsApi } from '../composition/main-window-lifecycle';
 import { createOffscreenLifecycle, defaultOffscreenApi } from '../composition/offscreen-lifecycle';
 import { createRuntimeDispatcher, type RuntimeDispatcher } from '../composition/runtime-dispatcher';
 
@@ -99,9 +100,40 @@ export default defineBackground(() => {
     return offscreenEnsurePromise;
   };
 
-  // SW 起動時に fire-and-forget で ensure を開始 (popup のクリック前に完了することを期待)
+  // SW 起動時に fire-and-forget で ensure を開始 (main window 起動前に完了することを期待)
   void ensureOffscreenReady().catch(() => {
     // 失敗は console.error で記録済。session 開始時に再試行される
+  });
+
+  // chrome.action.onClicked → 独立 floating window (480×720, type=popup) を起動。
+  // 既存 window があれば focus する idempotent 動作。manifest.action.default_popup
+  // は未設定 (wxt.config.ts) なので、本 listener が発火する。
+  const mainWindowUrl = chrome.runtime.getURL('/main.html');
+  const mainWindowLifecycle = createMainWindowLifecycle({
+    windowsApi: defaultWindowsApi,
+    mainWindowUrl,
+  });
+  chrome.action.onClicked.addListener((tab) => {
+    // action icon クリックは activeTab permission を「クリック時にアクティブだった
+    // tab」に対してのみ grant する。main window は独立 window として開くため、
+    // main window 内から `chrome.tabs.query({active:true,currentWindow:true})`
+    // を呼ぶと main window 自身の tab が返り、元タブ (YouTube 等) を掴めない。
+    // listener が受け取る `tab` は activeTab granted 元なので、
+    // chrome.storage.session に保存して StartSessionForm 側で fallback 利用する。
+    console.log('[perapera] action.onClicked: tab.id=', tab.id, 'url=', tab.url);
+    if (typeof tab.id === 'number') {
+      void chrome.storage.session
+        ?.set({ lastActiveTabId: tab.id })
+        .then(() => {
+          console.log('[perapera] storage.session.lastActiveTabId =', tab.id);
+        })
+        .catch((cause: unknown) => {
+          console.warn('[perapera] storage.session.set(lastActiveTabId) failed:', cause);
+        });
+    }
+    void mainWindowLifecycle.openOrFocus().catch((cause: unknown) => {
+      console.error('[perapera] main-window openOrFocus failed:', cause);
+    });
   });
 
   const config: ExtensionRuntimeConfig = {
@@ -150,6 +182,7 @@ export default defineBackground(() => {
     sessionCommandService: app.sessionCommandService,
     exportService: app.exportService,
     getSessionMonitorStateQuery: app.getSessionMonitorStateQuery,
+    settingsStore: app.settingsStore,
   });
 
   /**
@@ -161,7 +194,22 @@ export default defineBackground(() => {
    * audioFrameForwardReceiver に先に渡す。receiver は該当しない message を
    * silent ignore するため、続けて dispatcher にも同じ message を流す。
    */
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const swMessageCountByType = new Map<string, number>();
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    const messageType =
+      typeof message === 'object' && message !== null && 'type' in message
+        ? String(Reflect.get(message, 'type'))
+        : 'unknown';
+    if (messageType === 'audio.frame.forward') {
+      const prev = swMessageCountByType.get(messageType) ?? 0;
+      const next = prev + 1;
+      swMessageCountByType.set(messageType, next);
+      if (next === 1 || next % 50 === 0) {
+        console.log(
+          `[perapera] SW onMessage audio.frame.forward #${String(next)} (senderId=${String(sender.id)}, url=${sender.url ?? '-'})`,
+        );
+      }
+    }
     void app.audioFrameForwardReceiver.receive(message).match(
       () => undefined,
       (error) => {

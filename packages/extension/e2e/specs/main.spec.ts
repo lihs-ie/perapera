@@ -24,13 +24,14 @@ const resolveExtensionId = async (): Promise<string> => {
   return new URL(serviceWorker.url()).host;
 };
 
-test('monitor.html renders the React root with the overlay listener mounted', async () => {
+test('main.html renders the React root with the main window template', async () => {
   const extensionId = await resolveExtensionId();
   const page = await context.newPage();
-  // monitor.html は web_accessible_resources で外部から開ける。
-  // タブ以外のソース (microphone / desktop) のオーバーレイ表示先 (IMPL-563)。
-  await page.goto(`chrome-extension://${extensionId}/monitor.html`);
+  await page.goto(`chrome-extension://${extensionId}/main.html`);
 
   await expect(page).toHaveTitle(/perapera/i);
+  // MainWindowTemplate renders the root container under #root.
+  // Background SW へ chrome.runtime.sendMessage が走るがハンドラ次第ではエラー
+  // 状態の component が描画される — どちらでも `#root` 内に何かしら appears を確認
   await page.locator('#root > *').first().waitFor({ timeout: 5000 });
 });
