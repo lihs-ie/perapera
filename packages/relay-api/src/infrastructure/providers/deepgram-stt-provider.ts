@@ -155,6 +155,14 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
       } else if (streamConfig.sourceLanguage !== null) {
         qs.set('language', streamConfig.sourceLanguage);
       }
+      // IMPL-447 (DD-412): endpointing 設定を Deepgram 固有パラメータへマップ。
+      // Deepgram は `endpointing` (ms) と `utterance_end_ms` を受け取る。
+      // `punctuate` は `smart_format=true` と組み合わせて句読点付与を強化する。
+      if (streamConfig.endpointing !== undefined) {
+        qs.set('endpointing', String(streamConfig.endpointing.silenceThresholdMs));
+        qs.set('utterance_end_ms', String(streamConfig.endpointing.minUtteranceMs));
+        qs.set('punctuate', streamConfig.endpointing.punctuationAware ? 'true' : 'false');
+      }
       const url = `${baseUrl}?${qs.toString()}`;
 
       let socket: MinimalDeepgramSocket;

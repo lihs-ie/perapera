@@ -14,6 +14,27 @@ const overlayTargetSchema = z.union([
   z.object({ kind: z.literal('extension-monitor'), pageId: z.string().min(1) }),
 ]);
 
+/**
+ * IMPL-405 (v0.2.0): `endpointing` / `translationContext` フィールドを追加。
+ * いずれも optional で、個別フィールドも optional。未指定時は Relay 側で
+ * 既定値 (`DEFAULT_ENDPOINTING_POLICY` / `DEFAULT_TRANSLATION_CONTEXT_WINDOW`)
+ * を適用する (api-specification.md §5 API-002)。
+ */
+const endpointingPolicyInputSchema = z
+  .object({
+    silenceThresholdMs: z.number().int().min(200).max(1200).optional(),
+    punctuationAware: z.boolean().optional(),
+    minUtteranceMs: z.number().int().min(100).max(3000).optional(),
+  })
+  .optional();
+
+const translationContextWindowInputSchema = z
+  .object({
+    maxSegments: z.number().int().min(0).max(5).optional(),
+    includeTranslatedText: z.boolean().optional(),
+  })
+  .optional();
+
 const issueStreamTokenInputSchema = z.object({
   sourceType: z.enum(['tab', 'microphone', 'desktop']),
   displayName: z.string().min(1),
@@ -25,6 +46,8 @@ const issueStreamTokenInputSchema = z.object({
     extensionVersion: z.string().min(1),
     protocolVersion: z.string().min(1),
   }),
+  endpointing: endpointingPolicyInputSchema,
+  translationContext: translationContextWindowInputSchema,
 });
 
 export type IssueStreamTokenInput = z.infer<typeof issueStreamTokenInputSchema>;

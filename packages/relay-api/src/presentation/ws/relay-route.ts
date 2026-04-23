@@ -3,11 +3,26 @@ import type { RawData, WebSocket } from 'ws';
 import { ulid } from 'ulid';
 import { type JwtVerifier } from '../../application/ports/jwt-verifier';
 import {
+  type SttEndpointingConfig,
   type SttPort,
   type SttStreamHandle,
   type TranscriptEvent,
 } from '../../application/ports/stt-port';
-import { type TranslationPort } from '../../application/ports/translation-port';
+import {
+  type PrecedingContext,
+  type TranslationPort,
+} from '../../application/ports/translation-port';
+import { createComposeTranslationContextUseCase } from '../../application/use-cases/compose-translation-context-use-case';
+import {
+  DEFAULT_ENDPOINTING_POLICY,
+  mergeEndpointingPolicy,
+  type EndpointingPolicy,
+} from '../../domain/session/endpointing-policy';
+import {
+  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+  mergeTranslationContextWindow,
+  type TranslationContextWindow,
+} from '../../domain/session/translation-context-window';
 import { toHttpErrorEnvelope } from '../http/error-mapper';
 import { parseClientEvent, type ClientEvent } from './client-events';
 import {
@@ -97,6 +112,47 @@ const extractClaimBoolean = (claims: Readonly<Record<string, unknown>>, key: str
   return typeof value === 'boolean' ? value : false;
 };
 
+const isObjectRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null;
+
+/**
+ * JWT claims から endpointing / translationContext を復元する (IMPL-405 の一部)。
+ * `issue-stream-token-use-case.ts` の `toSessionClaims` と対になる。
+ * 各フィールドが欠落・不正型なら VO 既定値で補完する (後方互換)。
+ */
+const extractEndpointingFromClaims = (
+  claims: Readonly<Record<string, unknown>>,
+): EndpointingPolicy => {
+  const raw = claims.endpointing;
+  if (!isObjectRecord(raw)) return DEFAULT_ENDPOINTING_POLICY;
+  const result = mergeEndpointingPolicy(DEFAULT_ENDPOINTING_POLICY, {
+    silenceThresholdMs:
+      typeof raw.silenceThresholdMs === 'number' ? raw.silenceThresholdMs : undefined,
+    punctuationAware: typeof raw.punctuationAware === 'boolean' ? raw.punctuationAware : undefined,
+    minUtteranceMs: typeof raw.minUtteranceMs === 'number' ? raw.minUtteranceMs : undefined,
+  });
+  return result.isOk() ? result.value : DEFAULT_ENDPOINTING_POLICY;
+};
+
+const extractTranslationContextFromClaims = (
+  claims: Readonly<Record<string, unknown>>,
+): TranslationContextWindow => {
+  const raw = claims.translationContext;
+  if (!isObjectRecord(raw)) return DEFAULT_TRANSLATION_CONTEXT_WINDOW;
+  const result = mergeTranslationContextWindow(DEFAULT_TRANSLATION_CONTEXT_WINDOW, {
+    maxSegments: typeof raw.maxSegments === 'number' ? raw.maxSegments : undefined,
+    includeTranslatedText:
+      typeof raw.includeTranslatedText === 'boolean' ? raw.includeTranslatedText : undefined,
+  });
+  return result.isOk() ? result.value : DEFAULT_TRANSLATION_CONTEXT_WINDOW;
+};
+
+const toSttEndpointingConfig = (policy: EndpointingPolicy): SttEndpointingConfig => ({
+  silenceThresholdMs: policy.silenceThresholdMs,
+  punctuationAware: policy.punctuationAware,
+  minUtteranceMs: policy.minUtteranceMs,
+});
+
 type ActiveStream = Readonly<{
   handle: SttStreamHandle;
   targetLanguage: string;
@@ -160,6 +216,7 @@ const emitTranscriptFinal = (
   nextSequence: () => number,
   clock: () => string,
   event: Extract<TranscriptEvent, { type: 'final' }>,
+  precedingSegmentId: string | null,
 ): void => {
   socket.send(
     serializeServerEvent(
@@ -173,6 +230,10 @@ const emitTranscriptFinal = (
         startOffsetMs: event.startOffsetMs,
         endOffsetMs: event.endOffsetMs,
         finalizedAt: event.finalizedAt,
+        // IMPL-447: STT が endpointingTrigger を提供しないため provider_default 固定。
+        // 将来プロバイダ側から取得できるようになったら ACL 層で mapping する。
+        endpointingTrigger: 'provider_default',
+        precedingSegmentId,
       }),
     ),
   );
@@ -190,6 +251,7 @@ const emitTranslationFinal = (
     sourceLanguage: string | null;
     targetLanguage: string;
     latencyMs: number;
+    contextSegmentIds: readonly string[];
   },
 ): void => {
   socket.send(
@@ -204,6 +266,7 @@ const emitTranslationFinal = (
         sourceLanguage: params.sourceLanguage,
         targetLanguage: params.targetLanguage,
         latencyMs: params.latencyMs,
+        contextSegmentIds: params.contextSegmentIds,
       }),
     ),
   );
@@ -309,6 +372,24 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       let pendingFrames: { audioBase64: string; chunkId: string }[] = [];
       const audioFrameBucket = createRateBucket(audioFrameLimit, 1000);
 
+      // IMPL-447 / IMPL-404 / IMPL-448: JWT claims から endpointing / translationContext
+      // を復元し、connection scope で保持する。`finalTail` は直近の確定字幕を
+      // メモリ内に保持し、次 segment の翻訳 context として使う (永続層非アクセス)。
+      const effectiveEndpointing = extractEndpointingFromClaims(context.tokenPayload.claims);
+      const effectiveTranslationContext = extractTranslationContextFromClaims(
+        context.tokenPayload.claims,
+      );
+      const composeTranslationContext = createComposeTranslationContextUseCase();
+      // 直近確定字幕の tail。maxSegments 以上に膨らむのを防ぐため、push のたびに
+      // 末尾 maxSegments + 1 件に trim する (translation 応答で末尾を更新するため +1)。
+      const finalTailCap = Math.max(effectiveTranslationContext.maxSegments, 0) + 1;
+      let finalTail: PrecedingContext[] = [];
+      const trimFinalTail = (): void => {
+        if (finalTail.length > finalTailCap) {
+          finalTail = finalTail.slice(finalTail.length - finalTailCap);
+        }
+      };
+
       const closeActiveStream = (): void => {
         pendingFrames = [];
         if (activeStream === null) return;
@@ -342,13 +423,46 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                 emitTranscriptPartial(socket, context, nextSequence, deps.clock, event);
                 continue;
               }
-              emitTranscriptFinal(socket, context, nextSequence, deps.clock, event);
-              // 翻訳は fire-and-forget (ホットパス翻訳、結果は translation.final で送信)
+              // IMPL-449: 直前の final が同じ接続内にあれば precedingSegmentId として
+              // 付与する (overlay 連結表示用のヒント)。先頭 final は null。
+              const precedingSegmentId =
+                finalTail.length === 0
+                  ? null
+                  : (finalTail[finalTail.length - 1]?.segmentId ?? null);
+              emitTranscriptFinal(
+                socket,
+                context,
+                nextSequence,
+                deps.clock,
+                event,
+                precedingSegmentId,
+              );
+
+              // IMPL-404 / IMPL-448: 翻訳 context を組み立てる (maxSegments=0 なら空)。
+              // composeContext は固定の includeTranslatedText 設定に従い、必要なら
+              // translatedText フィールドを落とす。
+              const precedingContext = composeTranslationContext({
+                finalTail,
+                maxSegments: effectiveTranslationContext.maxSegments,
+                includeTranslatedText: effectiveTranslationContext.includeTranslatedText,
+              });
+
+              // 新 final を finalTail に push (translatedText は後続の translate 応答で埋める)。
+              const newEntry: PrecedingContext = {
+                segmentId: event.segmentId,
+                sourceText: event.text,
+                finalizedAt: event.finalizedAt,
+              };
+              finalTail = [...finalTail, newEntry];
+              trimFinalTail();
+
+              // 翻訳は fire-and-forget (ホットパス、結果は translation.final で送信)
               void (async () => {
                 const translationResult = await deps.translationPort.translate({
                   text: event.text,
                   sourceLanguage: stream.sourceLanguage,
                   targetLanguage: stream.targetLanguage,
+                  precedingContext,
                 });
                 if (translationResult.isErr()) {
                   request.log.warn(
@@ -357,6 +471,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                   );
                   return;
                 }
+                const contextSegmentIds = translationResult.value.contextSegmentIds ?? [];
                 emitTranslationFinal(socket, context, nextSequence, deps.clock, {
                   translationId: translationIdFactory(),
                   sourceSegmentId: event.segmentId,
@@ -364,7 +479,15 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                   sourceLanguage: translationResult.value.detectedSourceLanguage,
                   targetLanguage: stream.targetLanguage,
                   latencyMs: translationResult.value.latencyMs,
+                  contextSegmentIds,
                 });
+                // IMPL-404: 自 segment の translatedText を finalTail に反映し、
+                // 次 final の context に使えるようにする。
+                finalTail = finalTail.map((entry) =>
+                  entry.segmentId === event.segmentId
+                    ? { ...entry, translatedText: translationResult.value.text }
+                    : entry,
+                );
               })();
             } catch (cause) {
               request.log.error({ err: cause }, 'transcript loop iteration failed');
@@ -415,6 +538,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
           .openStream({
             sourceLanguage: autoDetectLanguage ? null : sourceLanguage,
             autoDetectLanguage,
+            endpointing: toSttEndpointingConfig(effectiveEndpointing),
           })
           .match(
             (handle) => {

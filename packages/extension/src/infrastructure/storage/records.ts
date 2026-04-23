@@ -4,10 +4,20 @@ import {
   type ExportFormat,
   type ExportRecord,
 } from '../../domain/export/export-record';
+import {
+  createEndpointingPolicy,
+  DEFAULT_ENDPOINTING_POLICY,
+  type EndpointingPolicy,
+} from '../../domain/session/endpointing-policy';
 import { createLanguagePair } from '../../domain/session/language-pair';
 import { createSourceSession, type SourceSession } from '../../domain/session/source-session';
 import { type SessionState } from '../../domain/session/session-state';
 import { type SourceType } from '../../domain/session/source-type';
+import {
+  createTranslationContextWindow,
+  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+  type TranslationContextWindow,
+} from '../../domain/session/translation-context-window';
 import { type DomainError } from '../../domain/shared/errors';
 import { createTimestampRange } from '../../domain/transcript/timestamp-range';
 import {
@@ -32,6 +42,11 @@ import {
 
 // ---------- DB-001 sessions ----------
 
+/**
+ * `SessionRow` v2: `endpointing*` / `translationContext*` フィールドが
+ * null 許容で追加された (IMPL-318)。既存 v1 レコードは null のまま残り、
+ * `sessionFromRecord` が読み込み時に VO 既定値を適用する (後方互換)。
+ */
 export type SessionRow = {
   sessionId: string;
   sourceId: string;
@@ -42,6 +57,11 @@ export type SessionRow = {
   startedAt: string;
   stoppedAt: string | null;
   degradedReason: string | null;
+  endpointingSilenceMs: number | null;
+  endpointingPunctuationAware: boolean | null;
+  endpointingMinUtteranceMs: number | null;
+  translationContextMaxSegments: number | null;
+  translationContextIncludeTranslatedText: boolean | null;
 };
 
 export const sessionToRecord = (session: SourceSession): SessionRow => ({
@@ -54,7 +74,42 @@ export const sessionToRecord = (session: SourceSession): SessionRow => ({
   startedAt: session.startedAt,
   stoppedAt: session.stoppedAt,
   degradedReason: session.degradedReason,
+  endpointingSilenceMs: session.endpointing.silenceThresholdMs,
+  endpointingPunctuationAware: session.endpointing.punctuationAware,
+  endpointingMinUtteranceMs: session.endpointing.minUtteranceMs,
+  translationContextMaxSegments: session.translationContext.maxSegments,
+  translationContextIncludeTranslatedText: session.translationContext.includeTranslatedText,
 });
+
+const endpointingFromRow = (row: SessionRow): EndpointingPolicy => {
+  if (
+    row.endpointingSilenceMs === null ||
+    row.endpointingPunctuationAware === null ||
+    row.endpointingMinUtteranceMs === null
+  ) {
+    return DEFAULT_ENDPOINTING_POLICY;
+  }
+  const result = createEndpointingPolicy({
+    silenceThresholdMs: row.endpointingSilenceMs,
+    punctuationAware: row.endpointingPunctuationAware,
+    minUtteranceMs: row.endpointingMinUtteranceMs,
+  });
+  return result.isOk() ? result.value : DEFAULT_ENDPOINTING_POLICY;
+};
+
+const translationContextFromRow = (row: SessionRow): TranslationContextWindow => {
+  if (
+    row.translationContextMaxSegments === null ||
+    row.translationContextIncludeTranslatedText === null
+  ) {
+    return DEFAULT_TRANSLATION_CONTEXT_WINDOW;
+  }
+  const result = createTranslationContextWindow({
+    maxSegments: row.translationContextMaxSegments,
+    includeTranslatedText: row.translationContextIncludeTranslatedText,
+  });
+  return result.isOk() ? result.value : DEFAULT_TRANSLATION_CONTEXT_WINDOW;
+};
 
 export const sessionFromRecord = (row: SessionRow): Result<SourceSession, DomainError> =>
   createLanguagePair({ source: row.sourceLanguage, target: row.targetLanguage }).andThen(
@@ -65,6 +120,8 @@ export const sessionFromRecord = (row: SessionRow): Result<SourceSession, Domain
         sourceType: row.sourceType,
         languagePair,
         startedAt: row.startedAt,
+        endpointing: endpointingFromRow(row),
+        translationContext: translationContextFromRow(row),
       }).map((session) => ({
         ...session,
         state: row.state,

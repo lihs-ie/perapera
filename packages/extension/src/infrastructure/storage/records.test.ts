@@ -77,6 +77,11 @@ describe('SessionRow mapper (DD-106, DB-001)', () => {
       startedAt: STARTED_AT,
       stoppedAt: STOPPED_AT,
       degradedReason: 'translation timeout',
+      endpointingSilenceMs: null,
+      endpointingPunctuationAware: null,
+      endpointingMinUtteranceMs: null,
+      translationContextMaxSegments: null,
+      translationContextIncludeTranslatedText: null,
     };
     const restored = sessionFromRecord(row);
     expect(restored.isOk()).toBe(true);
@@ -98,6 +103,11 @@ describe('SessionRow mapper (DD-106, DB-001)', () => {
       startedAt: STARTED_AT,
       stoppedAt: null,
       degradedReason: null,
+      endpointingSilenceMs: null,
+      endpointingPunctuationAware: null,
+      endpointingMinUtteranceMs: null,
+      translationContextMaxSegments: null,
+      translationContextIncludeTranslatedText: null,
     };
     expect(sessionFromRecord(row).isErr()).toBe(true);
   });
@@ -113,6 +123,11 @@ describe('SessionRow mapper (DD-106, DB-001)', () => {
       startedAt: STARTED_AT,
       stoppedAt: null,
       degradedReason: null,
+      endpointingSilenceMs: null,
+      endpointingPunctuationAware: null,
+      endpointingMinUtteranceMs: null,
+      translationContextMaxSegments: null,
+      translationContextIncludeTranslatedText: null,
     };
     expect(sessionFromRecord(row).isErr()).toBe(true);
   });
@@ -237,6 +252,11 @@ describe('Type shape checks', () => {
       startedAt: STARTED_AT,
       stoppedAt: null,
       degradedReason: null,
+      endpointingSilenceMs: null,
+      endpointingPunctuationAware: null,
+      endpointingMinUtteranceMs: null,
+      translationContextMaxSegments: null,
+      translationContextIncludeTranslatedText: null,
     };
     const tRow: TranscriptSegmentRow = {
       segmentId: SEGMENT_ID,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createEndpointingPolicy, DEFAULT_ENDPOINTING_POLICY } from './endpointing-policy';
 import { createLanguagePair } from './language-pair';
 import {
   createSourceSession,
@@ -9,7 +10,13 @@ import {
   startSourceSession,
   stopSourceSession,
   transitionSourceSessionState,
+  updateSourceSessionEndpointing,
+  updateSourceSessionTranslationContext,
 } from './source-session';
+import {
+  createTranslationContextWindow,
+  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+} from './translation-context-window';
 
 const SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const SOURCE_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X9';
@@ -237,6 +244,93 @@ describe('SourceSession aggregate', () => {
         stoppedAt: '2026-04-21T00:10:00.000Z',
       })._unsafeUnwrap();
       expect(transitionSourceSessionState(session, 'capturing').isErr()).toBe(true);
+    });
+  });
+
+  describe('endpointing / translationContext (DD-210 invariant 5)', () => {
+    it('defaults to DEFAULT_ENDPOINTING_POLICY and DEFAULT_TRANSLATION_CONTEXT_WINDOW when omitted', () => {
+      const session = newSession();
+      expect(session.endpointing).toBe(DEFAULT_ENDPOINTING_POLICY);
+      expect(session.translationContext).toBe(DEFAULT_TRANSLATION_CONTEXT_WINDOW);
+    });
+
+    it('accepts overrides at creation time', () => {
+      const endpointing = createEndpointingPolicy({
+        silenceThresholdMs: 900,
+        punctuationAware: false,
+        minUtteranceMs: 700,
+      })._unsafeUnwrap();
+      const translationContext = createTranslationContextWindow({
+        maxSegments: 5,
+        includeTranslatedText: false,
+      })._unsafeUnwrap();
+      const result = createSourceSession({
+        sessionIdentifier: SESSION_ID,
+        sourceIdentifier: SOURCE_ID,
+        sourceType: 'tab',
+        languagePair,
+        startedAt,
+        endpointing,
+        translationContext,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.endpointing).toBe(endpointing);
+        expect(result.value.translationContext).toBe(translationContext);
+      }
+    });
+
+    it('updateSourceSessionEndpointing replaces policy before stop', () => {
+      const session = newSession();
+      const next = createEndpointingPolicy({
+        silenceThresholdMs: 1000,
+        punctuationAware: true,
+        minUtteranceMs: 500,
+      })._unsafeUnwrap();
+      const result = updateSourceSessionEndpointing(session, next);
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) expect(result.value.endpointing).toBe(next);
+    });
+
+    it('updateSourceSessionTranslationContext replaces window before stop', () => {
+      const session = newSession();
+      const next = createTranslationContextWindow({
+        maxSegments: 0,
+        includeTranslatedText: false,
+      })._unsafeUnwrap();
+      const result = updateSourceSessionTranslationContext(session, next);
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) expect(result.value.translationContext).toBe(next);
+    });
+
+    it('rejects endpointing update after session stopped', () => {
+      let session = newSession();
+      session = startSourceSession(session)._unsafeUnwrap();
+      session = stopSourceSession(session, {
+        stoppedAt: '2026-04-21T00:10:00.000Z',
+      })._unsafeUnwrap();
+      const next = createEndpointingPolicy({
+        silenceThresholdMs: 1000,
+        punctuationAware: true,
+        minUtteranceMs: 500,
+      })._unsafeUnwrap();
+      const result = updateSourceSessionEndpointing(session, next);
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.kind).toBe('session-state-transition');
+    });
+
+    it('rejects translationContext update after session stopped', () => {
+      let session = newSession();
+      session = startSourceSession(session)._unsafeUnwrap();
+      session = stopSourceSession(session, {
+        stoppedAt: '2026-04-21T00:10:00.000Z',
+      })._unsafeUnwrap();
+      const next = createTranslationContextWindow({
+        maxSegments: 1,
+        includeTranslatedText: true,
+      })._unsafeUnwrap();
+      const result = updateSourceSessionTranslationContext(session, next);
+      expect(result.isErr()).toBe(true);
     });
   });
 });

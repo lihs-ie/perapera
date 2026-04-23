@@ -116,6 +116,32 @@ export const finalizeSegment = (
   );
 };
 
+/**
+ * 直近 `maxSegments` 個の確定 (isFinal=true) 字幕を、挿入順で返す (DD-211 不変条件 4)。
+ *
+ * 目的: `HandleTranscriptFinalUseCase` が翻訳発火前に `precedingContext` を
+ * 組み立てる際、ホットパス上でメモリから直接取得するためのクエリ。永続層 (IndexedDB)
+ * を参照しない。
+ *
+ * - `maxSegments <= 0` の場合は空配列を返す (翻訳に context を渡さない設定)
+ * - 末尾 N 個を返す (最も新しい final が最後)。呼び出し側が逆順にしたい場合は
+ *   `.reverse()` する
+ * - translation が紐づいていない final も含む (context 用には original text のみで十分、
+ *   訳文は呼び出し側で `getTranslation` と組み合わせる)
+ */
+export const recentFinalTail = (
+  stream: TranscriptStream,
+  maxSegments: number,
+): readonly TranscriptSegment[] => {
+  if (maxSegments <= 0) return [];
+  const finals: TranscriptSegment[] = [];
+  for (const segment of stream.segments.values()) {
+    if (segment.isFinal) finals.push(segment);
+  }
+  if (finals.length <= maxSegments) return finals;
+  return finals.slice(finals.length - maxSegments);
+};
+
 export const attachTranslationToSegment = (
   stream: TranscriptStream,
   params: {

@@ -5,11 +5,16 @@ import {
   validateSessionStateTransition,
 } from '../services/session-state-transition-policy';
 import { type DomainError, sessionStateTransitionError, validationError } from '../shared/errors';
+import { DEFAULT_ENDPOINTING_POLICY, type EndpointingPolicy } from './endpointing-policy';
 import { type LanguagePair } from './language-pair';
 import { parseSessionIdentifier, type SessionIdentifier } from './session-identifier';
 import { type SessionState } from './session-state';
 import { parseSourceIdentifier, type SourceIdentifier } from './source-identifier';
 import { parseSourceType, type SourceType } from './source-type';
+import {
+  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+  type TranslationContextWindow,
+} from './translation-context-window';
 
 /**
  * ソースセッション集約ルート (DD-210 / DD-220)。
@@ -19,6 +24,8 @@ import { parseSourceType, type SourceType } from './source-type';
  * 2. 状態遷移は §7 の state machine に従う (idle → requesting_permission → ...)
  * 3. `degraded` は翻訳障害時のみ遷移可能 (transcribing / translating から)
  * 4. `stopped` 後は再開不可 (terminal state)
+ * 5. `endpointing` / `translationContext` は `stopped` 前のみ変更可能
+ *    (変更は次の utterance から反映される)
  *
  * 状態遷移表は `domain/services/session-state-transition-policy.ts` (DD-241) に集約する。
  */
@@ -31,6 +38,8 @@ export type SourceSession = Readonly<{
   startedAt: string;
   stoppedAt: string | null;
   degradedReason: string | null;
+  endpointing: EndpointingPolicy;
+  translationContext: TranslationContextWindow;
 }>;
 
 const iso8601Schema = z.string().datetime();
@@ -57,6 +66,8 @@ export const createSourceSession = (params: {
   sourceType: string;
   languagePair: LanguagePair;
   startedAt: string;
+  endpointing?: EndpointingPolicy;
+  translationContext?: TranslationContextWindow;
 }): Result<SourceSession, DomainError> => {
   const startedAtResult = iso8601Schema.safeParse(params.startedAt);
   if (!startedAtResult.success) {
@@ -79,11 +90,50 @@ export const createSourceSession = (params: {
           startedAt: startedAtResult.data,
           stoppedAt: null,
           degradedReason: null,
+          endpointing: params.endpointing ?? DEFAULT_ENDPOINTING_POLICY,
+          translationContext: params.translationContext ?? DEFAULT_TRANSLATION_CONTEXT_WINDOW,
         }),
       ),
     ),
   );
 };
+
+/**
+ * 不変条件 5 を検証するガード。`stopped` 状態では変更不可。
+ */
+const guardMutableForConfig = (
+  session: SourceSession,
+  field: string,
+): Result<SourceSession, DomainError> => {
+  if (session.state === 'stopped') {
+    return err(
+      sessionStateTransitionError({
+        from: session.state,
+        to: session.state,
+        reason: `cannot update ${field} after session is stopped`,
+      }),
+    );
+  }
+  return ok(session);
+};
+
+export const updateSourceSessionEndpointing = (
+  session: SourceSession,
+  policy: EndpointingPolicy,
+): Result<SourceSession, DomainError> =>
+  guardMutableForConfig(session, 'endpointing').map((current) => ({
+    ...current,
+    endpointing: policy,
+  }));
+
+export const updateSourceSessionTranslationContext = (
+  session: SourceSession,
+  window: TranslationContextWindow,
+): Result<SourceSession, DomainError> =>
+  guardMutableForConfig(session, 'translationContext').map((current) => ({
+    ...current,
+    translationContext: window,
+  }));
 
 export const startSourceSession = (session: SourceSession): Result<SourceSession, DomainError> =>
   transitionGuard(session, 'requesting_permission', 'start only allowed from idle');

@@ -1,6 +1,8 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
+import { DEFAULT_ENDPOINTING_POLICY } from '../../domain/session/endpointing-policy';
+import { DEFAULT_TRANSLATION_CONTEXT_WINDOW } from '../../domain/session/translation-context-window';
 import { type TranscriptStreamRepository } from '../../domain/repositories/transcript-stream-repository';
 import { createLanguagePair } from '../../domain/session/language-pair';
 import {
@@ -71,6 +73,10 @@ const buildDependencies = (
     saveDefaultLanguagePair: vi.fn(() => okAsync(undefined)),
     getDefaultOverlaySettings: vi.fn(() => okAsync(overlaySettings)),
     saveDefaultOverlaySettings: vi.fn(() => okAsync(undefined)),
+    getDefaultEndpointingPolicy: vi.fn(() => okAsync(DEFAULT_ENDPOINTING_POLICY)),
+    saveDefaultEndpointingPolicy: vi.fn(() => okAsync(undefined)),
+    getDefaultTranslationContextWindow: vi.fn(() => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW)),
+    saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),

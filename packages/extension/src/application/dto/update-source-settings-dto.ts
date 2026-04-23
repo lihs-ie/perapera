@@ -21,6 +21,28 @@ const overlaySettingsPayloadSchema = z.object({
   showTranslatedText: z.boolean(),
 });
 
+const endpointingPolicyPayloadSchema = z.object({
+  silenceThresholdMs: z.number().int().min(200).max(1200).optional(),
+  punctuationAware: z.boolean().optional(),
+  minUtteranceMs: z.number().int().min(100).max(3000).optional(),
+});
+
+const translationContextWindowPayloadSchema = z.object({
+  maxSegments: z.number().int().min(0).max(5).optional(),
+  includeTranslatedText: z.boolean().optional(),
+});
+
+export type EndpointingPolicyPayload = Readonly<{
+  silenceThresholdMs?: number | undefined;
+  punctuationAware?: boolean | undefined;
+  minUtteranceMs?: number | undefined;
+}>;
+
+export type TranslationContextWindowPayload = Readonly<{
+  maxSegments?: number | undefined;
+  includeTranslatedText?: boolean | undefined;
+}>;
+
 /**
  * オーバーレイ設定更新入力 DTO (DTO-I-303, DD-303)。
  *
@@ -42,6 +64,8 @@ export type UpdateSourceSettingsInput = {
         showTranslatedText: boolean;
       }
     | undefined;
+  endpointing?: EndpointingPolicyPayload | undefined;
+  translationContext?: TranslationContextWindowPayload | undefined;
 };
 
 const updateSourceSettingsInputSchema = z.object({
@@ -49,6 +73,8 @@ const updateSourceSettingsInputSchema = z.object({
   sourceLanguage: bcp47Schema.nullable().optional(),
   targetLanguage: bcp47Schema.optional(),
   overlaySettings: overlaySettingsPayloadSchema.optional(),
+  endpointing: endpointingPolicyPayloadSchema.optional(),
+  translationContext: translationContextWindowPayloadSchema.optional(),
 });
 
 export const parseUpdateSourceSettingsInput = (

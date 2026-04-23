@@ -45,14 +45,28 @@ export type SttStreamHandle = Readonly<{
 }>;
 
 /**
+ * IMPL-447: STT プロバイダに渡す endpointing 設定 (DD-236)。プロバイダ別に
+ * `silenceThresholdMs` / `punctuationAware` / `minUtteranceMs` を正規化する。
+ * adapter 側で未対応フィールドは `logger.info` を残して無視する。
+ */
+export type SttEndpointingConfig = Readonly<{
+  silenceThresholdMs: number;
+  punctuationAware: boolean;
+  minUtteranceMs: number;
+}>;
+
+/**
  * STT プロバイダポート (DD-402)。
  *
  * 1 セッション 1 ストリーム。`openStream` で接続し、以降は `SttStreamHandle`
  * 経由で frame 送信 / transcript 受信を行う。
+ *
+ * `endpointing` (IMPL-447) は provider-specific field へ adapter が変換する。
  */
 export type SttPort = Readonly<{
   openStream: (config: {
     sourceLanguage: string | null;
     autoDetectLanguage: boolean;
+    endpointing?: SttEndpointingConfig;
   }) => ResultAsync<SttStreamHandle, DomainError>;
 }>;

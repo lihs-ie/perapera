@@ -1,7 +1,15 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { z } from 'zod';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
+import {
+  createEndpointingPolicy,
+  type EndpointingPolicy,
+} from '../../domain/session/endpointing-policy';
 import { createLanguagePair, type LanguagePair } from '../../domain/session/language-pair';
+import {
+  createTranslationContextWindow,
+  type TranslationContextWindow,
+} from '../../domain/session/translation-context-window';
 import {
   describeDomainError,
   invariantViolationError,
@@ -16,6 +24,8 @@ import {
 
 const LANGUAGE_KEY = 'settings.language.defaultLanguagePair';
 const OVERLAY_KEY = 'settings.overlay.defaultOverlaySettings';
+const STT_KEY = 'settings.stt.defaultEndpointingPolicy';
+const TRANSLATION_KEY = 'settings.translation.defaultContextWindow';
 const RELAY_OVERRIDE_KEY = 'settings.relay.connectionOverride';
 
 const relayOverrideSchema = z.object({
@@ -115,6 +125,48 @@ export const createChromeLocalSettingsStore = (adapter: ChromeStorageAdapter): S
         fontScale: settings.fontScale,
         showOriginalText: settings.showOriginalText,
         showTranslatedText: settings.showTranslatedText,
+      }),
+
+    getDefaultEndpointingPolicy: () =>
+      readRaw(adapter, STT_KEY).andThen((raw): ResultAsync<EndpointingPolicy, DomainError> => {
+        if (raw === undefined) {
+          return errAsync<EndpointingPolicy, DomainError>(
+            notFoundError({ resourceType: 'EndpointingPolicy', identifier: 'default' }),
+          );
+        }
+        return okAsync<unknown, DomainError>(raw).andThen((value) =>
+          createEndpointingPolicy(value),
+        );
+      }),
+
+    saveDefaultEndpointingPolicy: (policy) =>
+      writeRaw(adapter, STT_KEY, {
+        silenceThresholdMs: policy.silenceThresholdMs,
+        punctuationAware: policy.punctuationAware,
+        minUtteranceMs: policy.minUtteranceMs,
+      }),
+
+    getDefaultTranslationContextWindow: () =>
+      readRaw(adapter, TRANSLATION_KEY).andThen(
+        (raw): ResultAsync<TranslationContextWindow, DomainError> => {
+          if (raw === undefined) {
+            return errAsync<TranslationContextWindow, DomainError>(
+              notFoundError({
+                resourceType: 'TranslationContextWindow',
+                identifier: 'default',
+              }),
+            );
+          }
+          return okAsync<unknown, DomainError>(raw).andThen((value) =>
+            createTranslationContextWindow(value),
+          );
+        },
+      ),
+
+    saveDefaultTranslationContextWindow: (window) =>
+      writeRaw(adapter, TRANSLATION_KEY, {
+        maxSegments: window.maxSegments,
+        includeTranslatedText: window.includeTranslatedText,
       }),
 
     getRelayConnectionOverride: () =>
