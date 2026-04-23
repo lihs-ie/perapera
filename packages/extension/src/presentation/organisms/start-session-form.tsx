@@ -13,13 +13,36 @@ import {
 import { LanguagePairSelector } from '../molecules/language-pair-selector';
 import { SourceTypeSelector } from '../molecules/source-type-selector';
 
+/**
+ * Active tab resolver. Popup 側 (React context) は `chrome.tabs.query` を
+ * 呼ぶことで現在 active な tab の id を取得できる。tabCapture source では
+ * その id を `overlayTarget: { kind: 'tab', tabId }` として Background に渡し、
+ * Background 側 `chrome.tabCapture.getMediaStreamId({targetTabId})` で
+ * MediaStream を掴むチェーンに接続される。
+ *
+ * test では fake (vi.fn(() => Promise.resolve(42))) を注入可能。
+ */
+export type ActiveTabResolver = () => Promise<number | null>;
+
+const defaultActiveTabResolver: ActiveTabResolver = async () => {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const first = tabs[0];
+    return typeof first?.id === 'number' ? first.id : null;
+  } catch {
+    return null;
+  }
+};
+
 export type Props = Readonly<{
   client: BackgroundClient;
   onStarted?: (result: StartSourceSessionResult) => void;
+  resolveActiveTabId?: ActiveTabResolver;
 }>;
 
 const DEFAULT_SOURCE_LANGUAGE = 'en-US';
 const DEFAULT_TARGET_LANGUAGE = 'ja-JP';
+const DEFAULT_MONITOR_PAGE_ID = 'monitor';
 
 /**
  * IMPL-540 StartSessionForm organism。
@@ -45,21 +68,41 @@ export function StartSessionForm(props: Props) {
   const canSubmit =
     displayName.trim().length > 0 && !samePair && command.state.status !== 'pending';
 
+  const resolveActiveTabId = props.resolveActiveTabId ?? defaultActiveTabResolver;
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const input: StartSourceSessionInput = {
+    const baseInput: Omit<StartSourceSessionInput, 'overlayTarget'> = {
       sourceType,
       displayName: displayName.trim(),
       autoDetectLanguage: autoDetect,
       sourceLanguage: autoDetect ? null : sourceLanguage,
       targetLanguage,
-      overlayTarget: { kind: 'extension-monitor' },
     };
-    void command.execute(input).then((response) => {
+    const buildOverlayTarget = async (): Promise<StartSourceSessionInput['overlayTarget']> => {
+      // tab source: 現在 active な tab を capture + overlay 先に使う。
+      // id 解決失敗時は monitor fallback (現状 tab capture は動かないが、
+      // 少なくとも UseCase の validation で `sourceType='tab'` 時に
+      // captureTabId 必須ロジックが入るまでの fail-soft)。
+      if (sourceType === 'tab') {
+        const tabId = await resolveActiveTabId();
+        if (typeof tabId === 'number') {
+          return { kind: 'tab', tabId };
+        }
+        console.warn(
+          '[start-session-form] active tab id unresolved; falling back to extension-monitor',
+        );
+      }
+      return { kind: 'extension-monitor', pageId: DEFAULT_MONITOR_PAGE_ID };
+    };
+    void (async () => {
+      const overlayTarget = await buildOverlayTarget();
+      const input: StartSourceSessionInput = { ...baseInput, overlayTarget };
+      const response = await command.execute(input);
       if (response.ok && props.onStarted !== undefined) {
         props.onStarted(response.value);
       }
-    });
+    })();
   };
 
   return (
