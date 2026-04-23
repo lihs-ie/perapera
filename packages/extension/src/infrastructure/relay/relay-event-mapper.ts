@@ -49,13 +49,17 @@ const transcriptFinalPayload = z.object({
   finalizedAt: isoSchema,
 });
 
-// Relay `buildTranslationFinal` は DeepL の `detectedSourceLanguage` を
-// そのまま載せる (`string | null`) ため、null 許容が必須。また DeepL が無音 /
-// 極短セグメントで空文字列 text を返すケースがあるため、text も min 制約を
-// 外して受け取り、空なら UI 層で skip する (hot path を止めない)。
+// Relay `buildTranslationFinal` は以下の source から値を集める:
+// - `translationId`: server で ulid() 発行 (通常空にはならないが defensive に緩く)
+// - `sourceSegmentId`: Deepgram から来た segment id (長さ保証なし)
+// - `text`: DeepL 翻訳結果 (無音セグメントで空文字列になりうる)
+// - `sourceLanguage`: DeepL detectedSourceLanguage (`string | null`)
+// - `targetLanguage`: session から (常に非空の BCP-47)
+// 外部 provider 由来の field は `.min(1)` を外し、UI 層で空なら skip する
+// (hot path を止めない)。
 const translationFinalPayload = z.object({
-  translationId: z.string().min(1),
-  sourceSegmentId: z.string().min(1),
+  translationId: z.string(),
+  sourceSegmentId: z.string(),
   text: z.string(),
   targetLanguage: z.string().min(1),
   sourceLanguage: z.string().nullable().optional(),
@@ -95,7 +99,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
 
   const envelopeResult = baseEnvelopeSchema.safeParse(parsed);
   if (!envelopeResult.success) {
-    return err(asValidation(envelopeResult.error.issues.map((i) => i.message).join('; ')));
+    return err(
+      asValidation(
+        envelopeResult.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+      ),
+    );
   }
   const envelope = envelopeResult.data;
 
@@ -112,7 +120,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
     case 'session.ready': {
       const payload = readyPayload.safeParse(envelope.payload);
       if (!payload.success) {
-        return err(asValidation(payload.error.issues.map((i) => i.message).join('; ')));
+        return err(
+          asValidation(
+            payload.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+          ),
+        );
       }
       return ok({
         type: 'session.ready',
@@ -124,7 +136,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
     case 'transcript.partial': {
       const payload = transcriptPartialPayload.safeParse(envelope.payload);
       if (!payload.success) {
-        return err(asValidation(payload.error.issues.map((i) => i.message).join('; ')));
+        return err(
+          asValidation(
+            payload.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+          ),
+        );
       }
       return ok({
         type: 'transcript.partial',
@@ -138,7 +154,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
     case 'transcript.final': {
       const payload = transcriptFinalPayload.safeParse(envelope.payload);
       if (!payload.success) {
-        return err(asValidation(payload.error.issues.map((i) => i.message).join('; ')));
+        return err(
+          asValidation(
+            payload.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+          ),
+        );
       }
       return ok({
         type: 'transcript.final',
@@ -152,7 +172,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
     case 'translation.final': {
       const payload = translationFinalPayload.safeParse(envelope.payload);
       if (!payload.success) {
-        return err(asValidation(payload.error.issues.map((i) => i.message).join('; ')));
+        return err(
+          asValidation(
+            payload.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+          ),
+        );
       }
       return ok({
         type: 'translation.final',
@@ -167,7 +191,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
     case 'session.state.changed': {
       const payload = stateChangedPayload.safeParse(envelope.payload);
       if (!payload.success) {
-        return err(asValidation(payload.error.issues.map((i) => i.message).join('; ')));
+        return err(
+          asValidation(
+            payload.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+          ),
+        );
       }
       const stateResult = parseSessionState(payload.data.currentState);
       if (stateResult.isErr()) return err(stateResult.error);
@@ -181,7 +209,11 @@ export const parseRelayServerMessage = (raw: string): Result<RelayEvent | null, 
     case 'session.error': {
       const payload = sessionErrorPayload.safeParse(envelope.payload);
       if (!payload.success) {
-        return err(asValidation(payload.error.issues.map((i) => i.message).join('; ')));
+        return err(
+          asValidation(
+            payload.error.issues.map((i) => `${i.path.join('.')}:${i.message}`).join('; '),
+          ),
+        );
       }
       return ok({
         type: 'session.error',
