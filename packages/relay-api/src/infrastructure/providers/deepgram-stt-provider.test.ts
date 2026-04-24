@@ -57,6 +57,10 @@ const createFakeSocket = (): FakeSocket => {
       case 'error':
         errorListeners.push(e);
         return undefined;
+      case 'open':
+      case 'unexpected-response':
+        // 診断 log 用の listener。本テストでは emit しないため no-op で握りつぶす。
+        return undefined;
     }
   };
   const once: MinimalDeepgramSocket['once'] = (event, listener) => {

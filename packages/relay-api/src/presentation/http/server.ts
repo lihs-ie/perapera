@@ -1,5 +1,6 @@
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
+import pino from 'pino';
 import { ulid } from 'ulid';
 import { WebSocket as WsWebSocket } from 'ws';
 import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
@@ -14,7 +15,10 @@ import { createJoseJwtSigner } from '../../infrastructure/auth/jose-jwt-signer';
 import { createJoseJwtVerifier } from '../../infrastructure/auth/jose-jwt-verifier';
 import { createStaticAccessTokenVerifier } from '../../infrastructure/auth/static-access-token-verifier';
 import { loggerOptions } from '../../infrastructure/logging/logger';
-import { createDeepgramSttProvider } from '../../infrastructure/providers/deepgram-stt-provider';
+import {
+  createDeepgramSttProvider,
+  type DeepgramLogger,
+} from '../../infrastructure/providers/deepgram-stt-provider';
 import { createDeepLTranslationProvider } from '../../infrastructure/providers/deepl-translation-provider';
 import { registerRelayRoute } from '../ws/relay-route';
 import { registerRequestContextHook } from './request-context-hook';
@@ -160,10 +164,22 @@ const buildProductionDependencies = (): AppDependencies => {
   if (deepgramApiKey === undefined || deepgramApiKey.length === 0) {
     throw new Error('DEEPGRAM_API_KEY env var is required for production STT provider');
   }
+  // Deepgram WebSocket の close code / reason / unexpected-response status を
+  // 捕捉するための診断 logger。Fastify の app.log と同じ pino オプションで
+  // 別 instance を作成し、`module: 'deepgram-stt'` で識別できるようにする。
+  // これがないと deepgram-stream-closed が発生した際に「なぜ閉じたか」が
+  // 永久に不明になる (PR #131 後の継続課題)。
+  const pinoLogger = pino(loggerOptions).child({ module: 'deepgram-stt' });
+  const deepgramLogger: DeepgramLogger = {
+    info: (msg, fields) => pinoLogger.info(fields ?? {}, msg),
+    warn: (msg, fields) => pinoLogger.warn(fields ?? {}, msg),
+    error: (msg, fields) => pinoLogger.error(fields ?? {}, msg),
+  };
   const sttPort = createDeepgramSttProvider({
     apiKey: deepgramApiKey,
     baseUrl: process.env['DEEPGRAM_BASE_URL'] ?? 'wss://api.deepgram.com/v1/listen',
     webSocketFactory: (url, headers) => new WsWebSocket(url, { headers }),
+    logger: deepgramLogger,
   });
 
   const deeplApiKey = process.env['DEEPL_API_KEY'];
