@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Button } from '../atoms/button';
 import { StatusBadge } from '../atoms/status-badge';
 import { useBackgroundCommand } from '../hooks/use-background-command';
 import { type BackgroundClient } from '../infrastructure/background-client';
+import { ExportControls } from '../molecules/export-controls';
 
 export type ActiveSession = Readonly<{
   sessionId: string;
@@ -28,6 +30,7 @@ export type Props = Readonly<{
 export function SessionToolbar(props: Props) {
   const stopCommand = useBackgroundCommand(props.client.stopSourceSession);
   const isPending = stopCommand.state.status === 'pending';
+  const [exportOpen, setExportOpen] = useState<boolean>(false);
 
   const handleStop = async (): Promise<void> => {
     const response = await stopCommand.execute({ sessionId: props.session.sessionId });
@@ -55,6 +58,17 @@ export function SessionToolbar(props: Props) {
             ⚙
           </button>
         ) : null}
+        <button
+          type="button"
+          className="iconButton"
+          aria-label="エクスポートを開く"
+          aria-expanded={exportOpen}
+          onClick={() => {
+            setExportOpen((prev) => !prev);
+          }}
+        >
+          {exportOpen ? '▾' : '↧'}
+        </button>
         <Button
           variant="danger"
           disabled={isPending}
@@ -66,6 +80,11 @@ export function SessionToolbar(props: Props) {
           {isPending ? '停止中…' : '停止'}
         </Button>
       </div>
+      {exportOpen ? (
+        <div className="panel" data-testid="export-panel">
+          <ExportControls client={props.client} sessionId={props.session.sessionId} />
+        </div>
+      ) : null}
     </header>
   );
 }

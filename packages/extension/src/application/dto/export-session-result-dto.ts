@@ -45,10 +45,12 @@ export const parseExportSessionResultInput = (
 /**
  * エクスポート実行出力 DTO (DTO-O-307)。
  * `ExportRecord` の `exportIdentifier` を `exportId` として primitive 化し、
- * 生成バイト数 `bytes` を追加。
+ * 生成バイト数 `bytes` と整形済み本文 `content` を追加する。`content` は
+ * presentation 層がそのまま `Blob` 化してダウンロードに用いる (Issue #106)。
  */
 export type ExportSessionResultOutput = Readonly<{
   exportId: string;
   format: ExportFormat;
   bytes: number;
+  content: string;
 }>;

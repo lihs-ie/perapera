@@ -21,7 +21,9 @@ const buildFakeDeps = () => {
     handleRelayEvent: vi.fn(() => okAsync<void, ApplicationError>(undefined)),
   };
   const exportService: ExportService = {
-    export: vi.fn(() => okAsync({ exportId: 'exp', format: 'txt' as const, bytes: 100 })),
+    export: vi.fn(() =>
+      okAsync({ exportId: 'exp', format: 'txt' as const, bytes: 100, content: 'x' }),
+    ),
   };
   const getSessionMonitorStateQuery: GetSessionMonitorStateQuery = vi.fn(() =>
     okAsync({ sessions: [], latestSegments: [] }),

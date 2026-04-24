@@ -79,6 +79,15 @@ describe('SessionToolbar organism', () => {
     expect(onStopped).not.toHaveBeenCalled();
   });
 
+  it('toggles the export panel via the dedicated button (Issue #106)', () => {
+    render(<SessionToolbar client={buildClient()} session={session} onStopped={() => undefined} />);
+    expect(screen.queryByTestId('export-panel')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'エクスポートを開く' }));
+    expect(screen.getByTestId('export-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'エクスポートを開く' }));
+    expect(screen.queryByTestId('export-panel')).toBeNull();
+  });
+
   it('shows pending label while in-flight', async () => {
     let resolveStop: (value: BackgroundResponse<StopSourceSessionResult>) => void = () => undefined;
     const stopPromise = new Promise<BackgroundResponse<StopSourceSessionResult>>((resolve) => {
@@ -90,7 +99,7 @@ describe('SessionToolbar organism', () => {
     render(<SessionToolbar client={client} session={session} onStopped={() => undefined} />);
     fireEvent.click(screen.getByRole('button', { name: 'セッションを停止' }));
     await waitFor(() => {
-      expect(screen.getByRole('button')).toHaveTextContent('停止中…');
+      expect(screen.getByRole('button', { name: 'セッションを停止' })).toHaveTextContent('停止中…');
     });
     await act(async () => {
       resolveStop({

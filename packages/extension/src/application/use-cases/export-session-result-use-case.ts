@@ -59,7 +59,7 @@ export const createExportSessionResultUseCase = (
                   );
                 }
               })
-              .asyncAndThen(({ bytes }) => {
+              .asyncAndThen(({ bytes, content }) => {
                 const createdAt = deps.clock();
                 const exportId = deps.exportIdFactory();
                 return createExportRecord({
@@ -75,6 +75,7 @@ export const createExportSessionResultUseCase = (
                       exportId: record.exportIdentifier,
                       format: record.format,
                       bytes,
+                      content,
                     }),
                   ),
                 );
