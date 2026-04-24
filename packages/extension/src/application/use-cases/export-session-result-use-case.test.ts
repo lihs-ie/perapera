@@ -82,6 +82,7 @@ describe('createExportSessionResultUseCase (IMPL-216, DD-307)', () => {
       expect(result.value.exportId).toBe(EXPORT_ID);
       expect(result.value.format).toBe('txt');
       expect(result.value.bytes).toBeGreaterThan(0);
+      expect(result.value.content.length).toBeGreaterThan(0);
     }
     expect(deps.exportRecordRepository.save).toHaveBeenCalledTimes(1);
   });
@@ -158,6 +159,9 @@ describe('createExportSessionResultUseCase (IMPL-216, DD-307)', () => {
     if (result.isOk()) {
       expect(result.value.format).toBe('json');
       expect(result.value.bytes).toBeGreaterThan(10);
+      expect(() => {
+        JSON.parse(result.value.content);
+      }).not.toThrow();
     }
   });
 });

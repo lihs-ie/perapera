@@ -77,8 +77,10 @@ describe('ExportSessionResultDTO (DD-307)', () => {
         exportId: EXPORT_ID,
         format: 'json',
         bytes: 1024,
+        content: '{"sample":true}',
       };
       expect(output.bytes).toBe(1024);
+      expect(output.content).toContain('sample');
     });
   });
 

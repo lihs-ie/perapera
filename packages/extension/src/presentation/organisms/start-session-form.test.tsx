@@ -26,7 +26,7 @@ const DUMMY_UPDATE: BackgroundResponse<UpdateSourceSettingsResult> = {
 };
 const DUMMY_EXPORT: BackgroundResponse<ExportSessionResultResult> = {
   ok: true,
-  value: { exportId: 'e', format: 'txt', bytes: 0 },
+  value: { exportId: 'e', format: 'txt', bytes: 0, content: '' },
 };
 
 const buildClient = (start: BackgroundClient['startSourceSession']): BackgroundClient => ({

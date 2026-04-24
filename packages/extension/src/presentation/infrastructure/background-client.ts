@@ -95,6 +95,8 @@ const exportSessionResultOutputSchema = z.object({
   exportId: z.string().min(1),
   format: z.enum(['txt', 'json']),
   bytes: z.number().int().nonnegative(),
+  // Issue #106: 整形済み本文。presentation 層が Blob 化して download する。
+  content: z.string(),
 });
 export type ExportSessionResultResult = z.infer<typeof exportSessionResultOutputSchema>;
 

@@ -21,6 +21,7 @@ const buildOutput = (): ExportSessionResultOutput => ({
   exportId: '01HZX8Y1R8M7D3Q2P4T5V6W7B1',
   format: 'txt',
   bytes: 42,
+  content: 'hello world',
 });
 
 describe('createExportService (IMPL-344)', () => {
