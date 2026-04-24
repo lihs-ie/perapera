@@ -79,6 +79,30 @@ describe('SessionToolbar organism', () => {
     expect(onStopped).not.toHaveBeenCalled();
   });
 
+  it('shows a state banner when active state is degraded (Issue #108)', () => {
+    const degraded: ActiveSession = {
+      sessionId: 's-1',
+      displayName: 'YouTube',
+      state: 'degraded',
+    };
+    render(
+      <SessionToolbar
+        client={buildClient()}
+        session={degraded}
+        stateReason="translation timeout"
+        onStopped={() => undefined}
+      />,
+    );
+    const banner = screen.getByTestId('session-state-banner');
+    expect(banner).toHaveTextContent('翻訳が一時停止');
+    expect(banner).toHaveTextContent('translation timeout');
+  });
+
+  it('hides the state banner for normal states (Issue #108)', () => {
+    render(<SessionToolbar client={buildClient()} session={session} onStopped={() => undefined} />);
+    expect(screen.queryByTestId('session-state-banner')).toBeNull();
+  });
+
   it('toggles the export panel via the dedicated button (Issue #106)', () => {
     render(<SessionToolbar client={buildClient()} session={session} onStopped={() => undefined} />);
     expect(screen.queryByTestId('export-panel')).toBeNull();

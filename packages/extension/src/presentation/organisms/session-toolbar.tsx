@@ -14,10 +14,27 @@ export type ActiveSession = Readonly<{
 export type Props = Readonly<{
   client: BackgroundClient;
   session: ActiveSession;
+  /** Issue #108: Relay が `session.state.changed` に付与した補足理由 (degraded / error 時の banner で表示) */
+  stateReason?: string | null;
   onStopped: () => void;
   /** `⚙` ボタン押下で設定画面を開く。未指定時は非表示 */
   onOpenSettings?: () => void;
 }>;
+
+const ABNORMAL_STATES = new Set<string>(['degraded', 'error', 'reconnecting']);
+
+const stateBannerMessage = (state: string, reason: string | null | undefined): string | null => {
+  if (!ABNORMAL_STATES.has(state)) return null;
+  const base =
+    state === 'degraded'
+      ? '翻訳が一時停止しました。文字起こしのみ継続中です。'
+      : state === 'reconnecting'
+        ? 'Relay と再接続中です…'
+        : 'セッションエラー: 復旧不能なエラーが発生しました。';
+  return reason !== null && reason !== undefined && reason.length > 0
+    ? `${base} (${reason})`
+    : base;
+};
 
 /**
  * SessionToolbar organism。
@@ -31,6 +48,7 @@ export function SessionToolbar(props: Props) {
   const stopCommand = useBackgroundCommand(props.client.stopSourceSession);
   const isPending = stopCommand.state.status === 'pending';
   const [exportOpen, setExportOpen] = useState<boolean>(false);
+  const banner = stateBannerMessage(props.session.state, props.stateReason);
 
   const handleStop = async (): Promise<void> => {
     const response = await stopCommand.execute({ sessionId: props.session.sessionId });
@@ -83,6 +101,16 @@ export function SessionToolbar(props: Props) {
       {exportOpen ? (
         <div className="panel" data-testid="export-panel">
           <ExportControls client={props.client} sessionId={props.session.sessionId} />
+        </div>
+      ) : null}
+      {banner !== null ? (
+        <div
+          className="banner"
+          role="alert"
+          data-testid="session-state-banner"
+          data-state={props.session.state}
+        >
+          {banner}
         </div>
       ) : null}
     </header>

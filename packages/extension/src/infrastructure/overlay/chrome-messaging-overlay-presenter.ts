@@ -1,11 +1,13 @@
 import { ResultAsync } from 'neverthrow';
 import { type OverlaySettings } from '../../domain/profile/overlay-settings';
 import { type SessionIdentifier } from '../../domain/session/session-identifier';
+import { type SessionState } from '../../domain/session/session-state';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
 import {
   type OverlayPresenter,
   type OverlayRenderModel,
 } from '../../application/ports/overlay-presenter';
+import { type SessionStateBroadcaster } from '../../application/ports/session-state-broadcaster';
 
 /**
  * Overlay への chrome.* messaging 操作を隠蔽する adapter contract。
@@ -43,6 +45,12 @@ export type OverlayCommand =
   | Readonly<{
       type: 'overlay.unmount';
       sessionIdentifier: SessionIdentifier;
+    }>
+  | Readonly<{
+      type: 'session.state';
+      sessionIdentifier: SessionIdentifier;
+      state: SessionState;
+      reason: string | null;
     }>;
 
 /**
@@ -131,5 +139,26 @@ export const createChromeMessagingOverlayPresenter = (
     ResultAsync.fromPromise<void, DomainError>(
       deps.bridge.send({ type: 'overlay.unmount', sessionIdentifier }),
       toInvariant('unmount'),
+    ),
+});
+
+/**
+ * Issue #108: SessionStateBroadcaster の `OverlayMessagingBridge` 実装。
+ * `session.state` command を `chrome.runtime.sendMessage` でブロードキャスト
+ * する。bridge は overlay 用と同じ default (`defaultOverlayMessagingBridge`)
+ * を共有し、main window 側の `useOverlayMessages` がまとめて購読する。
+ */
+export const createChromeMessagingSessionStateBroadcaster = (
+  deps: ChromeMessagingOverlayPresenterDependencies,
+): SessionStateBroadcaster => ({
+  broadcast: (event) =>
+    ResultAsync.fromPromise<void, DomainError>(
+      deps.bridge.send({
+        type: 'session.state',
+        sessionIdentifier: event.sessionIdentifier,
+        state: event.state,
+        reason: event.reason,
+      }),
+      toInvariant('session.state.broadcast'),
     ),
 });
