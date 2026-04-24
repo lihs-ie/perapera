@@ -4,7 +4,11 @@ import {
   type ExtensionApp,
   type ExtensionRuntimeConfig,
 } from '../composition/extension-composition';
-import { createMainWindowLifecycle, defaultWindowsApi } from '../composition/main-window-lifecycle';
+import {
+  createChromeLocalMainWindowBoundsStore,
+  createMainWindowLifecycle,
+  defaultWindowsApi,
+} from '../composition/main-window-lifecycle';
 import { createOffscreenLifecycle, defaultOffscreenApi } from '../composition/offscreen-lifecycle';
 import { createRuntimeDispatcher, type RuntimeDispatcher } from '../composition/runtime-dispatcher';
 
@@ -109,10 +113,14 @@ export default defineBackground(() => {
   // 既存 window があれば focus する idempotent 動作。manifest.action.default_popup
   // は未設定 (wxt.config.ts) なので、本 listener が発火する。
   const mainWindowUrl = chrome.runtime.getURL('/main.html');
+  // Issue #111: main window の位置 / サイズを chrome.storage.local に永続化
+  const mainWindowBoundsStore = createChromeLocalMainWindowBoundsStore();
   const mainWindowLifecycle = createMainWindowLifecycle({
     windowsApi: defaultWindowsApi,
     mainWindowUrl,
+    boundsStore: mainWindowBoundsStore,
   });
+  mainWindowLifecycle.registerBoundsListener();
   chrome.action.onClicked.addListener((tab) => {
     // action icon クリックは activeTab permission を「クリック時にアクティブだった
     // tab」に対してのみ grant する。main window は独立 window として開くため、

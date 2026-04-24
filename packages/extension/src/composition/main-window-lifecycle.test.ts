@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMainWindowLifecycle,
+  type MainWindowBounds,
+  type MainWindowBoundsStore,
   type MainWindowLifecycle,
   type WindowsApi,
 } from './main-window-lifecycle';
@@ -148,6 +150,162 @@ describe('createMainWindowLifecycle', () => {
       type: 'popup',
       width: 600,
       height: 800,
+    });
+  });
+
+  describe('bounds persistence (Issue #111)', () => {
+    const buildStore = (overrides: Partial<MainWindowBoundsStore> = {}): MainWindowBoundsStore => ({
+      loadBounds: vi.fn(() => Promise.resolve<MainWindowBounds | null>(null)),
+      saveBounds: vi.fn(() => Promise.resolve()),
+      ...overrides,
+    });
+
+    it('restores saved bounds in create options when available', async () => {
+      const api = buildApi();
+      const boundsStore = buildStore({
+        loadBounds: vi.fn(() =>
+          Promise.resolve<MainWindowBounds | null>({
+            top: 100,
+            left: 200,
+            width: 500,
+            height: 700,
+          }),
+        ),
+      });
+      const lifecycle = createMainWindowLifecycle({
+        windowsApi: api,
+        mainWindowUrl: MAIN_URL,
+        boundsStore,
+        logWarn: () => undefined,
+      });
+      await lifecycle.openOrFocus();
+      expect(api.create).toHaveBeenCalledWith({
+        url: MAIN_URL,
+        type: 'popup',
+        top: 100,
+        left: 200,
+        width: 500,
+        height: 700,
+      });
+    });
+
+    it('falls back to default size when loadBounds returns null', async () => {
+      const api = buildApi();
+      const boundsStore = buildStore();
+      const lifecycle = createMainWindowLifecycle({
+        windowsApi: api,
+        mainWindowUrl: MAIN_URL,
+        boundsStore,
+        logWarn: () => undefined,
+      });
+      await lifecycle.openOrFocus();
+      expect(api.create).toHaveBeenCalledWith({
+        url: MAIN_URL,
+        type: 'popup',
+        width: 480,
+        height: 720,
+      });
+    });
+
+    it('persists bounds when onBoundsChanged fires for the tracked window', async () => {
+      let registered: (window: chrome.windows.Window) => void = () => undefined;
+      let captured = false;
+      const api = buildApi({
+        onBoundsChanged: {
+          addListener: (listener) => {
+            registered = listener;
+            captured = true;
+          },
+        },
+        create: vi.fn(() =>
+          Promise.resolve(buildWindow({ id: 42, tabs: [buildTab(MAIN_URL, 7)] })),
+        ),
+      });
+      const boundsStore = buildStore();
+      const lifecycle = createMainWindowLifecycle({
+        windowsApi: api,
+        mainWindowUrl: MAIN_URL,
+        boundsStore,
+        logWarn: () => undefined,
+      });
+      lifecycle.registerBoundsListener();
+      await lifecycle.openOrFocus();
+      expect(registered).not.toBeNull();
+      expect(captured).toBe(true);
+      registered(buildWindow({ id: 42, top: 50, left: 60, width: 700, height: 900 }));
+      expect(boundsStore.saveBounds).toHaveBeenCalledWith({
+        top: 50,
+        left: 60,
+        width: 700,
+        height: 900,
+      });
+    });
+
+    it('ignores bounds events for other windows', async () => {
+      let registered: (window: chrome.windows.Window) => void = () => undefined;
+      let captured = false;
+      const api = buildApi({
+        onBoundsChanged: {
+          addListener: (listener) => {
+            registered = listener;
+            captured = true;
+          },
+        },
+        create: vi.fn(() => Promise.resolve(buildWindow({ id: 1, tabs: [buildTab(MAIN_URL, 7)] }))),
+      });
+      const boundsStore = buildStore();
+      const lifecycle = createMainWindowLifecycle({
+        windowsApi: api,
+        mainWindowUrl: MAIN_URL,
+        boundsStore,
+        logWarn: () => undefined,
+      });
+      lifecycle.registerBoundsListener();
+      await lifecycle.openOrFocus();
+      expect(captured).toBe(true);
+      registered(buildWindow({ id: 999, top: 0, left: 0, width: 300, height: 400 }));
+      expect(boundsStore.saveBounds).not.toHaveBeenCalled();
+    });
+
+    it('ignores events with invalid bounds (missing / below min size)', async () => {
+      let registered: (window: chrome.windows.Window) => void = () => undefined;
+      let captured = false;
+      const api = buildApi({
+        onBoundsChanged: {
+          addListener: (listener) => {
+            registered = listener;
+            captured = true;
+          },
+        },
+        create: vi.fn(() => Promise.resolve(buildWindow({ id: 1, tabs: [buildTab(MAIN_URL, 7)] }))),
+      });
+      const boundsStore = buildStore();
+      const lifecycle = createMainWindowLifecycle({
+        windowsApi: api,
+        mainWindowUrl: MAIN_URL,
+        boundsStore,
+        logWarn: () => undefined,
+      });
+      lifecycle.registerBoundsListener();
+      await lifecycle.openOrFocus();
+      expect(captured).toBe(true);
+      registered(buildWindow({ id: 1, top: 0, left: 0, width: 50, height: 50 }));
+      expect(boundsStore.saveBounds).not.toHaveBeenCalled();
+    });
+
+    it('registerBoundsListener without boundsStore is a noop', () => {
+      const api = buildApi({
+        onBoundsChanged: {
+          addListener: vi.fn(),
+        },
+      });
+      const lifecycle = createMainWindowLifecycle({
+        windowsApi: api,
+        mainWindowUrl: MAIN_URL,
+        logWarn: () => undefined,
+      });
+      lifecycle.registerBoundsListener();
+      expect(api.onBoundsChanged?.addListener).not.toHaveBeenCalled();
     });
   });
 });
