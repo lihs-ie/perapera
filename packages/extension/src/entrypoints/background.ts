@@ -240,6 +240,7 @@ export default defineBackground(() => {
     getGlossaryQuery: app.getGlossaryQuery,
     updateGlossaryUseCase: app.updateGlossaryUseCase,
     purgeExpiredSessionsUseCase: app.purgeExpiredSessionsUseCase,
+    searchSessionHistoryQuery: app.searchSessionHistoryQuery,
     sessionStore: app.sessionStore,
     settingsStore: app.settingsStore,
   });

@@ -91,6 +91,7 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
   saveSessionRetentionPolicy: vi.fn(),
   purgeExpiredSessions: vi.fn(),
   purgeAllSessions: vi.fn(),
+  searchSessionHistory: vi.fn(),
   getSessionHistory: vi.fn(() => Promise.resolve(buildList())),
   getSessionHistoryDetail: vi.fn(() => Promise.resolve(buildDetail())),
   ...overrides,

@@ -1,9 +1,24 @@
 import { type ResultAsync } from 'neverthrow';
+import { type TranscriptSearchQuery } from '../search';
 import { type SessionIdentifier } from '../session/session-identifier';
 import { type DomainError } from '../shared/errors';
 import { type TranscriptSegment } from '../transcript/transcript-segment';
 import { type TranscriptStream } from '../transcript/transcript-stream';
 import { type TranslationSegment } from '../transcript/translation-segment';
+
+/**
+ * 字幕検索マッチ (DD-261, Issue #125)。
+ *
+ * 1 segment における検索ヒットを表す。`matchedLanguage` で原文 / 訳文を
+ * 区別し、`snippet` は前後 20 文字を含むハイライト表示用の短文。
+ */
+export type TranscriptSearchMatch = Readonly<{
+  sessionIdentifier: SessionIdentifier;
+  segmentIdentifier: string;
+  snippet: string;
+  matchedLanguage: 'source' | 'target';
+  startTimeMs: number;
+}>;
 
 /**
  * 字幕ストリームリポジトリ (DD-261)。
@@ -42,4 +57,12 @@ export type TranscriptStreamRepository = Readonly<{
     sessionIdentifier: SessionIdentifier,
     translation: TranslationSegment,
   ) => ResultAsync<void, DomainError>;
+  /**
+   * 全セッション横断で transcript / translation の部分一致検索を行う (Issue #125)。
+   * MVP は linear scan (`by-sessionId` index 経由で全セッション分を取得 → 部分
+   * 一致判定)。将来的に `tokens` index で O(log n) 化する余地を残す。
+   */
+  search: (
+    query: TranscriptSearchQuery,
+  ) => ResultAsync<readonly TranscriptSearchMatch[], DomainError>;
 }>;

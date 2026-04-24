@@ -213,6 +213,7 @@ classDiagram
 | DD-237 | TranslationContextWindow | ソースセッション集約                        | `maxSegments` / `includeTranslatedText` の一致                      | `maxSegments` は 0〜5（既定 3）、`includeTranslatedText` は boolean（既定 true）                                                             |
 | DD-238 | Glossary                 | ソースセッション集約 / 拡張プロファイル集約 | `entries` の原文・訳文・caseSensitive 完全一致                      | `entries` は最大 200 件、各 entry の `source` / `target` は 1〜64 文字、`source !== target`、`entries` 内の `source` は一意 (case-sensitive) |
 | DD-239 | SessionRetentionPolicy   | 拡張プロファイル集約                        | `days` / `maxCount` の一致                                          | `days` は 1〜365 または null、`maxCount` は 1〜10000 または null、少なくとも一方は非 null (両方 null 不可、既定 30 日 / 100 件)              |
+| DD-261 | TranscriptSearchQuery    | 字幕ストリーム集約 (検索 API 入力)          | `keyword` / `language` / `caseSensitive` の一致                     | `keyword` は 1〜256 文字、`language` は `source` / `target` / `both`、`caseSensitive` は boolean                                             |
 
 ## 7. ドメインサービス
 

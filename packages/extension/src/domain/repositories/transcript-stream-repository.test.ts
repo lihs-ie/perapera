@@ -48,6 +48,7 @@ const okMock: TranscriptStreamRepository = {
   appendPartial: () => okAsync(undefined),
   appendFinal: () => okAsync(undefined),
   appendTranslation: () => okAsync(undefined),
+  search: () => okAsync([]),
 };
 
 describe('TranscriptStreamRepository (DD-261)', () => {

@@ -8,6 +8,11 @@ import {
   RETENTION_MAX_COUNT_MAX,
   RETENTION_MAX_COUNT_MIN,
 } from '../domain/retention';
+import {
+  SEARCH_KEYWORD_MAX_LENGTH,
+  SEARCH_KEYWORD_MIN_LENGTH,
+  TRANSCRIPT_SEARCH_LANGUAGES,
+} from '../domain/search';
 import { validationError, type DomainError } from '../domain/shared/errors';
 
 /**
@@ -207,6 +212,15 @@ const purgeAllSessionsRequestSchema = z.object({
   input: z.object({}).optional(),
 });
 
+const searchSessionHistoryRequestSchema = z.object({
+  type: z.literal('query.search-session-history'),
+  input: z.object({
+    keyword: z.string().min(SEARCH_KEYWORD_MIN_LENGTH).max(SEARCH_KEYWORD_MAX_LENGTH),
+    language: z.enum(TRANSCRIPT_SEARCH_LANGUAGES),
+    caseSensitive: z.boolean(),
+  }),
+});
+
 export const backgroundRequestSchema = z.discriminatedUnion('type', [
   startSourceSessionRequestSchema,
   stopSourceSessionRequestSchema,
@@ -226,6 +240,7 @@ export const backgroundRequestSchema = z.discriminatedUnion('type', [
   getSessionRetentionPolicyRequestSchema,
   purgeExpiredSessionsRequestSchema,
   purgeAllSessionsRequestSchema,
+  searchSessionHistoryRequestSchema,
   getSessionHistoryRequestSchema,
   getSessionHistoryDetailRequestSchema,
 ]);

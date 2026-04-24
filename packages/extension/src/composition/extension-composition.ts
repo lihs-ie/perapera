@@ -18,6 +18,10 @@ import {
   createPurgeExpiredSessionsUseCase,
   type PurgeExpiredSessionsUseCase,
 } from '../application/use-cases/purge-expired-sessions-use-case';
+import {
+  createSearchSessionHistoryQuery,
+  type SearchSessionHistoryQuery,
+} from '../application/use-cases/search-session-history-query';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';
 import { createHandleTranscriptPartialUseCase } from '../application/use-cases/handle-transcript-partial-use-case';
@@ -242,6 +246,7 @@ export type ExtensionApp = Readonly<{
   getGlossaryQuery: GetGlossaryQuery;
   updateGlossaryUseCase: UpdateGlossaryUseCase;
   purgeExpiredSessionsUseCase: PurgeExpiredSessionsUseCase;
+  searchSessionHistoryQuery: SearchSessionHistoryQuery;
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
@@ -448,6 +453,9 @@ export const createExtensionApp = (
     settingsStore,
     clock: ports.clockIso,
   });
+  const searchSessionHistoryQuery = createSearchSessionHistoryQuery({
+    transcriptStreamRepository,
+  });
 
   // --------------- Application services (Phase 3 facades) ---------------
   const sessionCommandService = createSessionCommandService({
@@ -476,6 +484,7 @@ export const createExtensionApp = (
     getGlossaryQuery,
     updateGlossaryUseCase,
     purgeExpiredSessionsUseCase,
+    searchSessionHistoryQuery,
     sessionStore,
     sessionRegistry,
     captureOrchestrator,
