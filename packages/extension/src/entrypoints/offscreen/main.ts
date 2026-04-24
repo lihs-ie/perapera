@@ -89,6 +89,31 @@ const host = createOffscreenAudioHost({
           cause instanceof Error ? cause.message : String(cause),
         );
       });
+
+    // Issue #110: RMS piggyback を別 channel にも broadcast。
+    // main window の useAudioLevel hook が購読する。失敗は warn のみで無視
+    // (audio.frame.forward と独立)。
+    if (typeof data === 'object' && data !== null && 'rms' in data) {
+      const rms = Reflect.get(data, 'rms');
+      if (typeof rms === 'number' && Number.isFinite(rms)) {
+        void chrome.runtime
+          .sendMessage({
+            type: 'audio.level.forward',
+            sessionIdentifier,
+            rms,
+            capturedAt:
+              typeof data === 'object' && data !== null && 'capturedAt' in data
+                ? Reflect.get(data, 'capturedAt')
+                : null,
+          })
+          .catch((cause: unknown) => {
+            console.warn(
+              '[perapera] offscreen audio.level.forward sendMessage failed:',
+              cause instanceof Error ? cause.message : String(cause),
+            );
+          });
+      }
+    }
   },
 });
 

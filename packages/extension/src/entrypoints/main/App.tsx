@@ -11,6 +11,7 @@ import { SettingsView } from '../../presentation/organisms/settings-view';
 import { StartSessionForm } from '../../presentation/organisms/start-session-form';
 import { TranscriptPairStream } from '../../presentation/organisms/transcript-pair-stream';
 import { MainWindowTemplate } from '../../presentation/templates/main-window-template';
+import { useAudioLevel } from './use-audio-level';
 import { useOverlayMessages } from './use-overlay-messages';
 
 /**
@@ -26,6 +27,7 @@ import { useOverlayMessages } from './use-overlay-messages';
 export function App() {
   const client = useMemo(() => createBackgroundClient(), []);
   const overlay = useOverlayMessages();
+  const audio = useAudioLevel();
   const defaultSettingsQuery = useBackgroundQuery(() => client.getDefaultSettings(), {
     input: undefined,
   });
@@ -132,6 +134,8 @@ export function App() {
         client={client}
         session={active}
         stateReason={overlay.sessionStateReason}
+        audioLevel={audio.rms}
+        audioIsSilent={audio.isSilent}
         onStopped={handleStopped}
         onOpenSettings={openSettings}
       />

@@ -53,6 +53,23 @@ const floatToPcm16 = (float32) => {
 // base64 エンコーダを inline 実装する。RFC 4648 §4 準拠、padding 付き。
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
+/**
+ * Issue #110: Float32 buffer (1600 samples) から RMS (0-1) を計算する。
+ * overflow しないよう sum は number、戻り値は 0〜1 範囲。
+ */
+const computeRms = (float32) => {
+  let sumSquares = 0;
+  const len = float32.length;
+  for (let i = 0; i < len; i += 1) {
+    const value = float32[i] ?? 0;
+    sumSquares += value * value;
+  }
+  if (len === 0) return 0;
+  const rms = Math.sqrt(sumSquares / len);
+  if (!Number.isFinite(rms)) return 0;
+  return Math.max(0, Math.min(1, rms));
+};
+
 const int16ToBase64 = (int16) => {
   const bytes = new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength);
   let result = '';
@@ -127,6 +144,7 @@ class PeraperaAudioProcessor extends AudioWorkletProcessor {
 
   _flush() {
     try {
+      const rms = computeRms(this._buffer);
       const pcm16 = floatToPcm16(this._buffer);
       const pcm16Base64 = int16ToBase64(pcm16);
       this._sequenceNumber += 1;
@@ -138,6 +156,10 @@ class PeraperaAudioProcessor extends AudioWorkletProcessor {
         sampleRate: TARGET_SAMPLE_RATE_HZ,
         channels: 1,
         pcm16Base64,
+        // Issue #110: piggyback で RMS を送る。offscreen 側は audio.frame を
+        // SW 転送する際に rms のみ別 channel (audio.level.forward) にも
+        // broadcast する。
+        rms,
       });
     } catch (cause) {
       // Worklet コンテキストには console があるが、throw すると processor 停止
