@@ -27,7 +27,7 @@ import {
  */
 
 export const INDEXED_DB_NAME = 'perapera';
-export const INDEXED_DB_VERSION = 3;
+export const INDEXED_DB_VERSION = 4;
 
 export const SESSIONS_STORE = 'sessions';
 export const TRANSCRIPT_STORE = 'transcript_segments';
@@ -109,6 +109,19 @@ export const openPeraperaDb = (databaseName: string): Promise<IDBPDatabase<Perap
           if (cursor === null) return;
           const upgraded: SessionRow = fillLatestDefaults(cursor.value);
           return cursor.update(upgraded).then(() => cursor.continue().then(handleCursor));
+        });
+      }
+      if (oldVersion < 4 && oldVersion !== 0) {
+        // Issue #126: v3 → v4。transcript_segments の isBookmarked を
+        // false で埋める (既存データは未ブックマーク扱い)。
+        const store = transaction.objectStore(TRANSCRIPT_STORE);
+        void store.openCursor().then(function handleCursor(cursor): Promise<void> | void {
+          if (cursor === null) return;
+          const row = cursor.value;
+          if (row.isBookmarked !== undefined) return cursor.continue().then(handleCursor);
+          return cursor
+            .update({ ...row, isBookmarked: false })
+            .then(() => cursor.continue().then(handleCursor));
         });
       }
     },

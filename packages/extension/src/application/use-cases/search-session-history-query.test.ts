@@ -20,6 +20,8 @@ const buildRepo = (matches: readonly TranscriptSearchMatch[]): TranscriptStreamR
   appendFinal: vi.fn(),
   appendTranslation: vi.fn(),
   search: vi.fn(() => okAsync<readonly TranscriptSearchMatch[], DomainError>(matches)),
+  toggleBookmark: vi.fn(),
+  findBookmarked: vi.fn(),
 });
 
 const matchFor = (

@@ -83,6 +83,10 @@ const buildFakeDeps = () => {
     okAsync({ purgedSessionIds: [], totalPurged: 0 }),
   );
   const searchSessionHistoryQuery = vi.fn(() => okAsync({ sessions: [] }));
+  const toggleTranscriptBookmarkUseCase = vi.fn(() =>
+    okAsync({ sessionId: 'sess', segmentId: 'seg' }),
+  );
+  const getBookmarkedSegmentsQuery = vi.fn(() => okAsync({ bookmarks: [] }));
   const sessionStore: SessionStore = {
     saveSession: vi.fn(() => okAsync(undefined)),
     appendTranscript: vi.fn(() => okAsync(undefined)),
@@ -102,6 +106,8 @@ const buildFakeDeps = () => {
     updateGlossaryUseCase,
     purgeExpiredSessionsUseCase,
     searchSessionHistoryQuery,
+    toggleTranscriptBookmarkUseCase,
+    getBookmarkedSegmentsQuery,
     sessionStore,
     settingsStore,
   };

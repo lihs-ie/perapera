@@ -49,6 +49,8 @@ const buildClient = (start: BackgroundClient['startSourceSession']): BackgroundC
   purgeExpiredSessions: vi.fn(),
   purgeAllSessions: vi.fn(),
   searchSessionHistory: vi.fn(),
+  toggleTranscriptBookmark: vi.fn(),
+  getBookmarkedSegments: vi.fn(),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
 });

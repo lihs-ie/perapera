@@ -6,6 +6,7 @@ import type { TimestampRange } from './timestamp-range';
 import {
   createPartialTranscriptSegment,
   finalizeTranscriptSegment,
+  toggleTranscriptSegmentBookmark,
   updatePartialTranscriptSegment,
   type TranscriptSegment,
 } from './transcript-segment';
@@ -141,6 +142,24 @@ export const recentFinalTail = (
   if (finals.length <= maxSegments) return finals;
   return finals.slice(finals.length - maxSegments);
 };
+
+/**
+ * ブックマーク toggle (Issue #126)。
+ * final 字幕のみ対象。segmentId が見つからなければ not-found。
+ */
+export const toggleBookmark = (
+  stream: TranscriptStream,
+  segmentId: string,
+): Result<TranscriptStream, DomainError> =>
+  parseSegmentIdentifier(segmentId).andThen((segmentIdentifier) => {
+    const segment = stream.segments.get(segmentIdentifier);
+    if (segment === undefined) {
+      return err(
+        notFoundError({ resourceType: 'TranscriptSegment', identifier: segmentIdentifier }),
+      );
+    }
+    return toggleTranscriptSegmentBookmark(segment).map((next) => withSegment(stream, next));
+  });
 
 export const attachTranslationToSegment = (
   stream: TranscriptStream,

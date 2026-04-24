@@ -12,7 +12,9 @@ import { type GetSessionHistoryDetailQuery } from '../application/use-cases/get-
 import { type GetSessionHistoryQuery } from '../application/use-cases/get-session-history-query';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { type PurgeExpiredSessionsUseCase } from '../application/use-cases/purge-expired-sessions-use-case';
+import { type GetBookmarkedSegmentsQuery } from '../application/use-cases/get-bookmarked-segments-query';
 import { type SearchSessionHistoryQuery } from '../application/use-cases/search-session-history-query';
+import { type ToggleTranscriptBookmarkUseCase } from '../application/use-cases/toggle-transcript-bookmark-use-case';
 import { type UpdateGlossaryUseCase } from '../application/use-cases/update-glossary-use-case';
 import { createOverlaySettings, type OverlaySettings } from '../domain/profile/overlay-settings';
 import {
@@ -55,6 +57,8 @@ export type RuntimeDispatcherDependencies = Readonly<{
   updateGlossaryUseCase: UpdateGlossaryUseCase;
   purgeExpiredSessionsUseCase: PurgeExpiredSessionsUseCase;
   searchSessionHistoryQuery: SearchSessionHistoryQuery;
+  toggleTranscriptBookmarkUseCase: ToggleTranscriptBookmarkUseCase;
+  getBookmarkedSegmentsQuery: GetBookmarkedSegmentsQuery;
   sessionStore: SessionStore;
   settingsStore: SettingsStore;
 }>;
@@ -316,6 +320,15 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
         );
       case 'query.search-session-history':
         return run(deps.searchSessionHistoryQuery(request.input));
+      case 'command.toggle-transcript-bookmark':
+        return run(
+          deps.toggleTranscriptBookmarkUseCase(request.input).map((output) => ({
+            sessionId: output.sessionId,
+            segmentId: output.segmentId,
+          })),
+        );
+      case 'query.get-bookmarked-segments':
+        return run(deps.getBookmarkedSegmentsQuery());
       case 'query.get-session-history':
         return run(deps.getSessionHistoryQuery({}));
       case 'query.get-session-history-detail':

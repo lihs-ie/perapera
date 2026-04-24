@@ -14,6 +14,12 @@ export type Props = Readonly<{
    * true の場合は翻訳行の左端に「文脈あり」アイコン (·) を付与する。
    */
   hasTranslationContext?: boolean;
+  /**
+   * Issue #126: ブックマーク状態。未指定は undefined (ブックマーク UI を非表示)。
+   * `onToggleBookmark` を合わせて指定すると ☆ トグルを描画する (final 字幕のみ)。
+   */
+  isBookmarked?: boolean;
+  onToggleBookmark?: () => void;
 }>;
 
 /**
@@ -46,6 +52,18 @@ export function TranscriptPairItem(props: Props) {
           {label}
         </span>
       )}
+      {props.isFinal && props.onToggleBookmark !== undefined ? (
+        <button
+          type="button"
+          className="bookmark"
+          data-active={props.isBookmarked === true ? 'true' : 'false'}
+          aria-label={props.isBookmarked === true ? 'ブックマークを外す' : 'ブックマークに追加'}
+          aria-pressed={props.isBookmarked === true}
+          onClick={props.onToggleBookmark}
+        >
+          {props.isBookmarked === true ? '★' : '☆'}
+        </button>
+      ) : null}
       {original.length > 0 ? (
         <p className="original" data-partial={partial}>
           {original}

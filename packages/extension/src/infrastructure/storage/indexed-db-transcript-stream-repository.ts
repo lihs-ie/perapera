@@ -228,6 +228,65 @@ export const createIndexedDbTranscriptStreamRepository = (
         return ResultAsync.fromSafePromise(Promise.resolve(readonlyMatches));
       }),
 
+    toggleBookmark: (sessionIdentifier, segmentId) =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          const row = await connection.get(TRANSCRIPT_STORE, segmentId);
+          if (row === undefined) return { kind: 'not-found' as const };
+          if (row.sessionId !== sessionIdentifier) return { kind: 'not-found' as const };
+          if (!row.isFinal) return { kind: 'not-final' as const };
+          await connection.put(TRANSCRIPT_STORE, { ...row, isBookmarked: !row.isBookmarked });
+          return { kind: 'ok' as const };
+        })(),
+        toPersistenceError('toggleBookmark'),
+      ).andThen((result): ResultAsync<void, DomainError> => {
+        if (result.kind === 'not-found') {
+          return errAsync<void, DomainError>(
+            notFoundError({ resourceType: 'TranscriptSegment', identifier: segmentId }),
+          );
+        }
+        if (result.kind === 'not-final') {
+          return errAsync<void, DomainError>(
+            invariantViolationError({
+              invariant: 'bookmark-requires-final-segment',
+              details: `segment ${segmentId} is not finalized`,
+            }),
+          );
+        }
+        return ResultAsync.fromSafePromise(Promise.resolve(undefined));
+      }),
+
+    findBookmarked: () =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          const rows = await connection.getAll(TRANSCRIPT_STORE);
+          return rows.filter((row) => row.isFinal && row.isBookmarked);
+        })(),
+        toPersistenceError('findBookmarked'),
+      ).andThen((rows): ResultAsync<readonly TranscriptSearchMatch[], DomainError> => {
+        const matches: TranscriptSearchMatch[] = [];
+        for (const row of rows) {
+          const sessionResult = parseSessionIdentifier(row.sessionId);
+          if (sessionResult.isErr()) continue;
+          matches.push({
+            sessionIdentifier: sessionResult.value,
+            segmentIdentifier: row.segmentId,
+            snippet: row.text.length > 60 ? `${row.text.slice(0, 60)}…` : row.text,
+            matchedLanguage: 'source',
+            startTimeMs: row.startMs,
+          });
+        }
+        matches.sort((a, b) => {
+          const timeDiff = a.startTimeMs - b.startTimeMs;
+          if (timeDiff !== 0) return timeDiff;
+          return a.sessionIdentifier.localeCompare(b.sessionIdentifier);
+        });
+        const readonlyMatches: readonly TranscriptSearchMatch[] = matches;
+        return ResultAsync.fromSafePromise(Promise.resolve(readonlyMatches));
+      }),
+
     close: handle.close,
   };
 };

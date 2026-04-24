@@ -221,6 +221,19 @@ const searchSessionHistoryRequestSchema = z.object({
   }),
 });
 
+const toggleTranscriptBookmarkRequestSchema = z.object({
+  type: z.literal('command.toggle-transcript-bookmark'),
+  input: z.object({
+    sessionId: z.string().min(1),
+    segmentId: z.string().min(1),
+  }),
+});
+
+const getBookmarkedSegmentsRequestSchema = z.object({
+  type: z.literal('query.get-bookmarked-segments'),
+  input: z.object({}).optional(),
+});
+
 export const backgroundRequestSchema = z.discriminatedUnion('type', [
   startSourceSessionRequestSchema,
   stopSourceSessionRequestSchema,
@@ -241,6 +254,8 @@ export const backgroundRequestSchema = z.discriminatedUnion('type', [
   purgeExpiredSessionsRequestSchema,
   purgeAllSessionsRequestSchema,
   searchSessionHistoryRequestSchema,
+  toggleTranscriptBookmarkRequestSchema,
+  getBookmarkedSegmentsRequestSchema,
   getSessionHistoryRequestSchema,
   getSessionHistoryDetailRequestSchema,
 ]);
