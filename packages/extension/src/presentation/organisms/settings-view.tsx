@@ -14,6 +14,7 @@ import {
   type DefaultSettingsResult,
   type DefaultTranslationContextWindowInput,
   type RelayConnectionOverrideInput,
+  type SessionRetentionPolicyInput,
 } from '../infrastructure/background-client';
 import { GlossaryEditor, type GlossaryEntryValue } from '../molecules/glossary-editor';
 import { LanguagePairSelector } from '../molecules/language-pair-selector';
@@ -95,6 +96,9 @@ export function SettingsView(props: Props) {
   const glossaryQuery = useBackgroundQuery(() => props.client.getDefaultGlossary(), {
     input: undefined,
   });
+  const retentionQuery = useBackgroundQuery(() => props.client.getSessionRetentionPolicy(), {
+    input: undefined,
+  });
   const saveLanguageCommand = useBackgroundCommand(props.client.saveDefaultLanguagePair);
   const saveOverlayCommand = useBackgroundCommand(props.client.saveDefaultOverlaySettings);
   const saveEndpointingCommand = useBackgroundCommand(props.client.saveDefaultEndpointingPolicy);
@@ -102,6 +106,8 @@ export function SettingsView(props: Props) {
     props.client.saveDefaultTranslationContextWindow,
   );
   const saveGlossaryCommand = useBackgroundCommand(props.client.saveDefaultGlossary);
+  const saveRetentionCommand = useBackgroundCommand(props.client.saveSessionRetentionPolicy);
+  const purgeAllCommand = useBackgroundCommand(() => props.client.purgeAllSessions());
   const saveRelayCommand = useBackgroundCommand(props.client.saveRelayConnectionOverride);
   const clearRelayCommand = useBackgroundCommand(() => props.client.clearRelayConnectionOverride());
 
@@ -121,6 +127,9 @@ export function SettingsView(props: Props) {
   const [relayOverrideActive, setRelayOverrideActive] = useState<boolean>(false);
   const [glossaryEntries, setGlossaryEntries] = useState<readonly GlossaryEntryValue[]>([]);
   const [glossaryResultMessage, setGlossaryResultMessage] = useState<string | null>(null);
+  const [retentionDays, setRetentionDays] = useState<number | null>(30);
+  const [retentionMaxCount, setRetentionMaxCount] = useState<number | null>(100);
+  const [retentionResultMessage, setRetentionResultMessage] = useState<string | null>(null);
   const [saveResultMessage, setSaveResultMessage] = useState<string | null>(null);
   const [relayResultMessage, setRelayResultMessage] = useState<string | null>(null);
 
@@ -154,6 +163,12 @@ export function SettingsView(props: Props) {
     if (glossaryQuery.state.status !== 'success' || glossaryQuery.state.data === null) return;
     setGlossaryEntries(glossaryQuery.state.data.entries);
   }, [glossaryQuery.state]);
+
+  useEffect(() => {
+    if (retentionQuery.state.status !== 'success' || retentionQuery.state.data === null) return;
+    setRetentionDays(retentionQuery.state.data.days);
+    setRetentionMaxCount(retentionQuery.state.data.maxCount);
+  }, [retentionQuery.state]);
 
   const handleLanguageChange = useCallback(
     (pair: { sourceLanguage: string; targetLanguage: string }) => {
@@ -300,6 +315,40 @@ export function SettingsView(props: Props) {
     anchor.click();
     URL.revokeObjectURL(url);
   }, [glossaryEntries]);
+
+  const handleSaveRetention = useCallback(async (): Promise<void> => {
+    setRetentionResultMessage(null);
+    if (retentionDays === null && retentionMaxCount === null) {
+      setRetentionResultMessage('保持期間と保持件数のどちらか一方は必ず設定してください。');
+      return;
+    }
+    const input: SessionRetentionPolicyInput = {
+      days: retentionDays,
+      maxCount: retentionMaxCount,
+    };
+    const response = await saveRetentionCommand.execute(input);
+    if (response.ok) {
+      setRetentionResultMessage('履歴保持ポリシーを保存しました。');
+    } else {
+      setRetentionResultMessage(`保存に失敗しました: ${response.error.message}`);
+    }
+  }, [retentionDays, retentionMaxCount, saveRetentionCommand]);
+
+  const handlePurgeAll = useCallback(async (): Promise<void> => {
+    setRetentionResultMessage(null);
+    const confirmed = window.confirm(
+      '全てのセッション履歴を削除します。この操作は取り消せません。続行しますか？',
+    );
+    if (!confirmed) return;
+    const response = await purgeAllCommand.execute(undefined);
+    if (response.ok) {
+      setRetentionResultMessage(
+        `${String(response.value.totalPurged)} 件のセッションを削除しました。`,
+      );
+    } else {
+      setRetentionResultMessage(`削除に失敗しました: ${response.error.message}`);
+    }
+  }, [purgeAllCommand]);
 
   const handleImportGlossaryCsv = useCallback(async (file: File): Promise<void> => {
     setGlossaryResultMessage(null);
@@ -540,6 +589,89 @@ export function SettingsView(props: Props) {
               }}
             >
               {saveGlossaryCommand.state.status === 'pending' ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        </section>
+
+        <section className="section" aria-label="履歴保持">
+          <h3 className="subtitle">履歴保持</h3>
+          <p className="hint">
+            セッション履歴の保持期間と件数を設定します。超過分は 24 時間ごとに自動削除されます。
+            保持期間と件数のどちらか一方は必ず設定してください (プライバシー / quota 保護)。
+          </p>
+          <div className="field">
+            <Label htmlFor="retention-days">保持期間 (日)</Label>
+            <TextInput
+              id="retention-days"
+              ariaLabel="保持期間 (日)"
+              type="number"
+              value={retentionDays === null ? '' : String(retentionDays)}
+              onChange={(next) => {
+                const trimmed = next.trim();
+                if (trimmed === '') {
+                  setRetentionDays(null);
+                  return;
+                }
+                const parsed = Number(trimmed);
+                if (Number.isNaN(parsed)) return;
+                setRetentionDays(clampInt(parsed, 1, 365));
+              }}
+              placeholder="1〜365 (空欄で無効)"
+              disabled={saveRetentionCommand.state.status === 'pending'}
+            />
+            <p className="hint">1〜365 日 (既定 30)。空欄で保持期間の制限を無効にします。</p>
+          </div>
+          <div className="field">
+            <Label htmlFor="retention-max-count">保持件数 (件)</Label>
+            <TextInput
+              id="retention-max-count"
+              ariaLabel="保持件数 (件)"
+              type="number"
+              value={retentionMaxCount === null ? '' : String(retentionMaxCount)}
+              onChange={(next) => {
+                const trimmed = next.trim();
+                if (trimmed === '') {
+                  setRetentionMaxCount(null);
+                  return;
+                }
+                const parsed = Number(trimmed);
+                if (Number.isNaN(parsed)) return;
+                setRetentionMaxCount(clampInt(parsed, 1, 10000));
+              }}
+              placeholder="1〜10000 (空欄で無効)"
+              disabled={saveRetentionCommand.state.status === 'pending'}
+            />
+            <p className="hint">1〜10000 件 (既定 100)。空欄で保持件数の制限を無効にします。</p>
+          </div>
+          {retentionResultMessage !== null ? (
+            <p className="message" role="status">
+              {retentionResultMessage}
+            </p>
+          ) : null}
+          <div className="actions">
+            <Button
+              variant="danger"
+              disabled={
+                purgeAllCommand.state.status === 'pending' ||
+                saveRetentionCommand.state.status === 'pending'
+              }
+              onClick={() => {
+                void handlePurgeAll();
+              }}
+            >
+              {purgeAllCommand.state.status === 'pending' ? '削除中…' : '今すぐ全履歴を削除'}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={
+                saveRetentionCommand.state.status === 'pending' ||
+                (retentionDays === null && retentionMaxCount === null)
+              }
+              onClick={() => {
+                void handleSaveRetention();
+              }}
+            >
+              {saveRetentionCommand.state.status === 'pending' ? '保存中…' : '保存'}
             </Button>
           </div>
         </section>

@@ -205,20 +205,21 @@ MVP の物理設計では、リレーショナル DB のテーブルではなく
 
 ### DB-005: chrome.storage.local keys {#db-005}
 
-| キー                                                | 型             | 用途                                                                                        |
-| --------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------- |
-| `settings.language.defaultSourceLanguage`           | string \| null | 既定入力言語                                                                                |
-| `settings.language.defaultTargetLanguage`           | string         | 既定翻訳先言語                                                                              |
-| `settings.language.autoDetectEnabled`               | boolean        | 自動判定既定値                                                                              |
-| `settings.overlay.defaultOpacity`                   | number         | 既定透明度                                                                                  |
-| `settings.overlay.defaultMaxLines`                  | number         | 既定表示行数                                                                                |
-| `settings.overlay.defaultMode`                      | string         | 原文 / 翻訳 / 両方表示                                                                      |
-| `settings.stt.defaultSilenceThresholdMs`            | number         | 200〜1200、既定 600。無音での文末判定時間                                                   |
-| `settings.stt.defaultPunctuationAware`              | boolean        | 既定 true。句読点を文末判定に利用するか                                                     |
-| `settings.stt.defaultMinUtteranceMs`                | number         | 100〜3000、既定 500。最小発話長                                                             |
-| `settings.translation.defaultContextSegments`       | number         | 0〜5、既定 3。翻訳時の直前確定字幕参照段数                                                  |
-| `settings.translation.defaultIncludeTranslatedText` | boolean        | 既定 true。context に訳済みテキストも含めるか                                               |
-| `settings.glossary.defaultGlossary`                 | object         | Issue #123: `{entries: Array<{source, target, caseSensitive}>}`。最大 200 件、各 1〜64 文字 |
+| キー                                                | 型             | 用途                                                                                                     |
+| --------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------- |
+| `settings.language.defaultSourceLanguage`           | string \| null | 既定入力言語                                                                                             |
+| `settings.language.defaultTargetLanguage`           | string         | 既定翻訳先言語                                                                                           |
+| `settings.language.autoDetectEnabled`               | boolean        | 自動判定既定値                                                                                           |
+| `settings.overlay.defaultOpacity`                   | number         | 既定透明度                                                                                               |
+| `settings.overlay.defaultMaxLines`                  | number         | 既定表示行数                                                                                             |
+| `settings.overlay.defaultMode`                      | string         | 原文 / 翻訳 / 両方表示                                                                                   |
+| `settings.stt.defaultSilenceThresholdMs`            | number         | 200〜1200、既定 600。無音での文末判定時間                                                                |
+| `settings.stt.defaultPunctuationAware`              | boolean        | 既定 true。句読点を文末判定に利用するか                                                                  |
+| `settings.stt.defaultMinUtteranceMs`                | number         | 100〜3000、既定 500。最小発話長                                                                          |
+| `settings.translation.defaultContextSegments`       | number         | 0〜5、既定 3。翻訳時の直前確定字幕参照段数                                                               |
+| `settings.translation.defaultIncludeTranslatedText` | boolean        | 既定 true。context に訳済みテキストも含めるか                                                            |
+| `settings.glossary.defaultGlossary`                 | object         | Issue #123: `{entries: Array<{source, target, caseSensitive}>}`。最大 200 件、各 1〜64 文字              |
+| `settings.retention.sessionRetentionPolicy`         | object         | Issue #124: `{days: 1-365 \| null, maxCount: 1-10000 \| null}`。少なくとも一方は非 null (両方 null 不可) |
 
 ## 6. インデックス設計
 
@@ -280,8 +281,9 @@ MVP の物理設計では、リレーショナル DB のテーブルではなく
 
 ## 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                                    |
-| ---------- | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                                    |
-| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: DB-001 `sessions` に endpointing / context カラムを追加、DB-005 に `settings.stt.*` / `settings.translation.*` キーを追加、§7.3 に v0.1 → v0.2 マイグレーション方針を追加                |
-| 0.3.0      | 2026-04-24 | Codex  | Issue #123 Glossary 対応: DB-001 `sessions` に `glossaryEntries` (nullable 配列) カラムを追加、DB-005 に `settings.glossary.defaultGlossary` キーを追加。IndexedDB スキーマ v3 への migration (既存 v1/v2 は null で埋める) |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                                                       |
+| ---------- | ---------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                                                       |
+| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: DB-001 `sessions` に endpointing / context カラムを追加、DB-005 に `settings.stt.*` / `settings.translation.*` キーを追加、§7.3 に v0.1 → v0.2 マイグレーション方針を追加                                   |
+| 0.3.0      | 2026-04-24 | Codex  | Issue #123 Glossary 対応: DB-001 `sessions` に `glossaryEntries` (nullable 配列) カラムを追加、DB-005 に `settings.glossary.defaultGlossary` キーを追加。IndexedDB スキーマ v3 への migration (既存 v1/v2 は null で埋める)                    |
+| 0.4.0      | 2026-04-24 | Codex  | Issue #124 Retention 対応: DB-005 に `settings.retention.sessionRetentionPolicy` キーを追加 (days 1-365 \| null, maxCount 1-10000 \| null)。SessionStore port に `purgeOlderThan` / `purgeBeyondCount` / `purgeAll` cascade 削除メソッドを追加 |

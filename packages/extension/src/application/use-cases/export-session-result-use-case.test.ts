@@ -53,6 +53,9 @@ const buildDependencies = (
     appendTranscript: vi.fn(() => okAsync(undefined)),
     appendTranslation: vi.fn(() => okAsync(undefined)),
     loadExportBundle: vi.fn(() => okAsync(buildBundle())),
+    purgeOlderThan: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+    purgeBeyondCount: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+    purgeAll: vi.fn(() => okAsync({ purgedSessionIds: [] })),
   };
   const exportRecordRepository: ExportRecordRepository = {
     save: vi.fn(() => okAsync(undefined)),
@@ -111,6 +114,9 @@ describe('createExportSessionResultUseCase (IMPL-216, DD-307)', () => {
             notFoundError({ resourceType: 'SourceSession', identifier: SESSION_ID }),
           ),
         ),
+        purgeOlderThan: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+        purgeBeyondCount: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+        purgeAll: vi.fn(() => okAsync({ purgedSessionIds: [] })),
       },
     });
     const useCase = createExportSessionResultUseCase(deps);

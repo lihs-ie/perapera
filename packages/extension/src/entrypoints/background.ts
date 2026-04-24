@@ -160,6 +160,38 @@ export default defineBackground(() => {
   const app: ExtensionApp = createExtensionApp(config, ports);
   console.log('[perapera] ExtensionApp composed');
 
+  // Issue #124: 起動時と chrome.alarms (24h) で保持ポリシーを適用して履歴を
+  // purge する。SessionRetentionPolicy (default 30日 / 100件) 超過は IndexedDB
+  // quota と 共有端末のプライバシーを守るために必須。alarm名は固定で冪等。
+  const RETENTION_ALARM_NAME = 'perapera.retention.purge';
+  const runRetentionPurge = (trigger: string): void => {
+    void app.purgeExpiredSessionsUseCase().match(
+      (result) => {
+        if (result.totalPurged > 0) {
+          console.log(
+            `[perapera] retention-purge (${trigger}): removed ${String(result.totalPurged)} sessions`,
+          );
+        }
+      },
+      (error) => {
+        console.warn(`[perapera] retention-purge (${trigger}) failed:`, error);
+      },
+    );
+  };
+  runRetentionPurge('startup');
+  void chrome.alarms.get(RETENTION_ALARM_NAME).then((existing) => {
+    if (existing === undefined) {
+      void chrome.alarms.create(RETENTION_ALARM_NAME, {
+        periodInMinutes: 24 * 60,
+      });
+    }
+  });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === RETENTION_ALARM_NAME) {
+      runRetentionPurge('alarm');
+    }
+  });
+
   // SW 再起動時に IndexedDB に残存していた orphan active session を stopped 化
   // (IMPL-603, 設計論点 §10)。ensure() の完了を待たずに並列実行してよい
   // (異なるストレージ: chrome.offscreen vs IndexedDB)。
@@ -207,6 +239,8 @@ export default defineBackground(() => {
     getSessionHistoryDetailQuery: app.getSessionHistoryDetailQuery,
     getGlossaryQuery: app.getGlossaryQuery,
     updateGlossaryUseCase: app.updateGlossaryUseCase,
+    purgeExpiredSessionsUseCase: app.purgeExpiredSessionsUseCase,
+    sessionStore: app.sessionStore,
     settingsStore: app.settingsStore,
   });
 

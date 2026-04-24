@@ -1,6 +1,7 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EMPTY_GLOSSARY } from '../../domain/glossary';
+import { DEFAULT_SESSION_RETENTION_POLICY } from '../../domain/retention';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
 import { DEFAULT_ENDPOINTING_POLICY } from '../../domain/session/endpointing-policy';
 import { DEFAULT_TRANSLATION_CONTEXT_WINDOW } from '../../domain/session/translation-context-window';
@@ -62,6 +63,9 @@ const buildDependencies = (
         notFoundError({ resourceType: 'SourceSession', identifier: 'unused' }),
       ),
     ),
+    purgeOlderThan: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+    purgeBeyondCount: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+    purgeAll: vi.fn(() => okAsync({ purgedSessionIds: [] })),
   };
   const defaultLanguagePair = createLanguagePair({
     source: 'en-US',
@@ -80,6 +84,8 @@ const buildDependencies = (
     saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
     getDefaultGlossary: vi.fn(() => okAsync(EMPTY_GLOSSARY)),
     saveDefaultGlossary: vi.fn(() => okAsync(undefined)),
+    getSessionRetentionPolicy: vi.fn(() => okAsync(DEFAULT_SESSION_RETENTION_POLICY)),
+    saveSessionRetentionPolicy: vi.fn(() => okAsync(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),

@@ -9,10 +9,15 @@ import {
   createGetSessionHistoryQuery,
   type GetSessionHistoryQuery,
 } from '../application/use-cases/get-session-history-query';
+import { type SessionStore } from '../application/ports/session-store';
 import {
   createGetGlossaryQuery,
   type GetGlossaryQuery,
 } from '../application/use-cases/get-glossary-query';
+import {
+  createPurgeExpiredSessionsUseCase,
+  type PurgeExpiredSessionsUseCase,
+} from '../application/use-cases/purge-expired-sessions-use-case';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';
 import { createHandleTranscriptPartialUseCase } from '../application/use-cases/handle-transcript-partial-use-case';
@@ -236,6 +241,7 @@ export type ExtensionApp = Readonly<{
   getSessionHistoryDetailQuery: GetSessionHistoryDetailQuery;
   getGlossaryQuery: GetGlossaryQuery;
   updateGlossaryUseCase: UpdateGlossaryUseCase;
+  purgeExpiredSessionsUseCase: PurgeExpiredSessionsUseCase;
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
@@ -245,6 +251,8 @@ export type ExtensionApp = Readonly<{
   ensureDefaultProfile: EnsureDefaultProfile;
   transcriptAssembler: TranscriptAssembler;
   settingsStore: SettingsStore;
+  /** Issue #124: retention purge / purge all で dispatcher が直接利用 */
+  sessionStore: SessionStore;
   /** Issue #112: keyboard shortcut 経由の active session 検索に公開 */
   sourceSessionRepository: SourceSessionRepository;
   close: () => Promise<void>;
@@ -435,6 +443,11 @@ export const createExtensionApp = (
     settingsStore,
     clock: ports.clockIso,
   });
+  const purgeExpiredSessionsUseCase = createPurgeExpiredSessionsUseCase({
+    sessionStore,
+    settingsStore,
+    clock: ports.clockIso,
+  });
 
   // --------------- Application services (Phase 3 facades) ---------------
   const sessionCommandService = createSessionCommandService({
@@ -462,6 +475,8 @@ export const createExtensionApp = (
     getSessionHistoryDetailQuery,
     getGlossaryQuery,
     updateGlossaryUseCase,
+    purgeExpiredSessionsUseCase,
+    sessionStore,
     sessionRegistry,
     captureOrchestrator,
     audioFramePump,

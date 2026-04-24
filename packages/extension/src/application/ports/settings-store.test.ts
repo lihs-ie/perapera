@@ -1,6 +1,7 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_GLOSSARY } from '../../domain/glossary';
+import { DEFAULT_SESSION_RETENTION_POLICY } from '../../domain/retention';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
 import { DEFAULT_ENDPOINTING_POLICY } from '../../domain/session/endpointing-policy';
 import { createLanguagePair, type LanguagePair } from '../../domain/session/language-pair';
@@ -35,6 +36,8 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getDefaultGlossary: () => okAsync(EMPTY_GLOSSARY),
         saveDefaultGlossary: () => okAsync(undefined),
+        getSessionRetentionPolicy: () => okAsync(DEFAULT_SESSION_RETENTION_POLICY),
+        saveSessionRetentionPolicy: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),
@@ -60,6 +63,8 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getDefaultGlossary: () => okAsync(EMPTY_GLOSSARY),
         saveDefaultGlossary: () => okAsync(undefined),
+        getSessionRetentionPolicy: () => okAsync(DEFAULT_SESSION_RETENTION_POLICY),
+        saveSessionRetentionPolicy: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),
@@ -84,6 +89,8 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getDefaultGlossary: () => okAsync(EMPTY_GLOSSARY),
         saveDefaultGlossary: () => okAsync(undefined),
+        getSessionRetentionPolicy: () => okAsync(DEFAULT_SESSION_RETENTION_POLICY),
+        saveSessionRetentionPolicy: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),
@@ -107,6 +114,8 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getDefaultGlossary: () => okAsync(EMPTY_GLOSSARY),
         saveDefaultGlossary: () => okAsync(undefined),
+        getSessionRetentionPolicy: () => okAsync(DEFAULT_SESSION_RETENTION_POLICY),
+        saveSessionRetentionPolicy: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),

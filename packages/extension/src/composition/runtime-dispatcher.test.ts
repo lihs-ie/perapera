@@ -4,6 +4,7 @@ import {
   permissionRequiredAppError,
   type ApplicationError,
 } from '../application/errors/application-errors';
+import { type SessionStore } from '../application/ports/session-store';
 import { type SettingsStore } from '../application/ports/settings-store';
 import { type ExportService } from '../application/services/export-service';
 import { type SessionCommandService } from '../application/services/session-command-service';
@@ -49,6 +50,10 @@ const buildFakeDeps = () => {
       errAsync(notFoundError({ resourceType: 'Glossary', identifier: 'default' })),
     ),
     saveDefaultGlossary: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    getSessionRetentionPolicy: vi.fn(() =>
+      errAsync(notFoundError({ resourceType: 'SessionRetentionPolicy', identifier: 'default' })),
+    ),
+    saveSessionRetentionPolicy: vi.fn(() => okAsync<void, DomainError>(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
@@ -74,6 +79,18 @@ const buildFakeDeps = () => {
   const updateGlossaryUseCase = vi.fn(() =>
     okAsync({ entryCount: 0, savedAt: '2026-04-24T00:00:00.000Z' }),
   );
+  const purgeExpiredSessionsUseCase = vi.fn(() =>
+    okAsync({ purgedSessionIds: [], totalPurged: 0 }),
+  );
+  const sessionStore: SessionStore = {
+    saveSession: vi.fn(() => okAsync(undefined)),
+    appendTranscript: vi.fn(() => okAsync(undefined)),
+    appendTranslation: vi.fn(() => okAsync(undefined)),
+    loadExportBundle: vi.fn(),
+    purgeOlderThan: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+    purgeBeyondCount: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+    purgeAll: vi.fn(() => okAsync({ purgedSessionIds: [] })),
+  };
   return {
     sessionCommandService,
     exportService,
@@ -82,6 +99,8 @@ const buildFakeDeps = () => {
     getSessionHistoryDetailQuery,
     getGlossaryQuery,
     updateGlossaryUseCase,
+    purgeExpiredSessionsUseCase,
+    sessionStore,
     settingsStore,
   };
 };

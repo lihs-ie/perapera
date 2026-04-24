@@ -2,6 +2,7 @@ import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { z } from 'zod';
 import { createGlossary, type Glossary } from '../../domain/glossary';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
+import { createSessionRetentionPolicy, type SessionRetentionPolicy } from '../../domain/retention';
 import {
   createEndpointingPolicy,
   type EndpointingPolicy,
@@ -28,6 +29,7 @@ const OVERLAY_KEY = 'settings.overlay.defaultOverlaySettings';
 const STT_KEY = 'settings.stt.defaultEndpointingPolicy';
 const TRANSLATION_KEY = 'settings.translation.defaultContextWindow';
 const GLOSSARY_KEY = 'settings.glossary.defaultGlossary';
+const RETENTION_KEY = 'settings.retention.sessionRetentionPolicy';
 const RELAY_OVERRIDE_KEY = 'settings.relay.connectionOverride';
 
 const relayOverrideSchema = z.object({
@@ -188,6 +190,26 @@ export const createChromeLocalSettingsStore = (adapter: ChromeStorageAdapter): S
           target: entry.target,
           caseSensitive: entry.caseSensitive,
         })),
+      }),
+
+    getSessionRetentionPolicy: () =>
+      readRaw(adapter, RETENTION_KEY).andThen(
+        (raw): ResultAsync<SessionRetentionPolicy, DomainError> => {
+          if (raw === undefined) {
+            return errAsync<SessionRetentionPolicy, DomainError>(
+              notFoundError({ resourceType: 'SessionRetentionPolicy', identifier: 'default' }),
+            );
+          }
+          return okAsync<unknown, DomainError>(raw).andThen((value) =>
+            createSessionRetentionPolicy(value),
+          );
+        },
+      ),
+
+    saveSessionRetentionPolicy: (policy) =>
+      writeRaw(adapter, RETENTION_KEY, {
+        days: policy.days,
+        maxCount: policy.maxCount,
       }),
 
     getRelayConnectionOverride: () =>
