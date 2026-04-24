@@ -19,9 +19,17 @@ import {
   type PurgeExpiredSessionsUseCase,
 } from '../application/use-cases/purge-expired-sessions-use-case';
 import {
+  createGetBookmarkedSegmentsQuery,
+  type GetBookmarkedSegmentsQuery,
+} from '../application/use-cases/get-bookmarked-segments-query';
+import {
   createSearchSessionHistoryQuery,
   type SearchSessionHistoryQuery,
 } from '../application/use-cases/search-session-history-query';
+import {
+  createToggleTranscriptBookmarkUseCase,
+  type ToggleTranscriptBookmarkUseCase,
+} from '../application/use-cases/toggle-transcript-bookmark-use-case';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';
 import { createHandleTranscriptPartialUseCase } from '../application/use-cases/handle-transcript-partial-use-case';
@@ -247,6 +255,8 @@ export type ExtensionApp = Readonly<{
   updateGlossaryUseCase: UpdateGlossaryUseCase;
   purgeExpiredSessionsUseCase: PurgeExpiredSessionsUseCase;
   searchSessionHistoryQuery: SearchSessionHistoryQuery;
+  toggleTranscriptBookmarkUseCase: ToggleTranscriptBookmarkUseCase;
+  getBookmarkedSegmentsQuery: GetBookmarkedSegmentsQuery;
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
@@ -456,6 +466,12 @@ export const createExtensionApp = (
   const searchSessionHistoryQuery = createSearchSessionHistoryQuery({
     transcriptStreamRepository,
   });
+  const toggleTranscriptBookmarkUseCase = createToggleTranscriptBookmarkUseCase({
+    transcriptStreamRepository,
+  });
+  const getBookmarkedSegmentsQuery = createGetBookmarkedSegmentsQuery({
+    transcriptStreamRepository,
+  });
 
   // --------------- Application services (Phase 3 facades) ---------------
   const sessionCommandService = createSessionCommandService({
@@ -485,6 +501,8 @@ export const createExtensionApp = (
     updateGlossaryUseCase,
     purgeExpiredSessionsUseCase,
     searchSessionHistoryQuery,
+    toggleTranscriptBookmarkUseCase,
+    getBookmarkedSegmentsQuery,
     sessionStore,
     sessionRegistry,
     captureOrchestrator,

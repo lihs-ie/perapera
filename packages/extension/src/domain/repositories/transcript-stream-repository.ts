@@ -65,4 +65,18 @@ export type TranscriptStreamRepository = Readonly<{
   search: (
     query: TranscriptSearchQuery,
   ) => ResultAsync<readonly TranscriptSearchMatch[], DomainError>;
+  /**
+   * ブックマーク toggle (Issue #126)。final 字幕のみ対象。partial への toggle
+   * は `invariantViolationError({ invariant: 'bookmark-requires-final-segment' })`
+   * を返す。存在しない segmentId は `notFoundError`。
+   */
+  toggleBookmark: (
+    sessionIdentifier: SessionIdentifier,
+    segmentId: string,
+  ) => ResultAsync<void, DomainError>;
+  /**
+   * 全セッション横断で isBookmarked=true の final 字幕を取得する (Issue #126)。
+   * 戻り値は startTimeMs 昇順 + sessionId でソート済。
+   */
+  findBookmarked: () => ResultAsync<readonly TranscriptSearchMatch[], DomainError>;
 }>;

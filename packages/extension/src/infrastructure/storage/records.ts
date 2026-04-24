@@ -164,6 +164,8 @@ export type TranscriptSegmentRow = {
   startMs: number;
   endMs: number;
   text: string;
+  /** Issue #126: ブックマーク状態 (既定 false、final segment のみ toggle 可) */
+  isBookmarked: boolean;
 };
 
 export const transcriptSegmentToRecord = (
@@ -177,6 +179,7 @@ export const transcriptSegmentToRecord = (
   startMs: segment.timeRange.startMs,
   endMs: segment.timeRange.endMs,
   text: segment.text,
+  isBookmarked: segment.isBookmarked,
 });
 
 export const transcriptSegmentFromRecord = (
@@ -189,8 +192,11 @@ export const transcriptSegmentFromRecord = (
       text: row.text,
       timeRange,
     });
-    if (!row.isFinal) return partial;
-    return partial.andThen((p) => finalizeTranscriptSegment(p, {}));
+    const bookmarked = row.isBookmarked;
+    if (!row.isFinal) return partial.map((p) => ({ ...p, isBookmarked: bookmarked }));
+    return partial
+      .andThen((p) => finalizeTranscriptSegment(p, {}))
+      .map((p) => ({ ...p, isBookmarked: bookmarked }));
   });
 
 // ---------- DB-003 translation_segments ----------

@@ -174,6 +174,24 @@ const searchSessionHistoryOutputSchema = z.object({
 });
 export type SearchSessionHistoryResult = z.infer<typeof searchSessionHistoryOutputSchema>;
 
+const bookmarkToggleOutputSchema = z.object({
+  sessionId: z.string(),
+  segmentId: z.string(),
+});
+export type BookmarkToggleResult = z.infer<typeof bookmarkToggleOutputSchema>;
+
+const bookmarkedSegmentsOutputSchema = z.object({
+  bookmarks: z.array(
+    z.object({
+      sessionIdentifier: z.string(),
+      segmentIdentifier: z.string(),
+      snippet: z.string(),
+      startTimeMs: z.number(),
+    }),
+  ),
+});
+export type BookmarkedSegmentsResult = z.infer<typeof bookmarkedSegmentsOutputSchema>;
+
 const sessionHistorySummarySchema = z.object({
   sessionId: z.string().min(1),
   displayName: z.string(),
@@ -353,6 +371,11 @@ export type BackgroundClient = Readonly<{
     language: 'source' | 'target' | 'both';
     caseSensitive: boolean;
   }) => Promise<BackgroundResponse<SearchSessionHistoryResult>>;
+  toggleTranscriptBookmark: (input: {
+    sessionId: string;
+    segmentId: string;
+  }) => Promise<BackgroundResponse<BookmarkToggleResult>>;
+  getBookmarkedSegments: () => Promise<BackgroundResponse<BookmarkedSegmentsResult>>;
   getSessionHistory: () => Promise<BackgroundResponse<SessionHistoryListResult>>;
   getSessionHistoryDetail: (input: {
     sessionId: string;
@@ -437,6 +460,14 @@ export const createBackgroundClient = (
       { type: 'query.search-session-history', input },
       searchSessionHistoryOutputSchema,
     ),
+  toggleTranscriptBookmark: (input) =>
+    sendTyped(
+      sender,
+      { type: 'command.toggle-transcript-bookmark', input },
+      bookmarkToggleOutputSchema,
+    ),
+  getBookmarkedSegments: () =>
+    sendTyped(sender, { type: 'query.get-bookmarked-segments' }, bookmarkedSegmentsOutputSchema),
   getSessionHistory: () =>
     sendTyped(sender, { type: 'query.get-session-history' }, sessionHistoryListOutputSchema),
   getSessionHistoryDetail: (input) =>

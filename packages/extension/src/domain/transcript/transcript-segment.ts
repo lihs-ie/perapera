@@ -10,6 +10,7 @@ import { type TimestampRange } from './timestamp-range';
  * - `isFinal`: 確定字幕かどうか。false → true の遷移のみ可、逆方向不可
  * - 確定後は revision / text / timeRange の更新不可
  *   (再確定は別集約操作でやり直す)
+ * - `isBookmarked`: 既定 false。final 字幕のみ toggle 可 (Issue #126)
  */
 export type TranscriptSegment = Readonly<{
   segmentIdentifier: SegmentIdentifier;
@@ -17,6 +18,7 @@ export type TranscriptSegment = Readonly<{
   isFinal: boolean;
   text: string;
   timeRange: TimestampRange;
+  isBookmarked: boolean;
 }>;
 
 const validateText = (text: string): Result<string, DomainError> => {
@@ -52,6 +54,7 @@ export const createPartialTranscriptSegment = (params: {
         isFinal: false,
         text,
         timeRange: params.timeRange,
+        isBookmarked: false,
       })),
     ),
   );
@@ -103,4 +106,23 @@ export const finalizeTranscriptSegment = (
     text,
     timeRange: override.timeRange ?? current.timeRange,
   }));
+};
+
+/**
+ * ブックマーク状態をトグルする (Issue #126)。
+ * final 字幕のみ対象。partial 字幕では invariant-violation を返す (partial は
+ * revision で上書きされるため segmentId 以外の同一性を保てない)。
+ */
+export const toggleTranscriptSegmentBookmark = (
+  current: TranscriptSegment,
+): Result<TranscriptSegment, DomainError> => {
+  if (!current.isFinal) {
+    return err(
+      invariantViolationError({
+        invariant: 'bookmark-requires-final-segment',
+        details: `segment ${current.segmentIdentifier} is not finalized; cannot toggle bookmark`,
+      }),
+    );
+  }
+  return ok({ ...current, isBookmarked: !current.isBookmarked });
 };

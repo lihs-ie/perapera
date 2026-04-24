@@ -241,6 +241,8 @@ export default defineBackground(() => {
     updateGlossaryUseCase: app.updateGlossaryUseCase,
     purgeExpiredSessionsUseCase: app.purgeExpiredSessionsUseCase,
     searchSessionHistoryQuery: app.searchSessionHistoryQuery,
+    toggleTranscriptBookmarkUseCase: app.toggleTranscriptBookmarkUseCase,
+    getBookmarkedSegmentsQuery: app.getBookmarkedSegmentsQuery,
     sessionStore: app.sessionStore,
     settingsStore: app.settingsStore,
   });

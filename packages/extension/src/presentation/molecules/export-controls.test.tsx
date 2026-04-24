@@ -42,6 +42,8 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
   purgeExpiredSessions: vi.fn(),
   purgeAllSessions: vi.fn(),
   searchSessionHistory: vi.fn(),
+  toggleTranscriptBookmark: vi.fn(),
+  getBookmarkedSegments: vi.fn(),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
   ...overrides,

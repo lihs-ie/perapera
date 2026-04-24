@@ -270,6 +270,7 @@ describe('Type shape checks', () => {
       startMs: 0,
       endMs: 100,
       text: 'x',
+      isBookmarked: false,
     };
     expect(JSON.parse(JSON.stringify(sRow))).toEqual(sRow);
     expect(JSON.parse(JSON.stringify(tRow))).toEqual(tRow);
