@@ -162,6 +162,39 @@ export const createRelayWebSocketGateway = (
     for (const listener of connection.listeners) {
       listener(localEvent);
     }
+    // Runtime STT 切断 (PR #131, server 側で `session.error(STT_STREAM_FAILED,
+    // retryable=true, fatal=false)` を emit) を受けたら、この WebSocket 上では
+    // もうセッションを続行できない。以下を実行して zombie 状態を防ぐ:
+    //   - heartbeat を停止
+    //   - connections map から remove (sendAudioFrame を `relay-no-active-session` err に転じる)
+    //   - socket を close (server 側へ意図した切断を伝える)
+    // listener 側 (RelaySessionSubscriber → SessionCommandService) は別途
+    // session.error event を受け取り、上位 use case で状態遷移させる。
+    if (localEvent.type === 'session.error' && localEvent.retryable && !localEvent.fatal) {
+      tearDownConnection(sessionIdentifier);
+    }
+  };
+
+  /**
+   * connection の tear-down を 1 箇所に集約。heartbeat を止め、map から外し、
+   * socket を close する。sendAudioFrame 以降は `relay-no-active-session` で
+   * 弾かれるため、audio frame pump 側の既存エラー処理に合流する。
+   */
+  const tearDownConnection = (sessionIdentifier: SessionIdentifier): void => {
+    const connection = connections.get(sessionIdentifier);
+    if (connection === undefined) return;
+    if (connection.heartbeatTimer !== null) {
+      clearInterval(connection.heartbeatTimer);
+      connection.heartbeatTimer = null;
+    }
+    connections.delete(sessionIdentifier);
+    try {
+      if (connection.socket.readyState === 1 || connection.socket.readyState === 0) {
+        connection.socket.close();
+      }
+    } catch (cause) {
+      console.warn('[relay-gateway] tearDownConnection: socket.close threw', cause);
+    }
   };
 
   const startHeartbeat = (

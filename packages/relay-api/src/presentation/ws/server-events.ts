@@ -199,6 +199,13 @@ export type SessionErrorCode =
   | 'RATE_LIMIT_EXCEEDED'
   | 'INTERNAL_ERROR'
   | 'STT_ERROR'
+  /**
+   * Runtime STT stream 切断: open は成功したが Deepgram 側都合で WebSocket が
+   * 閉じた場合。sendFrame 失敗 (`deepgram-stream-closed`) または transcript
+   * iterator が予期せず終了した場合に一度だけ emit。retryable=true で、
+   * クライアントは session.stop → session.start で再接続可能。
+   */
+  | 'STT_STREAM_FAILED'
   | 'TRANSLATION_ERROR';
 
 export type SessionErrorPayload = Readonly<{

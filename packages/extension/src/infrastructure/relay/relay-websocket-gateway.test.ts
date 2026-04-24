@@ -370,4 +370,131 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       expect(result.isOk()).toBe(true);
     });
   });
+
+  /**
+   * PR #131 follow-up: relay-api が `session.error(STT_STREAM_FAILED,
+   * retryable=true)` を emit したとき、extension 側 gateway が socket を
+   * tear-down し以降の sendAudioFrame を弾くことを検証する。これがないと
+   * audio frame pump が死んだ stream に frame を送り続け、server 側は
+   * `REJECTING audio.frame — activeStream=null` を延々とログに残す。
+   */
+  describe('session.error(retryable=true) teardown', () => {
+    it('closes the socket and removes connection when session.error(retryable=true, fatal=false) is received', async () => {
+      const deps = buildDependencies();
+      const gateway = createRelayWebSocketGateway(deps);
+      const openPromise = gateway.openSession(buildSession());
+      await flushUntilSocketCreated(deps.createdSockets);
+      deps.createdSockets[0]?.simulateOpen();
+      await openPromise;
+
+      const received: RelayEvent[] = [];
+      gateway.subscribe(sessionIdentifier, (event) => {
+        received.push(event);
+      });
+
+      // relay-api から session.error(STT_STREAM_FAILED) を送信
+      deps.createdSockets[0]?.simulateMessage(
+        JSON.stringify({
+          eventType: 'session.error',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: '2026-04-21T00:00:01.000Z',
+          payload: {
+            code: 'STT_STREAM_FAILED',
+            message: 'sendFrame failed: STT stream closed',
+            retryable: true,
+            fatal: false,
+          },
+        }),
+      );
+
+      // listener には event が届く (上位 use case 側で state 遷移させる)
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        type: 'session.error',
+        code: 'STT_STREAM_FAILED',
+        retryable: true,
+      });
+
+      // gateway が socket を tear-down する
+      expect(deps.createdSockets[0]?.isClosed).toBe(true);
+
+      // 以降の sendAudioFrame は `relay-no-active-session` で拒否される (audio
+      // frame pump 側の既存エラー経路に合流、上位で pump 停止判断される)
+      const frameResult = await gateway.sendAudioFrame({
+        sessionIdentifier,
+        sequenceNumber: 0,
+        sampleRate: 16000,
+        channels: 1,
+        pcm16Base64: 'AAAA=',
+        capturedAt: '2026-04-21T00:00:02.000Z',
+        durationMs: 100,
+      });
+      expect(frameResult.isErr()).toBe(true);
+      if (frameResult.isErr()) {
+        expect(frameResult.error.kind).toBe('invariant-violation');
+      }
+    });
+
+    it('does not tear down on fatal=true errors (those end the session regardless)', async () => {
+      const deps = buildDependencies();
+      const gateway = createRelayWebSocketGateway(deps);
+      const openPromise = gateway.openSession(buildSession());
+      await flushUntilSocketCreated(deps.createdSockets);
+      deps.createdSockets[0]?.simulateOpen();
+      await openPromise;
+
+      gateway.subscribe(sessionIdentifier, () => undefined);
+
+      // fatal=true のケース: 上位 use case が session.stop を発火する想定なので
+      // gateway は tear-down しない (通常の close 経路に委ねる)
+      deps.createdSockets[0]?.simulateMessage(
+        JSON.stringify({
+          eventType: 'session.error',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: '2026-04-21T00:00:01.000Z',
+          payload: {
+            code: 'INTERNAL_ERROR',
+            message: 'irrecoverable',
+            retryable: false,
+            fatal: true,
+          },
+        }),
+      );
+
+      // tear-down されないため socket は open のまま (上位が closeSession する)
+      expect(deps.createdSockets[0]?.isClosed).toBe(false);
+    });
+
+    it('does not tear down on non-retryable transient errors (e.g. VALIDATION_ERROR)', async () => {
+      const deps = buildDependencies();
+      const gateway = createRelayWebSocketGateway(deps);
+      const openPromise = gateway.openSession(buildSession());
+      await flushUntilSocketCreated(deps.createdSockets);
+      deps.createdSockets[0]?.simulateOpen();
+      await openPromise;
+
+      gateway.subscribe(sessionIdentifier, () => undefined);
+
+      deps.createdSockets[0]?.simulateMessage(
+        JSON.stringify({
+          eventType: 'session.error',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: '2026-04-21T00:00:01.000Z',
+          payload: {
+            code: 'VALIDATION_ERROR',
+            message: 'invalid event',
+            retryable: false,
+            fatal: false,
+          },
+        }),
+      );
+
+      // retryable=false / fatal=false (例: 単発の VALIDATION_ERROR) は続行可能。
+      // gateway は socket を維持する。
+      expect(deps.createdSockets[0]?.isClosed).toBe(false);
+    });
+  });
 });

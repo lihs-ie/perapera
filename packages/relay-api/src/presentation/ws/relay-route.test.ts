@@ -1,5 +1,5 @@
 import fastifyWebsocket from '@fastify/websocket';
-import { errAsync, ok, ok as okResult, okAsync, ResultAsync, type Result } from 'neverthrow';
+import { err, errAsync, ok, ok as okResult, okAsync, ResultAsync, type Result } from 'neverthrow';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -657,6 +657,119 @@ describe('WebSocket /relay route', () => {
       expect(sendFrameCalls).toHaveLength(2);
       expect(sendFrameCalls[0]?.chunkId).toBe('chk_1');
       expect(sendFrameCalls[1]?.chunkId).toBe('chk_2');
+
+      ws.close();
+    }, 10000);
+
+    it('emits session.error STT_STREAM_FAILED when sendFrame returns deepgram-stream-closed and closes activeStream', async () => {
+      // Deepgram がサーバ都合で閉じた後、sendFrame が closed error を返し続ける
+      // ケース。一度だけ session.error(STT_STREAM_FAILED, retryable=true) を
+      // emit し、activeStream を null 化する必要がある (bug fix)。
+      let sendFrameCallCount = 0;
+      const closedSttPort: SttPort = {
+        openStream: () => {
+          const handle: SttStreamHandle = {
+            sendFrame: () => {
+              sendFrameCallCount += 1;
+              return err(
+                invariantViolationError({
+                  invariant: 'deepgram-stream-closed',
+                  details: 'attempted to send frame on closed stream',
+                }),
+              );
+            },
+            close: () => okAsync<void, DomainError>(undefined),
+            events: {
+              [Symbol.asyncIterator]: () => ({
+                next: (): Promise<IteratorResult<TranscriptEvent>> =>
+                  new Promise<IteratorResult<TranscriptEvent>>(() => {
+                    // 無限保留: iterator を解決させない (実際の Deepgram close は
+                    // 別イベントで通知される想定)
+                  }),
+              }),
+            },
+          };
+          return okAsync<SttStreamHandle, DomainError>(handle);
+        },
+      };
+      harness = await startApp(okVerifier, { sttPort: closedSttPort });
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'session.start',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sourceLanguage: 'en-US',
+            autoDetectLanguage: false,
+            targetLanguage: 'ja-JP',
+            translationEnabled: true,
+          },
+        }),
+      );
+
+      // session.start 直後の audio.frame (sendFrame 失敗)
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 2,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_1',
+            audioBase64: 'AAAA=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+
+      const errorEvent = await queue.next(3000);
+      expect(errorEvent).toMatchObject({
+        eventType: 'session.error',
+        payload: {
+          code: 'STT_STREAM_FAILED',
+          retryable: true,
+          fatal: false,
+        },
+      });
+
+      // 2 回目の audio.frame では activeStream が null 化されているため
+      // SESSION_NOT_READY が返る (STT_STREAM_FAILED の二重送信はしない)
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 3,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_2',
+            audioBase64: 'BBBB=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      const secondError = await queue.next(3000);
+      expect(secondError).toMatchObject({
+        eventType: 'session.error',
+        payload: { code: 'SESSION_NOT_READY' },
+      });
+
+      // sendFrame は 1 回目だけ呼ばれる (活性 stream が closeActiveStream で
+      // null 化されたため、以降は pendingFrames / SESSION_NOT_READY 経路)
+      expect(sendFrameCallCount).toBe(1);
 
       ws.close();
     }, 10000);
