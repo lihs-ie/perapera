@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../atoms/button';
 import { StatusBadge } from '../atoms/status-badge';
+import { VuMeter } from '../atoms/vu-meter';
 import { useBackgroundCommand } from '../hooks/use-background-command';
 import { type BackgroundClient } from '../infrastructure/background-client';
 import { ExportControls } from '../molecules/export-controls';
@@ -16,6 +17,10 @@ export type Props = Readonly<{
   session: ActiveSession;
   /** Issue #108: Relay が `session.state.changed` に付与した補足理由 (degraded / error 時の banner で表示) */
   stateReason?: string | null;
+  /** Issue #110: 最新の音声レベル (RMS 0-1)。既定 0 (未取得) */
+  audioLevel?: number;
+  /** Issue #110: 1 秒以上無音の場合 true。既定 false */
+  audioIsSilent?: boolean;
   onStopped: () => void;
   /** `⚙` ボタン押下で設定画面を開く。未指定時は非表示 */
   onOpenSettings?: () => void;
@@ -64,6 +69,7 @@ export function SessionToolbar(props: Props) {
           {props.session.displayName}
         </span>
         <StatusBadge state={props.session.state} />
+        <VuMeter rms={props.audioLevel ?? 0} />
       </div>
       <div className="actions">
         {props.onOpenSettings !== undefined ? (
@@ -111,6 +117,16 @@ export function SessionToolbar(props: Props) {
           data-state={props.session.state}
         >
           {banner}
+        </div>
+      ) : null}
+      {props.audioIsSilent === true ? (
+        <div
+          className="banner"
+          role="alert"
+          data-testid="audio-silent-banner"
+          data-variant="silence"
+        >
+          音声を検出できません。入力デバイス / タブ音量を確認してください。
         </div>
       ) : null}
     </header>
