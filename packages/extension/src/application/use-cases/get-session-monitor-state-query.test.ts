@@ -73,6 +73,9 @@ const buildDependencies = (
     findActiveSessions: vi.fn(() =>
       okAsync([buildSession(SESSION_ID_1, SOURCE_ID_1), buildSession(SESSION_ID_2, SOURCE_ID_2)]),
     ),
+    findAllSessions: vi.fn(() =>
+      okAsync([buildSession(SESSION_ID_1, SOURCE_ID_1), buildSession(SESSION_ID_2, SOURCE_ID_2)]),
+    ),
     save: vi.fn(() => okAsync(undefined)),
   };
   const defaultFindBySessionId: TranscriptStreamRepository['findBySessionId'] = (id) =>
@@ -149,6 +152,7 @@ describe('createGetSessionMonitorStateQuery (IMPL-211, DD-302)', () => {
       sourceSessionRepository: {
         findById: vi.fn(() => okAsync(buildSession(SESSION_ID_1, SOURCE_ID_1))),
         findActiveSessions: vi.fn(() => okAsync([])),
+        findAllSessions: vi.fn(() => okAsync([])),
         save: vi.fn(() => okAsync(undefined)),
       },
     });

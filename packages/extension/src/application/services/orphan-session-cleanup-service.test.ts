@@ -45,6 +45,7 @@ const buildRepository = (
     ),
   ),
   findActiveSessions: vi.fn(() => okAsync(sessions)),
+  findAllSessions: vi.fn(() => okAsync(sessions)),
   save: vi.fn(() => okAsync(undefined)),
   ...overrides,
 });

@@ -49,10 +49,29 @@ const buildFakeDeps = () => {
     saveRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
   };
+  const getSessionHistoryQuery = vi.fn(() => okAsync({ sessions: [] }));
+  const getSessionHistoryDetailQuery = vi.fn(() =>
+    okAsync({
+      summary: {
+        sessionId: 's',
+        displayName: 's',
+        sourceType: 'tab',
+        state: 'stopped',
+        sourceLanguage: 'en-US',
+        targetLanguage: 'ja-JP',
+        startedAt: '2026-04-21T00:00:00.000Z',
+        stoppedAt: '2026-04-21T00:01:00.000Z',
+        durationMs: 60_000,
+      },
+      lines: [],
+    }),
+  );
   return {
     sessionCommandService,
     exportService,
     getSessionMonitorStateQuery,
+    getSessionHistoryQuery,
+    getSessionHistoryDetailQuery,
     settingsStore,
   };
 };
