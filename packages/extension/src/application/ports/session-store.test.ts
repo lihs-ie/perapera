@@ -65,6 +65,9 @@ const okMock: SessionStore = {
   appendTranscript: () => okAsync(undefined),
   appendTranslation: () => okAsync(undefined),
   loadExportBundle: () => okAsync(buildBundle()),
+  purgeOlderThan: () => okAsync({ purgedSessionIds: [] }),
+  purgeBeyondCount: () => okAsync({ purgedSessionIds: [] }),
+  purgeAll: () => okAsync({ purgedSessionIds: [] }),
 };
 
 describe('SessionStore (DD-106)', () => {

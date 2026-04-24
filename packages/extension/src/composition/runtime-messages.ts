@@ -2,6 +2,12 @@ import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
 import { type ApplicationError } from '../application/errors/application-errors';
 import { GLOSSARY_ENTRY_FIELD_MAX_LENGTH, GLOSSARY_MAX_ENTRIES } from '../domain/glossary';
+import {
+  RETENTION_DAYS_MAX,
+  RETENTION_DAYS_MIN,
+  RETENTION_MAX_COUNT_MAX,
+  RETENTION_MAX_COUNT_MIN,
+} from '../domain/retention';
 import { validationError, type DomainError } from '../domain/shared/errors';
 
 /**
@@ -176,6 +182,31 @@ const getDefaultGlossaryRequestSchema = z.object({
   input: z.object({}).optional(),
 });
 
+const retentionPolicyPayloadSchema = z.object({
+  days: z.number().int().min(RETENTION_DAYS_MIN).max(RETENTION_DAYS_MAX).nullable(),
+  maxCount: z.number().int().min(RETENTION_MAX_COUNT_MIN).max(RETENTION_MAX_COUNT_MAX).nullable(),
+});
+
+const saveSessionRetentionPolicyRequestSchema = z.object({
+  type: z.literal('command.save-session-retention-policy'),
+  input: retentionPolicyPayloadSchema,
+});
+
+const getSessionRetentionPolicyRequestSchema = z.object({
+  type: z.literal('query.get-session-retention-policy'),
+  input: z.object({}).optional(),
+});
+
+const purgeExpiredSessionsRequestSchema = z.object({
+  type: z.literal('command.purge-expired-sessions'),
+  input: z.object({}).optional(),
+});
+
+const purgeAllSessionsRequestSchema = z.object({
+  type: z.literal('command.purge-all-sessions'),
+  input: z.object({}).optional(),
+});
+
 export const backgroundRequestSchema = z.discriminatedUnion('type', [
   startSourceSessionRequestSchema,
   stopSourceSessionRequestSchema,
@@ -191,6 +222,10 @@ export const backgroundRequestSchema = z.discriminatedUnion('type', [
   clearRelayConnectionOverrideRequestSchema,
   saveDefaultGlossaryRequestSchema,
   getDefaultGlossaryRequestSchema,
+  saveSessionRetentionPolicyRequestSchema,
+  getSessionRetentionPolicyRequestSchema,
+  purgeExpiredSessionsRequestSchema,
+  purgeAllSessionsRequestSchema,
   getSessionHistoryRequestSchema,
   getSessionHistoryDetailRequestSchema,
 ]);

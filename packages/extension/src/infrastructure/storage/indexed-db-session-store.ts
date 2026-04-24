@@ -1,7 +1,12 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { notFoundError, type DomainError } from '../../domain/shared/errors';
-import { type ExportBundle, type SessionStore } from '../../application/ports/session-store';
 import {
+  type ExportBundle,
+  type PurgeResult,
+  type SessionStore,
+} from '../../application/ports/session-store';
+import {
+  EXPORT_STORE,
   INDEXED_DB_NAME,
   SESSIONS_STORE,
   TRANSCRIPT_STORE,
@@ -134,6 +139,113 @@ export const createIndexedDbSessionStore = (
           stream: streamResult.value,
         });
       }),
+
+    purgeOlderThan: (beforeIso) =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          const tx = connection.transaction(
+            [SESSIONS_STORE, TRANSCRIPT_STORE, TRANSLATION_STORE, EXPORT_STORE],
+            'readwrite',
+          );
+          const sessionsStore = tx.objectStore(SESSIONS_STORE);
+          const transcriptStore = tx.objectStore(TRANSCRIPT_STORE);
+          const translationStore = tx.objectStore(TRANSLATION_STORE);
+          const exportStore = tx.objectStore(EXPORT_STORE);
+          const allSessions = await sessionsStore.getAll();
+          const targets = allSessions.filter((row) => row.startedAt < beforeIso);
+          const purgedSessionIds: string[] = [];
+          for (const row of targets) {
+            purgedSessionIds.push(row.sessionId);
+            await sessionsStore.delete(row.sessionId);
+            const transcriptIds = await transcriptStore
+              .index('by-sessionId')
+              .getAllKeys(row.sessionId);
+            for (const id of transcriptIds) {
+              await transcriptStore.delete(id);
+            }
+            const translationIds = await translationStore
+              .index('by-sessionId')
+              .getAllKeys(row.sessionId);
+            for (const id of translationIds) {
+              await translationStore.delete(id);
+            }
+            const exportIds = await exportStore.index('by-sessionId').getAllKeys(row.sessionId);
+            for (const id of exportIds) {
+              await exportStore.delete(id);
+            }
+          }
+          await tx.done;
+          return purgedSessionIds;
+        })(),
+        toPersistenceError('purgeOlderThan'),
+      ).map((purgedSessionIds): PurgeResult => ({ purgedSessionIds })),
+
+    purgeBeyondCount: (maxCount) =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          const tx = connection.transaction(
+            [SESSIONS_STORE, TRANSCRIPT_STORE, TRANSLATION_STORE, EXPORT_STORE],
+            'readwrite',
+          );
+          const sessionsStore = tx.objectStore(SESSIONS_STORE);
+          const transcriptStore = tx.objectStore(TRANSCRIPT_STORE);
+          const translationStore = tx.objectStore(TRANSLATION_STORE);
+          const exportStore = tx.objectStore(EXPORT_STORE);
+          const allSessions = await sessionsStore.getAll();
+          if (allSessions.length <= maxCount) {
+            await tx.done;
+            return [];
+          }
+          // 古い順 (startedAt ascending) にソートし、先頭から excess を削除対象に
+          const sorted = [...allSessions].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+          const excess = sorted.slice(0, sorted.length - maxCount);
+          const purgedSessionIds: string[] = [];
+          for (const row of excess) {
+            purgedSessionIds.push(row.sessionId);
+            await sessionsStore.delete(row.sessionId);
+            const transcriptIds = await transcriptStore
+              .index('by-sessionId')
+              .getAllKeys(row.sessionId);
+            for (const id of transcriptIds) {
+              await transcriptStore.delete(id);
+            }
+            const translationIds = await translationStore
+              .index('by-sessionId')
+              .getAllKeys(row.sessionId);
+            for (const id of translationIds) {
+              await translationStore.delete(id);
+            }
+            const exportIds = await exportStore.index('by-sessionId').getAllKeys(row.sessionId);
+            for (const id of exportIds) {
+              await exportStore.delete(id);
+            }
+          }
+          await tx.done;
+          return purgedSessionIds;
+        })(),
+        toPersistenceError('purgeBeyondCount'),
+      ).map((purgedSessionIds): PurgeResult => ({ purgedSessionIds })),
+
+    purgeAll: () =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          const tx = connection.transaction(
+            [SESSIONS_STORE, TRANSCRIPT_STORE, TRANSLATION_STORE, EXPORT_STORE],
+            'readwrite',
+          );
+          const sessionIds = await tx.objectStore(SESSIONS_STORE).getAllKeys();
+          await tx.objectStore(SESSIONS_STORE).clear();
+          await tx.objectStore(TRANSCRIPT_STORE).clear();
+          await tx.objectStore(TRANSLATION_STORE).clear();
+          await tx.objectStore(EXPORT_STORE).clear();
+          await tx.done;
+          return sessionIds;
+        })(),
+        toPersistenceError('purgeAll'),
+      ).map((purgedSessionIds): PurgeResult => ({ purgedSessionIds })),
 
     close: handle.close,
   };

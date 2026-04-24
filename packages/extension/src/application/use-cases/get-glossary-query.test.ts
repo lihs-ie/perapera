@@ -22,6 +22,8 @@ const buildSettingsStore = (overrides: Partial<SettingsStore> = {}): SettingsSto
   saveDefaultTranslationContextWindow: vi.fn(),
   getDefaultGlossary: vi.fn(() => okAsync<Glossary, DomainError>(EMPTY_GLOSSARY)),
   saveDefaultGlossary: vi.fn(),
+  getSessionRetentionPolicy: vi.fn(),
+  saveSessionRetentionPolicy: vi.fn(),
   getRelayConnectionOverride: vi.fn(),
   saveRelayConnectionOverride: vi.fn(),
   clearRelayConnectionOverride: vi.fn(),

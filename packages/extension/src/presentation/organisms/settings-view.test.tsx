@@ -5,7 +5,9 @@ import {
   type BackgroundResponse,
   type DefaultSettingsResult,
   type GlossaryResult,
+  type PurgeSessionsResult,
   type SavedAckResult,
+  type SessionRetentionPolicyResult,
 } from '../infrastructure/background-client';
 import { SettingsView } from './settings-view';
 
@@ -57,6 +59,19 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
       Promise.resolve({ ok: true, value: { entries: [] } }),
   ),
   saveDefaultGlossary: vi.fn(() => Promise.resolve(SAVED_ACK)),
+  getSessionRetentionPolicy: vi.fn(
+    (): Promise<BackgroundResponse<SessionRetentionPolicyResult>> =>
+      Promise.resolve({ ok: true, value: { days: 30, maxCount: 100 } }),
+  ),
+  saveSessionRetentionPolicy: vi.fn(() => Promise.resolve(SAVED_ACK)),
+  purgeExpiredSessions: vi.fn(
+    (): Promise<BackgroundResponse<PurgeSessionsResult>> =>
+      Promise.resolve({ ok: true, value: { purgedSessionIds: [], totalPurged: 0 } }),
+  ),
+  purgeAllSessions: vi.fn(
+    (): Promise<BackgroundResponse<PurgeSessionsResult>> =>
+      Promise.resolve({ ok: true, value: { purgedSessionIds: [], totalPurged: 0 } }),
+  ),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
   ...overrides,

@@ -44,6 +44,10 @@ const buildClient = (start: BackgroundClient['startSourceSession']): BackgroundC
   clearRelayConnectionOverride: vi.fn(),
   getDefaultGlossary: vi.fn(),
   saveDefaultGlossary: vi.fn(),
+  getSessionRetentionPolicy: vi.fn(),
+  saveSessionRetentionPolicy: vi.fn(),
+  purgeExpiredSessions: vi.fn(),
+  purgeAllSessions: vi.fn(),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
 });

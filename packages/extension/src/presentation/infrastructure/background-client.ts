@@ -145,6 +145,18 @@ const glossaryOutputSchema = z.object({
 });
 export type GlossaryResult = z.infer<typeof glossaryOutputSchema>;
 
+const sessionRetentionPolicyOutputSchema = z.object({
+  days: z.number().int().min(1).max(365).nullable(),
+  maxCount: z.number().int().min(1).max(10000).nullable(),
+});
+export type SessionRetentionPolicyResult = z.infer<typeof sessionRetentionPolicyOutputSchema>;
+
+const purgeResultOutputSchema = z.object({
+  purgedSessionIds: z.array(z.string()),
+  totalPurged: z.number().int().nonnegative(),
+});
+export type PurgeSessionsResult = z.infer<typeof purgeResultOutputSchema>;
+
 const sessionHistorySummarySchema = z.object({
   sessionId: z.string().min(1),
   displayName: z.string(),
@@ -273,6 +285,10 @@ export type DefaultGlossaryInput = Readonly<{
     caseSensitive: boolean;
   }[];
 }>;
+export type SessionRetentionPolicyInput = Readonly<{
+  days: number | null;
+  maxCount: number | null;
+}>;
 
 export type BackgroundClient = Readonly<{
   startSourceSession: (
@@ -309,6 +325,12 @@ export type BackgroundClient = Readonly<{
   clearRelayConnectionOverride: () => Promise<BackgroundResponse<SavedAckResult>>;
   getDefaultGlossary: () => Promise<BackgroundResponse<GlossaryResult>>;
   saveDefaultGlossary: (input: DefaultGlossaryInput) => Promise<BackgroundResponse<SavedAckResult>>;
+  getSessionRetentionPolicy: () => Promise<BackgroundResponse<SessionRetentionPolicyResult>>;
+  saveSessionRetentionPolicy: (
+    input: SessionRetentionPolicyInput,
+  ) => Promise<BackgroundResponse<SavedAckResult>>;
+  purgeExpiredSessions: () => Promise<BackgroundResponse<PurgeSessionsResult>>;
+  purgeAllSessions: () => Promise<BackgroundResponse<PurgeSessionsResult>>;
   getSessionHistory: () => Promise<BackgroundResponse<SessionHistoryListResult>>;
   getSessionHistoryDetail: (input: {
     sessionId: string;
@@ -375,6 +397,18 @@ export const createBackgroundClient = (
     sendTyped(sender, { type: 'query.get-default-glossary' }, glossaryOutputSchema),
   saveDefaultGlossary: (input) =>
     sendTyped(sender, { type: 'command.save-default-glossary', input }, savedAckSchema),
+  getSessionRetentionPolicy: () =>
+    sendTyped(
+      sender,
+      { type: 'query.get-session-retention-policy' },
+      sessionRetentionPolicyOutputSchema,
+    ),
+  saveSessionRetentionPolicy: (input) =>
+    sendTyped(sender, { type: 'command.save-session-retention-policy', input }, savedAckSchema),
+  purgeExpiredSessions: () =>
+    sendTyped(sender, { type: 'command.purge-expired-sessions' }, purgeResultOutputSchema),
+  purgeAllSessions: () =>
+    sendTyped(sender, { type: 'command.purge-all-sessions' }, purgeResultOutputSchema),
   getSessionHistory: () =>
     sendTyped(sender, { type: 'query.get-session-history' }, sessionHistoryListOutputSchema),
   getSessionHistoryDetail: (input) =>

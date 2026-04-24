@@ -3,6 +3,7 @@ import {
   toApplicationError,
   type ApplicationError,
 } from '../application/errors/application-errors';
+import { type SessionStore } from '../application/ports/session-store';
 import { type SettingsStore } from '../application/ports/settings-store';
 import { type ExportService } from '../application/services/export-service';
 import { type SessionCommandService } from '../application/services/session-command-service';
@@ -10,8 +11,14 @@ import { type GetGlossaryQuery } from '../application/use-cases/get-glossary-que
 import { type GetSessionHistoryDetailQuery } from '../application/use-cases/get-session-history-detail-query';
 import { type GetSessionHistoryQuery } from '../application/use-cases/get-session-history-query';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
+import { type PurgeExpiredSessionsUseCase } from '../application/use-cases/purge-expired-sessions-use-case';
 import { type UpdateGlossaryUseCase } from '../application/use-cases/update-glossary-use-case';
 import { createOverlaySettings, type OverlaySettings } from '../domain/profile/overlay-settings';
+import {
+  createSessionRetentionPolicy,
+  DEFAULT_SESSION_RETENTION_POLICY,
+  type SessionRetentionPolicy,
+} from '../domain/retention';
 import {
   createEndpointingPolicy,
   DEFAULT_ENDPOINTING_POLICY,
@@ -45,6 +52,8 @@ export type RuntimeDispatcherDependencies = Readonly<{
   getSessionHistoryDetailQuery: GetSessionHistoryDetailQuery;
   getGlossaryQuery: GetGlossaryQuery;
   updateGlossaryUseCase: UpdateGlossaryUseCase;
+  purgeExpiredSessionsUseCase: PurgeExpiredSessionsUseCase;
+  sessionStore: SessionStore;
   settingsStore: SettingsStore;
 }>;
 
@@ -268,6 +277,41 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
         return run(deps.updateGlossaryUseCase(request.input).map(() => ({ saved: true })));
       case 'query.get-default-glossary':
         return run(deps.getGlossaryQuery());
+      case 'command.save-session-retention-policy':
+        return run(
+          createSessionRetentionPolicy(request.input)
+            .asyncAndThen((policy) => deps.settingsStore.saveSessionRetentionPolicy(policy))
+            .mapErr(toApplicationError)
+            .map(() => ({ saved: true })),
+        );
+      case 'query.get-session-retention-policy':
+        return run(
+          deps.settingsStore
+            .getSessionRetentionPolicy()
+            .orElse(() => okAsync(DEFAULT_SESSION_RETENTION_POLICY))
+            .mapErr(toApplicationError)
+            .map((policy: SessionRetentionPolicy) => ({
+              days: policy.days,
+              maxCount: policy.maxCount,
+            })),
+        );
+      case 'command.purge-expired-sessions':
+        return run(
+          deps.purgeExpiredSessionsUseCase().map((result) => ({
+            purgedSessionIds: result.purgedSessionIds,
+            totalPurged: result.totalPurged,
+          })),
+        );
+      case 'command.purge-all-sessions':
+        return run(
+          deps.sessionStore
+            .purgeAll()
+            .map((result) => ({
+              purgedSessionIds: result.purgedSessionIds,
+              totalPurged: result.purgedSessionIds.length,
+            }))
+            .mapErr(toApplicationError),
+        );
       case 'query.get-session-history':
         return run(deps.getSessionHistoryQuery({}));
       case 'query.get-session-history-detail':

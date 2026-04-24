@@ -26,7 +26,7 @@ export default defineConfig({
     // 対象タブへの overlay 注入は廃止したので content_scripts / sidePanel /
     // scripting permission は不要。activeTab は main window からの
     // chrome.tabs.query (active tab 解決) で継続使用する。
-    permissions: ['tabCapture', 'storage', 'offscreen', 'activeTab'],
+    permissions: ['tabCapture', 'storage', 'offscreen', 'activeTab', 'alarms'],
     host_permissions: [relayHostPermission],
     action: {
       default_title: 'perapera',

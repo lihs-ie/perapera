@@ -25,6 +25,16 @@ export type ExportBundle = Readonly<{
   stream: TranscriptStream;
 }>;
 
+/**
+ * 履歴保持ポリシー適用結果 (DD-239, Issue #124)。
+ *
+ * `purgeOlderThan` / `purgeBeyondCount` が削除した sessionId 一覧を返す。
+ * 呼び出し側は件数をログへ記録したり UI に件数表示できる。
+ */
+export type PurgeResult = Readonly<{
+  purgedSessionIds: readonly string[];
+}>;
+
 export type SessionStore = Readonly<{
   saveSession: (session: SourceSession) => ResultAsync<void, DomainError>;
   appendTranscript: (
@@ -38,4 +48,18 @@ export type SessionStore = Readonly<{
   loadExportBundle: (
     sessionIdentifier: SessionIdentifier,
   ) => ResultAsync<ExportBundle, DomainError>;
+  /**
+   * `startedAt` が `beforeIso` より古い session を削除する (DD-239)。
+   * cascade で `transcript_segments` / `translation_segments` / `export_records` も削除。
+   */
+  purgeOlderThan: (beforeIso: string) => ResultAsync<PurgeResult, DomainError>;
+  /**
+   * 件数が `maxCount` を超えた分だけ古い順に削除する (DD-239)。
+   * cascade で `transcript_segments` / `translation_segments` / `export_records` も削除。
+   */
+  purgeBeyondCount: (maxCount: number) => ResultAsync<PurgeResult, DomainError>;
+  /**
+   * 全 session と子レコードを削除する ("今すぐクリア" 用途、DD-239 / Issue #124)。
+   */
+  purgeAll: () => ResultAsync<PurgeResult, DomainError>;
 }>;
