@@ -11,14 +11,20 @@ import { invariantViolationError, type DomainError } from '../../domain/shared/e
  * Deepgram adapter が使う最小の WebSocket contract。
  * - `ws` パッケージの `WebSocket` はこの interface を自然に満たす
  * - test では EventEmitter ベースの fake が直接渡せる
+ *
+ * `ws` の `close` event は `(code: number, reason: Buffer)` を渡してくる。
+ * `error` event は `(err: Error)` を渡す。診断ログのため両方の引数を受け取れる
+ * shape にしている (test fake は引数を渡さなくてもよい)。
  */
 export type DeepgramRawData = Buffer | ArrayBuffer | Buffer[];
 
-export type DeepgramSocketEvent = 'message' | 'close' | 'error';
+export type DeepgramSocketEvent = 'message' | 'close' | 'error' | 'open' | 'unexpected-response';
 export type DeepgramSocketListener =
   | ((data: DeepgramRawData) => void)
   | (() => void)
-  | ((err: Error) => void);
+  | ((err: Error) => void)
+  | ((code: number, reason: Buffer) => void)
+  | ((req: unknown, res: unknown) => void);
 
 export type MinimalDeepgramSocket = Readonly<{
   on: (event: DeepgramSocketEvent, listener: DeepgramSocketListener) => unknown;
@@ -43,6 +49,22 @@ export type DeepgramWebSocketFactory = (
   headers: Record<string, string>,
 ) => MinimalDeepgramSocket;
 
+/**
+ * 診断ログハンドラ (DI、test では no-op)。production は pino logger を渡す。
+ * fatal な失敗 (auth fail、format mismatch 等) を WARN/ERROR で記録するため。
+ */
+export type DeepgramLogger = Readonly<{
+  info: (msg: string, fields?: Record<string, unknown>) => void;
+  warn: (msg: string, fields?: Record<string, unknown>) => void;
+  error: (msg: string, fields?: Record<string, unknown>) => void;
+}>;
+
+const NOOP_LOGGER: DeepgramLogger = {
+  info: () => undefined,
+  warn: () => undefined,
+  error: () => undefined,
+};
+
 export type DeepgramSttProviderConfig = Readonly<{
   apiKey: string;
   /** 既定 `wss://api.deepgram.com/v1/listen`。テストで上書き可能 */
@@ -54,6 +76,8 @@ export type DeepgramSttProviderConfig = Readonly<{
   segmentIdFactory?: () => string;
   /** ISO8601 now (test で deterministic に) */
   clock?: () => string;
+  /** 診断ログ (close code / error reason の捕捉)。未指定は no-op (既存テスト互換) */
+  logger?: DeepgramLogger;
 }>;
 
 type DeepgramMessageAlternative = {
@@ -143,6 +167,7 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
   const model = config.model ?? 'nova-2';
   const segmentIdFactory = config.segmentIdFactory ?? (() => ulid());
   const clock = config.clock ?? (() => new Date().toISOString());
+  const logger = config.logger ?? NOOP_LOGGER;
 
   return {
     openStream: (streamConfig) => {
@@ -169,12 +194,26 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
       }
       const url = `${baseUrl}?${qs.toString()}`;
 
+      // 診断: URL の query string は秘密ではないが API key は header で送るため
+      // ログには含まれない。auth fail / format mismatch を切り分けるため
+      // 接続パラメータを INFO で残す。
+      logger.info('deepgram open: connecting', {
+        url: baseUrl,
+        model,
+        sourceLanguage: streamConfig.sourceLanguage,
+        autoDetectLanguage: streamConfig.autoDetectLanguage,
+        endpointing: streamConfig.endpointing,
+      });
+
       let socket: MinimalDeepgramSocket;
       try {
         socket = config.webSocketFactory(url, {
           Authorization: `Token ${config.apiKey}`,
         });
       } catch (cause) {
+        logger.error('deepgram open: webSocketFactory threw', {
+          err: cause instanceof Error ? cause.message : String(cause),
+        });
         return errAsync<SttStreamHandle, DomainError>(
           invariantViolationError({
             invariant: 'deepgram-ws-open-failed',
@@ -188,6 +227,7 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
       const eventQueue: TranscriptEvent[] = [];
       const waiters: ((event: IteratorResult<TranscriptEvent>) => void)[] = [];
       let closed = false;
+      let frameCount = 0;
 
       const pushEvent = (event: TranscriptEvent): void => {
         const waiter = waiters.shift();
@@ -252,8 +292,58 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
         });
       });
 
-      socket.on('close', endStream);
-      socket.on('error', endStream);
+      // ws ライブラリの open / close / error / unexpected-response を診断ログ
+      // へつなぐ。これがないと Deepgram が「なぜ閉じたか」が永久に不明になる。
+      // 各 listener は DeepgramSocketListener union のいずれかのメンバーに
+      // 一致するため cast 不要で `socket.on` に直接渡せる。
+      const onOpen: () => void = () => {
+        logger.info('deepgram open: WebSocket established', {
+          framesQueued: eventQueue.length,
+        });
+      };
+      const onClose: (code: number, reason: Buffer) => void = (code, reason) => {
+        const reasonStr = Buffer.isBuffer(reason) ? reason.toString('utf8') : '';
+        // 1000 = normal、それ以外は異常終了。Deepgram 固有 code (4000-4999) は
+        // auth/billing/format mismatch などを示すので必ず WARN/ERROR。
+        const fields = {
+          code,
+          reason: reasonStr,
+          framesSent: frameCount,
+          sourceLanguage: streamConfig.sourceLanguage,
+          autoDetectLanguage: streamConfig.autoDetectLanguage,
+        };
+        if (code === 1000) {
+          logger.info('deepgram close: normal closure', fields);
+        } else if (code >= 4000) {
+          logger.error('deepgram close: provider-specific error code', fields);
+        } else {
+          logger.warn('deepgram close: abnormal closure', fields);
+        }
+        endStream();
+      };
+      const onError: (err: Error) => void = (cause) => {
+        logger.error('deepgram error', {
+          err: cause instanceof Error ? cause.message : String(cause),
+          framesSent: frameCount,
+        });
+        endStream();
+      };
+      const onUnexpectedResponse: (req: unknown, res: unknown) => void = (_req, res) => {
+        // ws の unexpected-response: HTTP upgrade が拒否された (status>=400)。
+        // auth fail (401) / quota (403) / bad request (400) などをここで捕捉する。
+        const statusCode =
+          typeof res === 'object' && res !== null && 'statusCode' in res
+            ? Reflect.get(res, 'statusCode')
+            : 'unknown';
+        logger.error('deepgram open: HTTP upgrade rejected', {
+          statusCode,
+        });
+      };
+
+      socket.on('open', onOpen);
+      socket.on('close', onClose);
+      socket.on('error', onError);
+      socket.on('unexpected-response', onUnexpectedResponse);
 
       const handle: SttStreamHandle = {
         sendFrame: (params): Result<void, DomainError> => {
@@ -268,8 +358,19 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
           try {
             const binary = Buffer.from(params.audioBase64, 'base64');
             socket.send(binary, { binary: true });
+            frameCount += 1;
+            if (frameCount === 1) {
+              logger.info('deepgram sendFrame: first frame', {
+                bytes: binary.length,
+                chunkId: params.chunkId,
+              });
+            }
             return ok(undefined);
           } catch (cause) {
+            logger.warn('deepgram sendFrame: socket.send threw', {
+              err: cause instanceof Error ? cause.message : String(cause),
+              framesSent: frameCount,
+            });
             return err(
               invariantViolationError({
                 invariant: 'deepgram-send-failed',
