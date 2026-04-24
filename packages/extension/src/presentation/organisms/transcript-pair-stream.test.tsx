@@ -13,6 +13,8 @@ const buildLine = (overrides: Partial<OverlayLine> = {}): OverlayLine => ({
   translatedText: overrides.translatedText ?? 'こんにちは',
   targetLanguage: overrides.targetLanguage ?? 'ja-JP',
   isFinal: overrides.isFinal ?? true,
+  precedingSegmentIdentifier: overrides.precedingSegmentIdentifier ?? null,
+  hasTranslationContext: overrides.hasTranslationContext ?? false,
 });
 
 describe('TranscriptPairStream organism', () => {

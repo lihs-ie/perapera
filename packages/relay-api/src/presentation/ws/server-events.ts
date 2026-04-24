@@ -99,6 +99,16 @@ export const buildTranscriptPartial = (params: {
   } satisfies TranscriptPartialPayload,
 });
 
+/**
+ * IMPL-449: transcript.final payload v0.2.0。
+ *
+ * `endpointingTrigger` はプロバイダが final と判定した理由
+ * (silence / punctuation / max_duration / provider_default)。
+ * `precedingSegmentId` はストリーム内で直前に確定した segmentId (ストリーム
+ * 先頭では null)。両フィールドとも v0.1 クライアントは無視してよい (additive)。
+ */
+export type EndpointingTrigger = 'silence' | 'punctuation' | 'max_duration' | 'provider_default';
+
 export type TranscriptFinalPayload = Readonly<{
   segmentId: string;
   text: string;
@@ -106,6 +116,8 @@ export type TranscriptFinalPayload = Readonly<{
   startOffsetMs: number;
   endOffsetMs: number;
   finalizedAt: string;
+  endpointingTrigger: EndpointingTrigger;
+  precedingSegmentId: string | null;
 }>;
 
 export const buildTranscriptFinal = (params: {
@@ -118,6 +130,8 @@ export const buildTranscriptFinal = (params: {
   startOffsetMs: number;
   endOffsetMs: number;
   finalizedAt: string;
+  endpointingTrigger?: EndpointingTrigger;
+  precedingSegmentId?: string | null;
 }): ServerEventEnvelope => ({
   eventType: 'transcript.final',
   sessionId: params.sessionId,
@@ -130,9 +144,17 @@ export const buildTranscriptFinal = (params: {
     startOffsetMs: params.startOffsetMs,
     endOffsetMs: params.endOffsetMs,
     finalizedAt: params.finalizedAt,
+    endpointingTrigger: params.endpointingTrigger ?? 'provider_default',
+    precedingSegmentId: params.precedingSegmentId ?? null,
   } satisfies TranscriptFinalPayload,
 });
 
+/**
+ * IMPL-449: translation.final payload v0.2.0。
+ *
+ * `contextSegmentIds` は翻訳プロバイダに実際に渡せた precedingContext の
+ * segmentId。NMT 系プロバイダ (context 非対応) や未設定の場合は空配列。
+ */
 export type TranslationFinalPayload = Readonly<{
   translationId: string;
   sourceSegmentId: string;
@@ -140,6 +162,7 @@ export type TranslationFinalPayload = Readonly<{
   sourceLanguage: string | null;
   targetLanguage: string;
   latencyMs: number;
+  contextSegmentIds: readonly string[];
 }>;
 
 export const buildTranslationFinal = (params: {
@@ -152,6 +175,7 @@ export const buildTranslationFinal = (params: {
   sourceLanguage: string | null;
   targetLanguage: string;
   latencyMs: number;
+  contextSegmentIds?: readonly string[];
 }): ServerEventEnvelope => ({
   eventType: 'translation.final',
   sessionId: params.sessionId,
@@ -164,6 +188,7 @@ export const buildTranslationFinal = (params: {
     sourceLanguage: params.sourceLanguage,
     targetLanguage: params.targetLanguage,
     latencyMs: params.latencyMs,
+    contextSegmentIds: params.contextSegmentIds ?? [],
   } satisfies TranslationFinalPayload,
 });
 

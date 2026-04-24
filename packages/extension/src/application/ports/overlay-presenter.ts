@@ -10,6 +10,13 @@ import { type SegmentIdentifier } from '../../domain/transcript/segment-identifi
  * `originalText` / `translatedText` はそれぞれ `null` を許容し、
  * `OverlaySettings.showOriginalText` / `showTranslatedText` 設定に応じて
  * アプリケーション層で事前フィルタされる。
+ *
+ * IMPL-539 (v0.3):
+ * - `precedingSegmentIdentifier`: 同一発話の直前 final の segmentId (時系列で
+ *   隣接する final がある場合)。UI 側は dim 化 / fade で「続き」を視覚化する。
+ *   partial や先頭 final では `null`。
+ * - `hasTranslationContext`: 翻訳生成時に `precedingContext` を実際に参照した
+ *   場合 `true`。UI で「文脈参照あり」のヒントアイコンを出すために使う。
  */
 export type OverlayLine = Readonly<{
   segmentIdentifier: SegmentIdentifier;
@@ -17,6 +24,8 @@ export type OverlayLine = Readonly<{
   translatedText: string | null;
   targetLanguage: string | null;
   isFinal: boolean;
+  precedingSegmentIdentifier: SegmentIdentifier | null;
+  hasTranslationContext: boolean;
 }>;
 
 /**

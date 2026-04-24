@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { type SourceSessionRepository } from '../../domain/repositories/source-session-repository';
 import { type TranscriptStreamRepository } from '../../domain/repositories/transcript-stream-repository';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
+import { DEFAULT_ENDPOINTING_POLICY } from '../../domain/session/endpointing-policy';
 import { createLanguagePair } from '../../domain/session/language-pair';
+import { DEFAULT_TRANSLATION_CONTEXT_WINDOW } from '../../domain/session/translation-context-window';
 import { createSourceSession, type SourceSession } from '../../domain/session/source-session';
 import { notFoundError, type DomainError } from '../../domain/shared/errors';
 import { createTimestampRange } from '../../domain/transcript/timestamp-range';
@@ -88,6 +90,10 @@ const buildDependencies = (
     saveDefaultLanguagePair: vi.fn(() => okAsync(undefined)),
     getDefaultOverlaySettings: vi.fn(() => okAsync(overlaySettings)),
     saveDefaultOverlaySettings: vi.fn(() => okAsync(undefined)),
+    getDefaultEndpointingPolicy: vi.fn(() => okAsync(DEFAULT_ENDPOINTING_POLICY)),
+    saveDefaultEndpointingPolicy: vi.fn(() => okAsync(undefined)),
+    getDefaultTranslationContextWindow: vi.fn(() => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW)),
+    saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
@@ -195,6 +201,12 @@ describe('createGetSessionMonitorStateQuery (IMPL-211, DD-302)', () => {
           ),
         ),
         saveDefaultOverlaySettings: vi.fn(() => okAsync(undefined)),
+        getDefaultEndpointingPolicy: vi.fn(() => okAsync(DEFAULT_ENDPOINTING_POLICY)),
+        saveDefaultEndpointingPolicy: vi.fn(() => okAsync(undefined)),
+        getDefaultTranslationContextWindow: vi.fn(() =>
+          okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW),
+        ),
+        saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
         getRelayConnectionOverride: vi.fn(() => okAsync(null)),
         saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
         clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),

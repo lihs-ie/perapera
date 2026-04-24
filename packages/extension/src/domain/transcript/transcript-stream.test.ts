@@ -6,6 +6,7 @@ import {
   finalizeSegment,
   getSegment,
   getTranslation,
+  recentFinalTail,
 } from './transcript-stream';
 import { createTimestampRange } from './timestamp-range';
 
@@ -250,6 +251,73 @@ describe('TranscriptStream aggregate', () => {
         const translation = getTranslation(result.value, SEGMENT_A);
         expect(translation?.status === 'completed' && translation.text).toBe('修正済');
       }
+    });
+  });
+
+  describe('recentFinalTail (DD-211 invariant 4)', () => {
+    const SEGMENT_IDS = [
+      '01HZX8Y2R8M7D3Q2P4T5V6W7X1',
+      '01HZX8Y2R8M7D3Q2P4T5V6W7X2',
+      '01HZX8Y2R8M7D3Q2P4T5V6W7X3',
+      '01HZX8Y2R8M7D3Q2P4T5V6W7X4',
+      '01HZX8Y2R8M7D3Q2P4T5V6W7X5',
+    ];
+
+    const streamWithFinals = (count: number) => {
+      let stream = newStream();
+      for (let i = 0; i < count; i += 1) {
+        stream = finalizeSegment(stream, {
+          segmentIdentifier: SEGMENT_IDS[i]!,
+          text: `final ${i + 1}`,
+          timeRange: createTimestampRange({
+            startMs: i * 1000,
+            endMs: i * 1000 + 500,
+          })._unsafeUnwrap(),
+        })._unsafeUnwrap();
+      }
+      return stream;
+    };
+
+    it('returns an empty array when maxSegments=0', () => {
+      const stream = streamWithFinals(3);
+      expect(recentFinalTail(stream, 0)).toEqual([]);
+    });
+
+    it('returns all finals when stream has fewer than maxSegments', () => {
+      const stream = streamWithFinals(2);
+      const tail = recentFinalTail(stream, 5);
+      expect(tail.length).toBe(2);
+      expect(tail.map((segment) => segment.text)).toEqual(['final 1', 'final 2']);
+    });
+
+    it('returns the last maxSegments finals in insertion order', () => {
+      const stream = streamWithFinals(5);
+      const tail = recentFinalTail(stream, 3);
+      expect(tail.length).toBe(3);
+      expect(tail.map((segment) => segment.text)).toEqual(['final 3', 'final 4', 'final 5']);
+    });
+
+    it('excludes non-final (partial) segments', () => {
+      let stream = newStream();
+      stream = finalizeSegment(stream, {
+        segmentIdentifier: SEGMENT_IDS[0]!,
+        text: 'one',
+        timeRange,
+      })._unsafeUnwrap();
+      stream = appendPartialTranscriptSegment(stream, {
+        segmentIdentifier: SEGMENT_IDS[1]!,
+        revision: 1,
+        text: 'partial-only',
+        timeRange,
+      })._unsafeUnwrap();
+      const tail = recentFinalTail(stream, 5);
+      expect(tail.length).toBe(1);
+      expect(tail[0]!.text).toBe('one');
+    });
+
+    it('treats negative maxSegments as empty', () => {
+      const stream = streamWithFinals(3);
+      expect(recentFinalTail(stream, -1)).toEqual([]);
     });
   });
 });

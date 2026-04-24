@@ -1,6 +1,8 @@
 import { type ResultAsync } from 'neverthrow';
 import { type OverlaySettings } from '../../domain/profile/overlay-settings';
+import { type EndpointingPolicy } from '../../domain/session/endpointing-policy';
 import { type LanguagePair } from '../../domain/session/language-pair';
+import { type TranslationContextWindow } from '../../domain/session/translation-context-window';
 import { type DomainError } from '../../domain/shared/errors';
 
 /**
@@ -38,6 +40,12 @@ export type SettingsStore = Readonly<{
   saveDefaultLanguagePair: (pair: LanguagePair) => ResultAsync<void, DomainError>;
   getDefaultOverlaySettings: () => ResultAsync<OverlaySettings, DomainError>;
   saveDefaultOverlaySettings: (settings: OverlaySettings) => ResultAsync<void, DomainError>;
+  getDefaultEndpointingPolicy: () => ResultAsync<EndpointingPolicy, DomainError>;
+  saveDefaultEndpointingPolicy: (policy: EndpointingPolicy) => ResultAsync<void, DomainError>;
+  getDefaultTranslationContextWindow: () => ResultAsync<TranslationContextWindow, DomainError>;
+  saveDefaultTranslationContextWindow: (
+    window: TranslationContextWindow,
+  ) => ResultAsync<void, DomainError>;
   getRelayConnectionOverride: () => ResultAsync<RelayConnectionOverride | null, DomainError>;
   saveRelayConnectionOverride: (
     override: RelayConnectionOverride,

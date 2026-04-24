@@ -12,6 +12,37 @@ const overlayTargetSchema = z.object({
 });
 
 /**
+ * エンドポインティング方針 (REQ-NF-018) と翻訳文脈窓 (REQ-NF-019) の入力
+ * サブスキーマ。いずれの個別フィールドも省略可能で、未指定ならプロファイル
+ * 既定または VO 既定値を適用する。
+ */
+const endpointingPolicyInputSchema = z
+  .object({
+    silenceThresholdMs: z.number().int().min(200).max(1200).optional(),
+    punctuationAware: z.boolean().optional(),
+    minUtteranceMs: z.number().int().min(100).max(3000).optional(),
+  })
+  .optional();
+
+const translationContextWindowInputSchema = z
+  .object({
+    maxSegments: z.number().int().min(0).max(5).optional(),
+    includeTranslatedText: z.boolean().optional(),
+  })
+  .optional();
+
+export type EndpointingPolicyInput = Readonly<{
+  silenceThresholdMs?: number | undefined;
+  punctuationAware?: boolean | undefined;
+  minUtteranceMs?: number | undefined;
+}>;
+
+export type TranslationContextWindowInput = Readonly<{
+  maxSegments?: number | undefined;
+  includeTranslatedText?: boolean | undefined;
+}>;
+
+/**
  * セッション開始入力 DTO (DTO-I-301, DD-301)。
  *
  * Popup / Side Panel の「ソース追加」操作から UseCase 層に渡される境界型。
@@ -30,6 +61,8 @@ export type StartSourceSessionInput = {
     tabId?: number | undefined;
     pageId?: string | undefined;
   };
+  endpointing?: EndpointingPolicyInput | undefined;
+  translationContext?: TranslationContextWindowInput | undefined;
 };
 
 const startSourceSessionInputSchema = z.object({
@@ -39,6 +72,8 @@ const startSourceSessionInputSchema = z.object({
   autoDetectLanguage: z.boolean(),
   targetLanguage: bcp47Schema,
   overlayTarget: overlayTargetSchema,
+  endpointing: endpointingPolicyInputSchema,
+  translationContext: translationContextWindowInputSchema,
 });
 
 export const parseStartSourceSessionInput = (

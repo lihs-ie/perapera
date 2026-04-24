@@ -16,14 +16,15 @@ import {
  * 複数 adapter 間では別の connection を張るのが既定 (test helper 越しに
  * 共有させる場合のみ `IDBPDatabase` を直接受け取る factory を用意)。
  *
- * MVP の DB version は `1` 固定。設計書 (DB-001〜003) の補助 index
- * (`idx_sessions_state` など) は現段階では追加しておらず、全スキャン +
- * フィルタで active 検出する (active session 件数は最大 3 前提)。
- * 運用で顕在化した場合は version bump で追加する。
+ * バージョン履歴:
+ * - v1: 初版。4 object store + `by-sessionId` index (DB-001〜004)
+ * - v2: IMPL-318。`sessions.endpointing*` / `sessions.translationContext*`
+ *       カラムを追加。既存レコードは upgrade hook で null を埋める
+ *       (`sessionFromRecord` が読み込み時に VO 既定値を適用)。
  */
 
 export const INDEXED_DB_NAME = 'perapera';
-export const INDEXED_DB_VERSION = 1;
+export const INDEXED_DB_VERSION = 2;
 
 export const SESSIONS_STORE = 'sessions';
 export const TRANSCRIPT_STORE = 'transcript_segments';
@@ -52,9 +53,32 @@ export interface PeraperaSchema extends DBSchema {
   };
 }
 
+/**
+ * IMPL-318 v1 → v2 マイグレーション補助。cursor.value は TS 型としては v2 の
+ * `SessionRow` と宣言されるが、実データは v1 のため endpointing/translation 系
+ * カラムが欠落している可能性がある。必要フィールドを null で埋めて v2 形式に
+ * 正規化する。
+ */
+const fillV2Defaults = (row: SessionRow): SessionRow => ({
+  sessionId: row.sessionId,
+  sourceId: row.sourceId,
+  sourceType: row.sourceType,
+  state: row.state,
+  sourceLanguage: row.sourceLanguage,
+  targetLanguage: row.targetLanguage,
+  startedAt: row.startedAt,
+  stoppedAt: row.stoppedAt,
+  degradedReason: row.degradedReason,
+  endpointingSilenceMs: row.endpointingSilenceMs ?? null,
+  endpointingPunctuationAware: row.endpointingPunctuationAware ?? null,
+  endpointingMinUtteranceMs: row.endpointingMinUtteranceMs ?? null,
+  translationContextMaxSegments: row.translationContextMaxSegments ?? null,
+  translationContextIncludeTranslatedText: row.translationContextIncludeTranslatedText ?? null,
+});
+
 export const openPeraperaDb = (databaseName: string): Promise<IDBPDatabase<PeraperaSchema>> =>
   openDB<PeraperaSchema>(databaseName, INDEXED_DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion, _newVersion, transaction) {
       if (!db.objectStoreNames.contains(SESSIONS_STORE)) {
         db.createObjectStore(SESSIONS_STORE, { keyPath: 'sessionId' });
       }
@@ -69,6 +93,18 @@ export const openPeraperaDb = (databaseName: string): Promise<IDBPDatabase<Perap
       if (!db.objectStoreNames.contains(EXPORT_STORE)) {
         const store = db.createObjectStore(EXPORT_STORE, { keyPath: 'exportId' });
         store.createIndex('by-sessionId', 'sessionId');
+      }
+
+      if (oldVersion < 2 && oldVersion !== 0) {
+        // IMPL-318: v1 → v2。sessions の新規カラムを null で埋める。
+        // `sessionFromRecord` が null を検出した場合は DEFAULT VO で補完するため
+        // データ損失なく読み込める。
+        const store = transaction.objectStore(SESSIONS_STORE);
+        void store.openCursor().then(function handleCursor(cursor): Promise<void> | void {
+          if (cursor === null) return;
+          const upgraded: SessionRow = fillV2Defaults(cursor.value);
+          return cursor.update(upgraded).then(() => cursor.continue().then(handleCursor));
+        });
       }
     },
   });

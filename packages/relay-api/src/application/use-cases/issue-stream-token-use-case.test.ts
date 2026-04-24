@@ -91,6 +91,16 @@ describe('createIssueStreamTokenUseCase (IMPL-401, stateless)', () => {
       overlayTarget: { kind: 'tab', tabId: 42 },
       client: { extensionVersion: '0.1.0', protocolVersion: '1.0' },
       createdAt: CREATED_AT,
+      endpointing: {
+        silenceThresholdMs: 600,
+        punctuationAware: true,
+        minUtteranceMs: 500,
+      },
+      translationContext: {
+        maxSegments: 3,
+        includeTranslatedText: true,
+        holdWindowMs: 0,
+      },
     });
   });
 

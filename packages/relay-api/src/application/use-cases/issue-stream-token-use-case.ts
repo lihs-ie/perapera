@@ -72,6 +72,16 @@ const toSessionClaims = (session: RelaySession): Readonly<Record<string, unknown
   overlayTarget: session.overlayTarget,
   client: session.client,
   createdAt: session.createdAt,
+  endpointing: {
+    silenceThresholdMs: session.endpointing.silenceThresholdMs,
+    punctuationAware: session.endpointing.punctuationAware,
+    minUtteranceMs: session.endpointing.minUtteranceMs,
+  },
+  translationContext: {
+    maxSegments: session.translationContext.maxSegments,
+    includeTranslatedText: session.translationContext.includeTranslatedText,
+    holdWindowMs: session.translationContext.holdWindowMs,
+  },
 });
 
 export const createIssueStreamTokenUseCase = (
@@ -99,6 +109,8 @@ export const createIssueStreamTokenUseCase = (
         client: input.client,
         createdAt,
         expiresAt,
+        endpointing: input.endpointing,
+        translationContext: input.translationContext,
       }).asyncAndThen((session) =>
         deps.jwtSigner
           .sign({

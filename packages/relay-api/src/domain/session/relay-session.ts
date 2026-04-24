@@ -6,9 +6,19 @@ import {
   validationError,
   type DomainError,
 } from '../shared/errors';
+import {
+  DEFAULT_ENDPOINTING_POLICY,
+  mergeEndpointingPolicy,
+  type EndpointingPolicy,
+} from './endpointing-policy';
 import { parseSessionIdentifier, type SessionIdentifier } from './session-identifier';
 import { parseStreamTokenIdentifier, type StreamTokenIdentifier } from './stream-token-identifier';
 import { type RelaySessionState } from './relay-session-state';
+import {
+  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+  mergeTranslationContextWindow,
+  type TranslationContextWindow,
+} from './translation-context-window';
 
 /**
  * `POST /sessions` の入力から生成される Relay 側の Session 集約。
@@ -48,6 +58,8 @@ export type RelaySession = Readonly<{
   client: RelaySessionClient;
   createdAt: string;
   expiresAt: string;
+  endpointing: EndpointingPolicy;
+  translationContext: TranslationContextWindow;
 }>;
 
 export type CreateRelaySessionParams = {
@@ -62,6 +74,20 @@ export type CreateRelaySessionParams = {
   client: { extensionVersion: string; protocolVersion: string };
   createdAt: string;
   expiresAt: string;
+  endpointing?:
+    | {
+        silenceThresholdMs?: number | undefined;
+        punctuationAware?: boolean | undefined;
+        minUtteranceMs?: number | undefined;
+      }
+    | undefined;
+  translationContext?:
+    | {
+        maxSegments?: number | undefined;
+        includeTranslatedText?: boolean | undefined;
+        holdWindowMs?: number | undefined;
+      }
+    | undefined;
 };
 
 const overlayTargetTabSchema = z.object({
@@ -163,23 +189,33 @@ export const createRelaySession = (
                 }),
               );
             }
-            return ok<RelaySession, DomainError>({
-              sessionIdentifier,
-              streamTokenIdentifier,
-              state: 'created',
-              sourceType: sourceTypeResult.data,
-              displayName: params.displayName,
-              sourceLanguage: params.sourceLanguage,
-              autoDetectLanguage: params.autoDetectLanguage,
-              targetLanguage: targetLangResult.data,
-              overlayTarget,
-              client: {
-                extensionVersion: params.client.extensionVersion,
-                protocolVersion: params.client.protocolVersion,
-              },
-              createdAt,
-              expiresAt,
-            });
+            return mergeEndpointingPolicy(DEFAULT_ENDPOINTING_POLICY, params.endpointing).andThen(
+              (endpointing) =>
+                mergeTranslationContextWindow(
+                  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+                  params.translationContext,
+                ).map(
+                  (translationContext): RelaySession => ({
+                    sessionIdentifier,
+                    streamTokenIdentifier,
+                    state: 'created',
+                    sourceType: sourceTypeResult.data,
+                    displayName: params.displayName,
+                    sourceLanguage: params.sourceLanguage,
+                    autoDetectLanguage: params.autoDetectLanguage,
+                    targetLanguage: targetLangResult.data,
+                    overlayTarget,
+                    client: {
+                      extensionVersion: params.client.extensionVersion,
+                      protocolVersion: params.client.protocolVersion,
+                    },
+                    createdAt,
+                    expiresAt,
+                    endpointing,
+                    translationContext,
+                  }),
+                ),
+            );
           }),
         ),
       );

@@ -1,7 +1,9 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it } from 'vitest';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
+import { DEFAULT_ENDPOINTING_POLICY } from '../../domain/session/endpointing-policy';
 import { createLanguagePair, type LanguagePair } from '../../domain/session/language-pair';
+import { DEFAULT_TRANSLATION_CONTEXT_WINDOW } from '../../domain/session/translation-context-window';
 import { notFoundError, type DomainError } from '../../domain/shared/errors';
 import { type SettingsStore } from './settings-store';
 
@@ -26,6 +28,10 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getDefaultEndpointingPolicy: () => okAsync(DEFAULT_ENDPOINTING_POLICY),
+        saveDefaultEndpointingPolicy: () => okAsync(undefined),
+        getDefaultTranslationContextWindow: () => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW),
+        saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),
@@ -45,6 +51,10 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getDefaultEndpointingPolicy: () => okAsync(DEFAULT_ENDPOINTING_POLICY),
+        saveDefaultEndpointingPolicy: () => okAsync(undefined),
+        getDefaultTranslationContextWindow: () => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW),
+        saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),
@@ -63,6 +73,10 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getDefaultEndpointingPolicy: () => okAsync(DEFAULT_ENDPOINTING_POLICY),
+        saveDefaultEndpointingPolicy: () => okAsync(undefined),
+        getDefaultTranslationContextWindow: () => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW),
+        saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),
@@ -80,6 +94,10 @@ describe('SettingsStore (DD-107)', () => {
         saveDefaultLanguagePair: () => okAsync(undefined),
         getDefaultOverlaySettings: () => okAsync(buildOverlaySettings()),
         saveDefaultOverlaySettings: () => okAsync(undefined),
+        getDefaultEndpointingPolicy: () => okAsync(DEFAULT_ENDPOINTING_POLICY),
+        saveDefaultEndpointingPolicy: () => okAsync(undefined),
+        getDefaultTranslationContextWindow: () => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW),
+        saveDefaultTranslationContextWindow: () => okAsync(undefined),
         getRelayConnectionOverride: () => okAsync(null),
         saveRelayConnectionOverride: () => okAsync(undefined),
         clearRelayConnectionOverride: () => okAsync(undefined),

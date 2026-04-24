@@ -18,7 +18,15 @@ const translationPayloadSchema = z.object({
   targetLanguage: bcp47Schema,
   text: z.string(),
   status: z.enum(['completed', 'failed']),
+  contextSegmentIds: z.array(z.string().min(1)).optional(),
 });
+
+const endpointingTriggerSchema = z.enum([
+  'silence',
+  'punctuation',
+  'max_duration',
+  'provider_default',
+]);
 
 /**
  * 確定字幕処理入力 DTO (DTO-I-305, DD-305)。
@@ -43,8 +51,11 @@ export type HandleTranscriptFinalInput = {
         targetLanguage: string;
         text: string;
         status: 'completed' | 'failed';
+        contextSegmentIds?: readonly string[] | undefined;
       }
     | undefined;
+  endpointingTrigger?: 'silence' | 'punctuation' | 'max_duration' | 'provider_default' | undefined;
+  precedingSegmentId?: string | null | undefined;
 };
 
 // NOTE: `text` は空文字列許容。`session-command-service` が
@@ -58,6 +69,8 @@ const handleTranscriptFinalInputSchema = z.object({
   text: z.string(),
   timeRange: timeRangeSchema,
   translation: translationPayloadSchema.optional(),
+  endpointingTrigger: endpointingTriggerSchema.optional(),
+  precedingSegmentId: z.string().min(1).nullable().optional(),
 });
 
 export const parseHandleTranscriptFinalInput = (

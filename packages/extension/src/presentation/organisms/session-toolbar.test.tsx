@@ -23,6 +23,8 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
   getDefaultSettings: vi.fn(),
   saveDefaultLanguagePair: vi.fn(),
   saveDefaultOverlaySettings: vi.fn(),
+  saveDefaultEndpointingPolicy: vi.fn(),
+  saveDefaultTranslationContextWindow: vi.fn(),
   saveRelayConnectionOverride: vi.fn(),
   clearRelayConnectionOverride: vi.fn(),
   ...overrides,

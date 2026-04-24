@@ -107,6 +107,27 @@ const saveDefaultOverlaySettingsRequestSchema = z.object({
   input: overlaySettingsPayloadSchema,
 });
 
+const endpointingPolicyPayloadSchema = z.object({
+  silenceThresholdMs: z.number().int().min(200).max(1200),
+  punctuationAware: z.boolean(),
+  minUtteranceMs: z.number().int().min(100).max(3000),
+});
+
+const saveDefaultEndpointingPolicyRequestSchema = z.object({
+  type: z.literal('command.save-default-endpointing-policy'),
+  input: endpointingPolicyPayloadSchema,
+});
+
+const translationContextWindowPayloadSchema = z.object({
+  maxSegments: z.number().int().min(0).max(5),
+  includeTranslatedText: z.boolean(),
+});
+
+const saveDefaultTranslationContextWindowRequestSchema = z.object({
+  type: z.literal('command.save-default-translation-context-window'),
+  input: translationContextWindowPayloadSchema,
+});
+
 const relayOverridePayloadSchema = z.object({
   baseUrl: z.string().url(),
   accessToken: z.string().min(16),
@@ -131,6 +152,8 @@ export const backgroundRequestSchema = z.discriminatedUnion('type', [
   getDefaultSettingsRequestSchema,
   saveDefaultLanguagePairRequestSchema,
   saveDefaultOverlaySettingsRequestSchema,
+  saveDefaultEndpointingPolicyRequestSchema,
+  saveDefaultTranslationContextWindowRequestSchema,
   saveRelayConnectionOverrideRequestSchema,
   clearRelayConnectionOverrideRequestSchema,
 ]);

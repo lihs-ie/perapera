@@ -1,9 +1,9 @@
 ---
 title: ユースケース層設計書
-version: '0.1.0'
+version: '0.2.0'
 status: draft
 created: '2026-04-21'
-last_updated: '2026-04-21'
+last_updated: '2026-04-24'
 author: 'Codex'
 ---
 
@@ -98,15 +98,15 @@ graph TD
 
 ### 3.1 ユースケース一覧
 
-| ID     | 名前                           | アクター | 種別    | 入力DTO                        | 出力DTO                         | 関連要件                                                                                                                                 | 関連ドメインサービス                                |
-| ------ | ------------------------------ | -------- | ------- | ------------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| DD-301 | StartSourceSessionUseCase      | 利用者   | Command | `StartSourceSessionInput`      | `StartSourceSessionOutput`      | [REQ-001](../01-requirements/requirements-specification.md#req-001), [REQ-002](../01-requirements/requirements-specification.md#req-002) | `SessionConcurrencyPolicy`, `LanguageRoutingPolicy` |
-| DD-302 | GetSessionMonitorStateQuery    | 利用者   | Query   | `GetSessionMonitorStateInput`  | `SessionMonitorStateOutput`     | [REQ-006](../01-requirements/requirements-specification.md#req-006), [REQ-007](../01-requirements/requirements-specification.md#req-007) | —                                                   |
-| DD-303 | UpdateSourceSettingsUseCase    | 利用者   | Command | `UpdateSourceSettingsInput`    | `UpdateSourceSettingsOutput`    | [REQ-004](../01-requirements/requirements-specification.md#req-004), [REQ-007](../01-requirements/requirements-specification.md#req-007) | `LanguageRoutingPolicy`                             |
-| DD-304 | HandleTranscriptPartialUseCase | システム | Command | `HandleTranscriptPartialInput` | `HandleTranscriptPartialOutput` | [REQ-003](../01-requirements/requirements-specification.md#req-003)                                                                      | `SessionStateTransitionPolicy`                      |
-| DD-305 | HandleTranscriptFinalUseCase   | システム | Command | `HandleTranscriptFinalInput`   | `HandleTranscriptFinalOutput`   | [REQ-003](../01-requirements/requirements-specification.md#req-003), [REQ-005](../01-requirements/requirements-specification.md#req-005) | `ExportAssemblyService`                             |
-| DD-306 | StopSourceSessionUseCase       | 利用者   | Command | `StopSourceSessionInput`       | `StopSourceSessionOutput`       | [REQ-001](../01-requirements/requirements-specification.md#req-001), [REQ-009](../01-requirements/requirements-specification.md#req-009) | `SessionStateTransitionPolicy`                      |
-| DD-307 | ExportSessionResultUseCase     | 利用者   | Command | `ExportSessionResultInput`     | `ExportSessionResultOutput`     | [REQ-008](../01-requirements/requirements-specification.md#req-008)                                                                      | `ExportAssemblyService`                             |
+| ID     | 名前                           | アクター | 種別    | 入力DTO                        | 出力DTO                         | 関連要件                                                                                                                                                                                                            | 関連ドメインサービス                                                             |
+| ------ | ------------------------------ | -------- | ------- | ------------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| DD-301 | StartSourceSessionUseCase      | 利用者   | Command | `StartSourceSessionInput`      | `StartSourceSessionOutput`      | [REQ-001](../01-requirements/requirements-specification.md#req-001), [REQ-002](../01-requirements/requirements-specification.md#req-002)                                                                            | `SessionConcurrencyPolicy`, `LanguageRoutingPolicy`, `EndpointingPolicyResolver` |
+| DD-302 | GetSessionMonitorStateQuery    | 利用者   | Query   | `GetSessionMonitorStateInput`  | `SessionMonitorStateOutput`     | [REQ-006](../01-requirements/requirements-specification.md#req-006), [REQ-007](../01-requirements/requirements-specification.md#req-007)                                                                            | —                                                                                |
+| DD-303 | UpdateSourceSettingsUseCase    | 利用者   | Command | `UpdateSourceSettingsInput`    | `UpdateSourceSettingsOutput`    | [REQ-004](../01-requirements/requirements-specification.md#req-004), [REQ-007](../01-requirements/requirements-specification.md#req-007), [REQ-NF-018](../01-requirements/requirements-specification.md#req-nf-018) | `LanguageRoutingPolicy`, `EndpointingPolicyResolver`                             |
+| DD-304 | HandleTranscriptPartialUseCase | システム | Command | `HandleTranscriptPartialInput` | `HandleTranscriptPartialOutput` | [REQ-003](../01-requirements/requirements-specification.md#req-003)                                                                                                                                                 | `SessionStateTransitionPolicy`                                                   |
+| DD-305 | HandleTranscriptFinalUseCase   | システム | Command | `HandleTranscriptFinalInput`   | `HandleTranscriptFinalOutput`   | [REQ-003](../01-requirements/requirements-specification.md#req-003), [REQ-005](../01-requirements/requirements-specification.md#req-005), [REQ-NF-019](../01-requirements/requirements-specification.md#req-nf-019) | `ExportAssemblyService`                                                          |
+| DD-306 | StopSourceSessionUseCase       | 利用者   | Command | `StopSourceSessionInput`       | `StopSourceSessionOutput`       | [REQ-001](../01-requirements/requirements-specification.md#req-001), [REQ-009](../01-requirements/requirements-specification.md#req-009)                                                                            | `SessionStateTransitionPolicy`                                                   |
+| DD-307 | ExportSessionResultUseCase     | 利用者   | Command | `ExportSessionResultInput`     | `ExportSessionResultOutput`     | [REQ-008](../01-requirements/requirements-specification.md#req-008)                                                                                                                                                 | `ExportAssemblyService`                                                          |
 
 ### 3.2 ユースケース依存関係図
 
@@ -178,15 +178,15 @@ graph TD
 
 ### 5.1 入力DTO一覧
 
-| ID        | 名前                           | 対応UC | フィールド                                                                       | バリデーション                           |
-| --------- | ------------------------------ | ------ | -------------------------------------------------------------------------------- | ---------------------------------------- |
-| DTO-I-301 | `StartSourceSessionInput`      | DD-301 | `sourceType`, `displayName`, `sourceLanguage`, `targetLanguage`, `overlayTarget` | ソース種別、言語コード、表示先整合を検証 |
-| DTO-I-302 | `GetSessionMonitorStateInput`  | DD-302 | `sessionIds?`, `includeOverlayState`                                             | 空配列不可、真偽値検証                   |
-| DTO-I-303 | `UpdateSourceSettingsInput`    | DD-303 | `sessionId`, `sourceLanguage`, `targetLanguage`, `overlaySettings`               | `sessionId` 必須、表示値範囲検証         |
-| DTO-I-304 | `HandleTranscriptPartialInput` | DD-304 | `sessionId`, `segmentId`, `revision`, `text`, `timeRange`                        | `revision >= 1`、文字列長上限            |
-| DTO-I-305 | `HandleTranscriptFinalInput`   | DD-305 | `sessionId`, `segmentId`, `text`, `translation?`, `timeRange`                    | `segmentId` 必須、確定字幕空不可         |
-| DTO-I-306 | `StopSourceSessionInput`       | DD-306 | `sessionId`, `reason?`                                                           | `sessionId` 必須                         |
-| DTO-I-307 | `ExportSessionResultInput`     | DD-307 | `sessionId`, `format`, `includeOriginal`, `includeTranslation`                   | 形式は `txt` / `json`                    |
+| ID        | 名前                           | 対応UC | フィールド                                                                                                              | バリデーション                                                         |
+| --------- | ------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| DTO-I-301 | `StartSourceSessionInput`      | DD-301 | `sourceType`, `displayName`, `sourceLanguage`, `targetLanguage`, `overlayTarget`, `endpointing?`, `translationContext?` | ソース種別、言語コード、表示先整合、endpointing / context の範囲を検証 |
+| DTO-I-302 | `GetSessionMonitorStateInput`  | DD-302 | `sessionIds?`, `includeOverlayState`                                                                                    | 空配列不可、真偽値検証                                                 |
+| DTO-I-303 | `UpdateSourceSettingsInput`    | DD-303 | `sessionId`, `sourceLanguage`, `targetLanguage`, `overlaySettings`, `endpointing?`, `translationContext?`               | `sessionId` 必須、表示値範囲、endpointing / context の範囲を検証       |
+| DTO-I-304 | `HandleTranscriptPartialInput` | DD-304 | `sessionId`, `segmentId`, `revision`, `text`, `timeRange`                                                               | `revision >= 1`、文字列長上限                                          |
+| DTO-I-305 | `HandleTranscriptFinalInput`   | DD-305 | `sessionId`, `segmentId`, `text`, `translation?`, `timeRange`, `endpointingTrigger?`, `precedingSegmentId?`             | `segmentId` 必須、確定字幕空不可、`endpointingTrigger` は許可値のみ    |
+| DTO-I-306 | `StopSourceSessionInput`       | DD-306 | `sessionId`, `reason?`                                                                                                  | `sessionId` 必須                                                       |
+| DTO-I-307 | `ExportSessionResultInput`     | DD-307 | `sessionId`, `format`, `includeOriginal`, `includeTranslation`                                                          | 形式は `txt` / `json`                                                  |
 
 ### 5.2 出力DTO一覧
 
@@ -203,6 +203,17 @@ graph TD
 ### 5.3 DTO型定義（擬似コード）
 
 ```ts
+type EndpointingPolicyInput = {
+  silenceThresholdMs?: number; // 200..1200, 既定 600
+  punctuationAware?: boolean; // 既定 true
+  minUtteranceMs?: number; // 100..3000, 既定 500
+};
+
+type TranslationContextWindowInput = {
+  maxSegments?: number; // 0..5, 既定 3
+  includeTranslatedText?: boolean; // 既定 true
+};
+
 type StartSourceSessionInput = {
   sourceType: 'tab' | 'microphone' | 'desktop';
   displayName: string;
@@ -210,6 +221,8 @@ type StartSourceSessionInput = {
   autoDetectLanguage: boolean;
   targetLanguage: string;
   overlayTarget: { kind: 'tab' | 'extension-monitor'; tabId?: number; pageId?: string };
+  endpointing?: EndpointingPolicyInput;
+  translationContext?: TranslationContextWindowInput;
 };
 
 type HandleTranscriptFinalInput = {
@@ -221,7 +234,10 @@ type HandleTranscriptFinalInput = {
     targetLanguage: string;
     text: string;
     status: 'completed' | 'failed';
+    contextSegmentIds?: string[];
   };
+  endpointingTrigger?: 'silence' | 'punctuation' | 'max_duration' | 'provider_default';
+  precedingSegmentId?: string | null;
 };
 
 type SessionMonitorStateOutput = {
@@ -347,13 +363,13 @@ sequenceDiagram
 
 ### 10.2 DD-305: HandleTranscriptFinalUseCase
 
-| 項目     | 内容                                                                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| ID       | DD-305                                                                                                                                   |
-| 名前     | HandleTranscriptFinalUseCase                                                                                                             |
-| アクター | システム                                                                                                                                 |
-| 種別     | Command                                                                                                                                  |
-| 関連要件 | [REQ-003](../01-requirements/requirements-specification.md#req-003), [REQ-005](../01-requirements/requirements-specification.md#req-005) |
+| 項目     | 内容                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ID       | DD-305                                                                                                                                                                                                              |
+| 名前     | HandleTranscriptFinalUseCase                                                                                                                                                                                        |
+| アクター | システム                                                                                                                                                                                                            |
+| 種別     | Command                                                                                                                                                                                                             |
+| 関連要件 | [REQ-003](../01-requirements/requirements-specification.md#req-003), [REQ-005](../01-requirements/requirements-specification.md#req-005), [REQ-NF-019](../01-requirements/requirements-specification.md#req-nf-019) |
 
 #### 事前条件
 
@@ -364,6 +380,20 @@ sequenceDiagram
 
 - 確定字幕が `TranscriptStream` に記録されること
 - 翻訳があれば表示モデルへ反映されること
+- `precedingSegmentId` が提供されていれば overlay 連結表示のメタ情報として保持されること
+
+#### 処理順序 (v0.2.0)
+
+ホットパス最優先原則 (永続キュー禁止、IndexedDB 書き込み前待ちなし、部分字幕翻訳
+非既定) を遵守する。旧順序 (「保存 → 翻訳 → overlay」) から変更。
+
+1. `transcript.final` イベント受信 → `TranscriptStream` 集約を取得
+2. `TranscriptStream.recentFinalTail(maxSegments)` でメモリ内から直前 N 個の確定
+   字幕を取得 (O(1)、IndexedDB 非アクセス)
+3. `TranslationPort.translate({ ..., precedingContext })` を即時発火 (Relay 経由)
+4. 翻訳応答到着後、`OverlayPresenter.render(translation)` を即時実行
+5. `SessionStore.appendTranscript` / `appendTranslation` を fire-and-forget で
+   非同期実行 (結果整合、失敗しても overlay をロールバックしない)
 
 ### 10.3 DD-307: ExportSessionResultUseCase
 
@@ -384,8 +414,24 @@ sequenceDiagram
 - 選択形式に応じた出力データが生成されること
 - `ExportRecord` が記録されること
 
+## 11. Relay 側ユースケース追補
+
+拡張側 UseCase は DD-3xx 系で定義する。Relay 側は `packages/relay-api/src/application/use-cases/` 配下で実装され、IMPL 番号のみで識別する (roadmap / Task.md 参照)。
+
+### 11.1 `ComposeTranslationContextUseCase` (IMPL-404)
+
+| 項目         | 内容                                                                                               |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| 種別         | Query (副作用なし)                                                                                 |
+| 入力         | `sessionId`, `currentSegmentId`, `maxSegments` (0〜5)                                              |
+| 出力         | `PrecedingContext[]` (直近確定字幕の配列、空配列可)                                                |
+| 呼出元       | `RouteTranscriptToTranslationUseCase` (IMPL-403) の内部                                            |
+| データソース | Relay インメモリ session state (`SessionRegistry`)。永続 DB は参照しない (ホットパス遵守)          |
+| 失敗時挙動   | session state 取得失敗や `maxSegments=0` の場合は空配列を返す (`translate()` は本文のみ送信になる) |
+
 ## 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容 |
-| ---------- | ---------- | ------ | -------- |
-| 0.1.0      | 2026-04-21 | Codex  | 初版作成 |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                                                                                                                                      |
+| ---------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                                                                                                                                      |
+| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: `StartSourceSessionInput` / `UpdateSourceSettingsInput` / `HandleTranscriptFinalInput` に endpointing / translationContext / endpointingTrigger / precedingSegmentId を追加、DD-305 の処理順序をメモリ先取り型に変更、§11 に Relay 側 `ComposeTranslationContextUseCase` (IMPL-404) を追補 |

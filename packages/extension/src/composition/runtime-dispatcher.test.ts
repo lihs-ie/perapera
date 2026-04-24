@@ -35,6 +35,14 @@ const buildFakeDeps = () => {
       errAsync(notFoundError({ resourceType: 'OverlaySettings', identifier: 'default' })),
     ),
     saveDefaultOverlaySettings: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    getDefaultEndpointingPolicy: vi.fn(() =>
+      errAsync(notFoundError({ resourceType: 'EndpointingPolicy', identifier: 'default' })),
+    ),
+    saveDefaultEndpointingPolicy: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    getDefaultTranslationContextWindow: vi.fn(() =>
+      errAsync(notFoundError({ resourceType: 'TranslationContextWindow', identifier: 'default' })),
+    ),
+    saveDefaultTranslationContextWindow: vi.fn(() => okAsync<void, DomainError>(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),

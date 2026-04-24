@@ -1,9 +1,9 @@
 ---
 title: ACL（腐敗防止層）設計書
-version: '0.1.0'
+version: '0.2.0'
 status: draft
 created: '2026-04-21'
-last_updated: '2026-04-21'
+last_updated: '2026-04-24'
 author: 'Codex'
 ---
 
@@ -87,12 +87,12 @@ graph LR
 
 ### 2.2 ポート一覧
 
-| ID     | ポート名        | 定義場所           | 責務                                       | 実装アダプタ                                         |
-| ------ | --------------- | ------------------ | ------------------------------------------ | ---------------------------------------------------- |
-| DD-401 | RelayGateway    | 拡張アプリ層       | Relay API との接続、イベント送受信の抽象化 | `RelayWebSocketGatewayAdapter`                       |
-| DD-402 | SttStreamPort   | Relay API アプリ層 | STT ストリームの抽象化                     | `StreamingSttProviderAdapter`                        |
-| DD-403 | TranslationPort | Relay API アプリ層 | 翻訳 API の抽象化                          | `TranslationProviderAdapter`                         |
-| DD-404 | TtsPort         | Relay API アプリ層 | 将来の TTS 生成の抽象化                    | `DeepgramAuraTtsAdapter`, `GoogleChirp3HdTtsAdapter` |
+| ID     | ポート名        | 定義場所           | 責務                                          | 実装アダプタ                                         |
+| ------ | --------------- | ------------------ | --------------------------------------------- | ---------------------------------------------------- |
+| DD-401 | RelayGateway    | 拡張アプリ層       | Relay API との接続、イベント送受信の抽象化    | `RelayWebSocketGatewayAdapter`                       |
+| DD-402 | SttStreamPort   | Relay API アプリ層 | STT ストリームの抽象化 (endpointing 設定込み) | `StreamingSttProviderAdapter`                        |
+| DD-403 | TranslationPort | Relay API アプリ層 | 翻訳 API の抽象化 (precedingContext 込み)     | `TranslationProviderAdapter`                         |
+| DD-404 | TtsPort         | Relay API アプリ層 | 将来の TTS 生成の抽象化                       | `DeepgramAuraTtsAdapter`, `GoogleChirp3HdTtsAdapter` |
 
 ### 2.3 アダプタ一覧
 
@@ -183,6 +183,51 @@ class RelayEventMapper {
   }
 }
 ```
+
+#### DD-412: StreamingSttProviderAdapter
+
+**ポート入力 → プロバイダ固有パラメータ**
+
+`SttStreamPort.open()` は `endpointing: EndpointingPolicy` を受け取る。アダプタが
+プロバイダ固有フィールドへ正規化する。プロバイダが未対応のフィールドは
+`logger.info({ reason: 'unsupported_endpointing_field' })` を出して接続を継続する
+(fatal ではない)。
+
+| ドメインフィールド (`EndpointingPolicy`) | Deepgram 対応                     | Google STT 対応                              | AWS Transcribe 対応                       |
+| ---------------------------------------- | --------------------------------- | -------------------------------------------- | ----------------------------------------- |
+| `silenceThresholdMs`                     | `endpointing=<ms>`                | `single_utterance=false` + `speech_contexts` | `VocabularyFilterName` + `MediaEncoding`  |
+| `punctuationAware`                       | `punctuate=true` + `smart_format` | `enable_automatic_punctuation`               | `ShowAlternatives`                        |
+| `minUtteranceMs`                         | `utterance_end_ms=<ms>`           | 直接対応なし (アダプタ内で final を hold)    | 直接対応なし (アダプタ内で final を hold) |
+
+**ポート出力: `TranscriptEvent` 拡張**
+
+アダプタはプロバイダ応答から以下を `transcript.final` 相当ドメインイベントに
+セットする:
+
+- `endpointingTrigger`: プロバイダが「なぜ final としたか」。Deepgram の
+  `speech_final=true` は `"silence"`、`end_of_utterance=true` は `"max_duration"`
+  等、プロバイダ別にマッピング。未判別は `"provider_default"`。
+- `precedingSegmentId`: ストリーム内で直前に確定した segmentId (Relay 側で保持)。
+  ストリーム最初の final では `null`。
+
+#### DD-413: TranslationProviderAdapter
+
+**ポート入力 → プロバイダ固有パラメータ**
+
+`TranslationPort.translate()` は `precedingContext: PrecedingContext[]` を受け取る
+(最大 5、空配列可)。プロバイダ別に以下のように反映する:
+
+| プロバイダ分類                    | precedingContext 反映方法                                                |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| LLM 系 (Anthropic / OpenAI)       | system prompt に「直前の発話と訳」を挿入、モデルに連続発話を指示         |
+| NMT 系 (DeepL / Google Translate) | 非対応フィールドとして `logger.info` で記録し、本文のみ送信 (互換性維持) |
+| Mock Provider (契約テスト用)      | `precedingContext.length >= 0` を検証して echo                           |
+
+**ポート出力: `TranslationEvent` 拡張**
+
+アダプタは最終的に `translation.final` 相当のドメインイベントに
+`contextSegmentIds: string[]` を付与する。`precedingContext` をプロバイダに渡した
+場合はその segmentId 列を返し、無視した場合 (NMT 系) は `[]` を返す。
 
 ## 5. エラー変換
 
@@ -301,6 +346,22 @@ flowchart TD
 | 外部サービス | Relay API                                                        |
 | 責務         | セッション初期化、WebSocket 接続、音声フレーム送信、イベント受信 |
 
+### DD-412: StreamingSttProviderAdapter
+
+| 項目         | 内容                                                                                                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 実装ポート   | `SttStreamPort`                                                                                                                                                             |
+| 外部サービス | Streaming STT Provider (Deepgram / Google STT / AWS Transcribe 等)                                                                                                          |
+| 責務         | `open()` 引数 `endpointing: EndpointingPolicy` をプロバイダ固有パラメータへ正規化、`transcript.final` イベントに `endpointingTrigger` / `precedingSegmentId` を付与して返す |
+
+### DD-413: TranslationProviderAdapter
+
+| 項目         | 内容                                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 実装ポート   | `TranslationPort`                                                                                                                                               |
+| 外部サービス | Translation Provider (LLM 系 / NMT 系)                                                                                                                          |
+| 責務         | `translate()` 引数 `precedingContext: PrecedingContext[]` を LLM 系なら system prompt に挿入、NMT 系なら無視して本文のみ送信。応答に `contextSegmentIds` を付与 |
+
 ### DD-414: DeepgramAuraTtsAdapter
 
 | 項目         | 内容                                        |
@@ -319,6 +380,7 @@ flowchart TD
 
 ## 変更履歴
 
-| バージョン | 日付       | 変更者 | 変更内容 |
-| ---------- | ---------- | ------ | -------- |
-| 0.1.0      | 2026-04-21 | Codex  | 初版作成 |
+| バージョン | 日付       | 変更者 | 変更内容                                                                                                                                                                                                                                        |
+| ---------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                                                        |
+| 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: `SttStreamPort.open()` に `endpointing` 引数を追加し DD-412 の provider 別マッピング表を §4.2 / §9 に記載、`TranslationPort.translate()` に `precedingContext` 引数を追加し DD-413 の LLM / NMT 別処理を明記 |

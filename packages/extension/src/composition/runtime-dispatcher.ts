@@ -8,7 +8,17 @@ import { type ExportService } from '../application/services/export-service';
 import { type SessionCommandService } from '../application/services/session-command-service';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createOverlaySettings, type OverlaySettings } from '../domain/profile/overlay-settings';
+import {
+  createEndpointingPolicy,
+  DEFAULT_ENDPOINTING_POLICY,
+  type EndpointingPolicy,
+} from '../domain/session/endpointing-policy';
 import { createLanguagePair, type LanguagePair } from '../domain/session/language-pair';
+import {
+  createTranslationContextWindow,
+  DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+  type TranslationContextWindow,
+} from '../domain/session/translation-context-window';
 import { parseBackgroundRequest, type BackgroundResponse } from './runtime-messages';
 
 /**
@@ -80,6 +90,15 @@ type DefaultSettingsSnapshot = Readonly<{
     showOriginalText: boolean;
     showTranslatedText: boolean;
   }>;
+  endpointing: Readonly<{
+    silenceThresholdMs: number;
+    punctuationAware: boolean;
+    minUtteranceMs: number;
+  }>;
+  translationContext: Readonly<{
+    maxSegments: number;
+    includeTranslatedText: boolean;
+  }>;
   relayOverride: Readonly<{ baseUrl: string; accessToken: string }> | null;
 }>;
 
@@ -110,21 +129,47 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
       .orElse(() => okAsync(null))
       .mapErr(toApplicationError);
 
-  const toSnapshot = (
-    pair: LanguagePair,
-    overlay: OverlaySettings,
-    relayOverride: Readonly<{ baseUrl: string; accessToken: string }> | null,
-  ): DefaultSettingsSnapshot => ({
-    languagePair: { source: pair.source, target: pair.target },
+  const resolveDefaultEndpointing = (): ResultAsync<EndpointingPolicy, ApplicationError> =>
+    deps.settingsStore
+      .getDefaultEndpointingPolicy()
+      .orElse(() => okAsync(DEFAULT_ENDPOINTING_POLICY))
+      .mapErr(toApplicationError);
+
+  const resolveDefaultTranslationContext = (): ResultAsync<
+    TranslationContextWindow,
+    ApplicationError
+  > =>
+    deps.settingsStore
+      .getDefaultTranslationContextWindow()
+      .orElse(() => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW))
+      .mapErr(toApplicationError);
+
+  const toSnapshot = (params: {
+    pair: LanguagePair;
+    overlay: OverlaySettings;
+    endpointing: EndpointingPolicy;
+    translationContext: TranslationContextWindow;
+    relayOverride: Readonly<{ baseUrl: string; accessToken: string }> | null;
+  }): DefaultSettingsSnapshot => ({
+    languagePair: { source: params.pair.source, target: params.pair.target },
     overlaySettings: {
-      positionPreset: overlay.positionPreset,
-      opacity: overlay.opacity,
-      maxLines: overlay.maxLines,
-      fontScale: overlay.fontScale,
-      showOriginalText: overlay.showOriginalText,
-      showTranslatedText: overlay.showTranslatedText,
+      positionPreset: params.overlay.positionPreset,
+      opacity: params.overlay.opacity,
+      maxLines: params.overlay.maxLines,
+      fontScale: params.overlay.fontScale,
+      showOriginalText: params.overlay.showOriginalText,
+      showTranslatedText: params.overlay.showTranslatedText,
     },
-    relayOverride,
+    endpointing: {
+      silenceThresholdMs: params.endpointing.silenceThresholdMs,
+      punctuationAware: params.endpointing.punctuationAware,
+      minUtteranceMs: params.endpointing.minUtteranceMs,
+    },
+    translationContext: {
+      maxSegments: params.translationContext.maxSegments,
+      includeTranslatedText: params.translationContext.includeTranslatedText,
+    },
+    relayOverride: params.relayOverride,
   });
 
   return async (raw) => {
@@ -148,8 +193,18 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
         return run(
           resolveDefaultLanguagePair().andThen((pair) =>
             resolveDefaultOverlaySettings().andThen((overlay) =>
-              resolveRelayOverride().map((relayOverride) =>
-                toSnapshot(pair, overlay, relayOverride),
+              resolveDefaultEndpointing().andThen((endpointing) =>
+                resolveDefaultTranslationContext().andThen((translationContext) =>
+                  resolveRelayOverride().map((relayOverride) =>
+                    toSnapshot({
+                      pair,
+                      overlay,
+                      endpointing,
+                      translationContext,
+                      relayOverride,
+                    }),
+                  ),
+                ),
               ),
             ),
           ),
@@ -165,6 +220,22 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
         return run(
           createOverlaySettings(request.input)
             .asyncAndThen((settings) => deps.settingsStore.saveDefaultOverlaySettings(settings))
+            .mapErr(toApplicationError)
+            .map(() => ({ saved: true })),
+        );
+      case 'command.save-default-endpointing-policy':
+        return run(
+          createEndpointingPolicy(request.input)
+            .asyncAndThen((policy) => deps.settingsStore.saveDefaultEndpointingPolicy(policy))
+            .mapErr(toApplicationError)
+            .map(() => ({ saved: true })),
+        );
+      case 'command.save-default-translation-context-window':
+        return run(
+          createTranslationContextWindow(request.input)
+            .asyncAndThen((window) =>
+              deps.settingsStore.saveDefaultTranslationContextWindow(window),
+            )
             .mapErr(toApplicationError)
             .map(() => ({ saved: true })),
         );

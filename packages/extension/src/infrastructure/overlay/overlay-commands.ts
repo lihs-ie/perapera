@@ -36,6 +36,9 @@ const overlayLineRawSchema = z.object({
   translatedText: z.string().nullable(),
   targetLanguage: z.string().nullable(),
   isFinal: z.boolean(),
+  // IMPL-539: 追加フィールドは optional + default で v0.1 互換
+  precedingSegmentIdentifier: z.string().min(1).nullable().optional(),
+  hasTranslationContext: z.boolean().optional(),
 });
 
 const overlayRenderModelRawSchema = z.object({
@@ -99,15 +102,24 @@ export type OverlayCommand =
 const toOverlayLine = (
   raw: z.infer<typeof overlayLineRawSchema>,
 ): Result<OverlayLine, DomainError> =>
-  parseSegmentIdentifier(raw.segmentIdentifier).map(
-    (segmentIdentifier: SegmentIdentifier): OverlayLine => ({
-      segmentIdentifier,
-      originalText: raw.originalText,
-      translatedText: raw.translatedText,
-      targetLanguage: raw.targetLanguage,
-      isFinal: raw.isFinal,
-    }),
-  );
+  parseSegmentIdentifier(raw.segmentIdentifier).andThen((segmentIdentifier) => {
+    const precedingRaw = raw.precedingSegmentIdentifier;
+    const parsePreceding =
+      precedingRaw === undefined || precedingRaw === null
+        ? ok<SegmentIdentifier | null, DomainError>(null)
+        : parseSegmentIdentifier(precedingRaw).map((id): SegmentIdentifier | null => id);
+    return parsePreceding.map(
+      (precedingSegmentIdentifier): OverlayLine => ({
+        segmentIdentifier,
+        originalText: raw.originalText,
+        translatedText: raw.translatedText,
+        targetLanguage: raw.targetLanguage,
+        isFinal: raw.isFinal,
+        precedingSegmentIdentifier,
+        hasTranslationContext: raw.hasTranslationContext ?? false,
+      }),
+    );
+  });
 
 const toOverlayRenderModel = (
   raw: z.infer<typeof overlayRenderModelRawSchema>,
