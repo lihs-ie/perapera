@@ -21,10 +21,13 @@ import {
  * - v2: IMPL-318。`sessions.endpointing*` / `sessions.translationContext*`
  *       カラムを追加。既存レコードは upgrade hook で null を埋める
  *       (`sessionFromRecord` が読み込み時に VO 既定値を適用)。
+ * - v3: IMPL-319。`sessions.glossaryEntries` を追加 (null 許容、nullable 配列)。
+ *       既存 v1/v2 レコードは upgrade hook で null を埋め、
+ *       `sessionFromRecord` が `EMPTY_GLOSSARY` を適用する (DD-238)。
  */
 
 export const INDEXED_DB_NAME = 'perapera';
-export const INDEXED_DB_VERSION = 2;
+export const INDEXED_DB_VERSION = 3;
 
 export const SESSIONS_STORE = 'sessions';
 export const TRANSCRIPT_STORE = 'transcript_segments';
@@ -54,12 +57,12 @@ export interface PeraperaSchema extends DBSchema {
 }
 
 /**
- * IMPL-318 v1 → v2 マイグレーション補助。cursor.value は TS 型としては v2 の
- * `SessionRow` と宣言されるが、実データは v1 のため endpointing/translation 系
- * カラムが欠落している可能性がある。必要フィールドを null で埋めて v2 形式に
+ * IMPL-318 / IMPL-319 v1/v2 → v3 マイグレーション補助。cursor.value は TS 型
+ * としては v3 の `SessionRow` と宣言されるが、実データは v1/v2 のため一部
+ * カラムが欠落している可能性がある。必要フィールドを null で埋めて v3 形式に
  * 正規化する。
  */
-const fillV2Defaults = (row: SessionRow): SessionRow => ({
+const fillLatestDefaults = (row: SessionRow): SessionRow => ({
   sessionId: row.sessionId,
   sourceId: row.sourceId,
   sourceType: row.sourceType,
@@ -74,6 +77,7 @@ const fillV2Defaults = (row: SessionRow): SessionRow => ({
   endpointingMinUtteranceMs: row.endpointingMinUtteranceMs ?? null,
   translationContextMaxSegments: row.translationContextMaxSegments ?? null,
   translationContextIncludeTranslatedText: row.translationContextIncludeTranslatedText ?? null,
+  glossaryEntries: row.glossaryEntries ?? null,
 });
 
 export const openPeraperaDb = (databaseName: string): Promise<IDBPDatabase<PeraperaSchema>> =>
@@ -95,14 +99,15 @@ export const openPeraperaDb = (databaseName: string): Promise<IDBPDatabase<Perap
         store.createIndex('by-sessionId', 'sessionId');
       }
 
-      if (oldVersion < 2 && oldVersion !== 0) {
-        // IMPL-318: v1 → v2。sessions の新規カラムを null で埋める。
+      if (oldVersion < 3 && oldVersion !== 0) {
+        // IMPL-318 / IMPL-319: v1/v2 → v3。sessions の新規カラム (endpointing*
+        // / translationContext* / glossaryEntries) を null で埋める。
         // `sessionFromRecord` が null を検出した場合は DEFAULT VO で補完するため
         // データ損失なく読み込める。
         const store = transaction.objectStore(SESSIONS_STORE);
         void store.openCursor().then(function handleCursor(cursor): Promise<void> | void {
           if (cursor === null) return;
-          const upgraded: SessionRow = fillV2Defaults(cursor.value);
+          const upgraded: SessionRow = fillLatestDefaults(cursor.value);
           return cursor.update(upgraded).then(() => cursor.continue().then(handleCursor));
         });
       }

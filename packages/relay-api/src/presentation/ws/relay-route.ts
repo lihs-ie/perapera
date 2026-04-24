@@ -9,6 +9,7 @@ import {
   type TranscriptEvent,
 } from '../../application/ports/stt-port';
 import {
+  type GlossaryEntry,
   type PrecedingContext,
   type TranslationPort,
 } from '../../application/ports/translation-port';
@@ -146,6 +147,39 @@ const extractTranslationContextFromClaims = (
     holdWindowMs: typeof raw.holdWindowMs === 'number' ? raw.holdWindowMs : undefined,
   });
   return result.isOk() ? result.value : DEFAULT_TRANSLATION_CONTEXT_WINDOW;
+};
+
+/**
+ * JWT claims から glossary エントリ配列を復元する (Issue #123)。
+ * `issue-stream-token-use-case.ts` の `toSessionClaims.glossary.entries` と対になる。
+ * 不正なデータ (型違反、欠落) は空配列で返す (後方互換 + セキュリティ: 不正
+ * 入力で置換が暴走しないように)。
+ */
+const extractGlossaryFromClaims = (
+  claims: Readonly<Record<string, unknown>>,
+): readonly GlossaryEntry[] => {
+  const raw = claims.glossary;
+  if (!isObjectRecord(raw)) return [];
+  const entries = raw.entries;
+  if (!Array.isArray(entries)) return [];
+  const result: GlossaryEntry[] = [];
+  for (const entry of entries) {
+    if (!isObjectRecord(entry)) continue;
+    const source = entry.source;
+    const target = entry.target;
+    const caseSensitive = entry.caseSensitive;
+    if (
+      typeof source !== 'string' ||
+      typeof target !== 'string' ||
+      typeof caseSensitive !== 'boolean' ||
+      source.length === 0 ||
+      target.length === 0
+    ) {
+      continue;
+    }
+    result.push({ source, target, caseSensitive });
+  }
+  return result;
 };
 
 const toSttEndpointingConfig = (policy: EndpointingPolicy): SttEndpointingConfig => ({
@@ -380,6 +414,10 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       const effectiveTranslationContext = extractTranslationContextFromClaims(
         context.tokenPayload.claims,
       );
+      // Issue #123: JWT claims から glossary エントリを復元する。セッション中
+      // 一定 (session.start 時点の snapshot) で、以降 `translate()` の request に
+      // 添えて LLM プロンプト + 後処理置換に利用する。
+      const effectiveGlossary = extractGlossaryFromClaims(context.tokenPayload.claims);
       const composeTranslationContext = createComposeTranslationContextUseCase();
       // 直近確定字幕の tail。maxSegments 以上に膨らむのを防ぐため、push のたびに
       // 末尾 maxSegments + 1 件に trim する (translation 応答で末尾を更新するため +1)。
@@ -442,6 +480,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
           sourceLanguage: snapshot.sourceLanguage,
           targetLanguage: snapshot.targetLanguage,
           precedingContext: snapshot.precedingContext,
+          glossary: effectiveGlossary,
         });
         if (translationResult.isErr()) {
           request.log.warn(

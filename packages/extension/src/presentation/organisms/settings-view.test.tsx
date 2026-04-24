@@ -4,6 +4,7 @@ import {
   type BackgroundClient,
   type BackgroundResponse,
   type DefaultSettingsResult,
+  type GlossaryResult,
   type SavedAckResult,
 } from '../infrastructure/background-client';
 import { SettingsView } from './settings-view';
@@ -51,6 +52,11 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
   saveDefaultTranslationContextWindow: vi.fn(() => Promise.resolve(SAVED_ACK)),
   saveRelayConnectionOverride: vi.fn(() => Promise.resolve(SAVED_ACK)),
   clearRelayConnectionOverride: vi.fn(() => Promise.resolve(SAVED_ACK)),
+  getDefaultGlossary: vi.fn(
+    (): Promise<BackgroundResponse<GlossaryResult>> =>
+      Promise.resolve({ ok: true, value: { entries: [] } }),
+  ),
+  saveDefaultGlossary: vi.fn(() => Promise.resolve(SAVED_ACK)),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
   ...overrides,

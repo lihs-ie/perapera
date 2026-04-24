@@ -42,6 +42,8 @@ const buildClient = (start: BackgroundClient['startSourceSession']): BackgroundC
   saveDefaultTranslationContextWindow: vi.fn(),
   saveRelayConnectionOverride: vi.fn(),
   clearRelayConnectionOverride: vi.fn(),
+  getDefaultGlossary: vi.fn(),
+  saveDefaultGlossary: vi.fn(),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
 });

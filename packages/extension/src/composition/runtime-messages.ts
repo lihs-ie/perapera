@@ -1,6 +1,7 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
 import { type ApplicationError } from '../application/errors/application-errors';
+import { GLOSSARY_ENTRY_FIELD_MAX_LENGTH, GLOSSARY_MAX_ENTRIES } from '../domain/glossary';
 import { validationError, type DomainError } from '../domain/shared/errors';
 
 /**
@@ -155,6 +156,26 @@ const clearRelayConnectionOverrideRequestSchema = z.object({
   input: z.object({}).optional(),
 });
 
+const glossaryEntryPayloadSchema = z.object({
+  source: z.string().min(1).max(GLOSSARY_ENTRY_FIELD_MAX_LENGTH),
+  target: z.string().min(1).max(GLOSSARY_ENTRY_FIELD_MAX_LENGTH),
+  caseSensitive: z.boolean(),
+});
+
+const glossaryPayloadSchema = z.object({
+  entries: z.array(glossaryEntryPayloadSchema).max(GLOSSARY_MAX_ENTRIES),
+});
+
+const saveDefaultGlossaryRequestSchema = z.object({
+  type: z.literal('command.save-default-glossary'),
+  input: glossaryPayloadSchema,
+});
+
+const getDefaultGlossaryRequestSchema = z.object({
+  type: z.literal('query.get-default-glossary'),
+  input: z.object({}).optional(),
+});
+
 export const backgroundRequestSchema = z.discriminatedUnion('type', [
   startSourceSessionRequestSchema,
   stopSourceSessionRequestSchema,
@@ -168,6 +189,8 @@ export const backgroundRequestSchema = z.discriminatedUnion('type', [
   saveDefaultTranslationContextWindowRequestSchema,
   saveRelayConnectionOverrideRequestSchema,
   clearRelayConnectionOverrideRequestSchema,
+  saveDefaultGlossaryRequestSchema,
+  getDefaultGlossaryRequestSchema,
   getSessionHistoryRequestSchema,
   getSessionHistoryDetailRequestSchema,
 ]);

@@ -134,6 +134,17 @@ export type DefaultSettingsResult = z.infer<typeof defaultSettingsOutputSchema>;
 const savedAckSchema = z.object({ saved: z.literal(true) });
 export type SavedAckResult = z.infer<typeof savedAckSchema>;
 
+const glossaryOutputSchema = z.object({
+  entries: z.array(
+    z.object({
+      source: z.string().min(1),
+      target: z.string().min(1),
+      caseSensitive: z.boolean(),
+    }),
+  ),
+});
+export type GlossaryResult = z.infer<typeof glossaryOutputSchema>;
+
 const sessionHistorySummarySchema = z.object({
   sessionId: z.string().min(1),
   displayName: z.string(),
@@ -255,6 +266,13 @@ export type RelayConnectionOverrideInput = Readonly<{
   baseUrl: string;
   accessToken: string;
 }>;
+export type DefaultGlossaryInput = Readonly<{
+  entries: readonly {
+    source: string;
+    target: string;
+    caseSensitive: boolean;
+  }[];
+}>;
 
 export type BackgroundClient = Readonly<{
   startSourceSession: (
@@ -289,6 +307,8 @@ export type BackgroundClient = Readonly<{
     input: RelayConnectionOverrideInput,
   ) => Promise<BackgroundResponse<SavedAckResult>>;
   clearRelayConnectionOverride: () => Promise<BackgroundResponse<SavedAckResult>>;
+  getDefaultGlossary: () => Promise<BackgroundResponse<GlossaryResult>>;
+  saveDefaultGlossary: (input: DefaultGlossaryInput) => Promise<BackgroundResponse<SavedAckResult>>;
   getSessionHistory: () => Promise<BackgroundResponse<SessionHistoryListResult>>;
   getSessionHistoryDetail: (input: {
     sessionId: string;
@@ -351,6 +371,10 @@ export const createBackgroundClient = (
     sendTyped(sender, { type: 'command.save-relay-connection-override', input }, savedAckSchema),
   clearRelayConnectionOverride: () =>
     sendTyped(sender, { type: 'command.clear-relay-connection-override' }, savedAckSchema),
+  getDefaultGlossary: () =>
+    sendTyped(sender, { type: 'query.get-default-glossary' }, glossaryOutputSchema),
+  saveDefaultGlossary: (input) =>
+    sendTyped(sender, { type: 'command.save-default-glossary', input }, savedAckSchema),
   getSessionHistory: () =>
     sendTyped(sender, { type: 'query.get-session-history' }, sessionHistoryListOutputSchema),
   getSessionHistoryDetail: (input) =>

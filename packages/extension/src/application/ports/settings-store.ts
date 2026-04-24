@@ -1,4 +1,5 @@
 import { type ResultAsync } from 'neverthrow';
+import { type Glossary } from '../../domain/glossary';
 import { type OverlaySettings } from '../../domain/profile/overlay-settings';
 import { type EndpointingPolicy } from '../../domain/session/endpointing-policy';
 import { type LanguagePair } from '../../domain/session/language-pair';
@@ -46,6 +47,8 @@ export type SettingsStore = Readonly<{
   saveDefaultTranslationContextWindow: (
     window: TranslationContextWindow,
   ) => ResultAsync<void, DomainError>;
+  getDefaultGlossary: () => ResultAsync<Glossary, DomainError>;
+  saveDefaultGlossary: (glossary: Glossary) => ResultAsync<void, DomainError>;
   getRelayConnectionOverride: () => ResultAsync<RelayConnectionOverride | null, DomainError>;
   saveRelayConnectionOverride: (
     override: RelayConnectionOverride,

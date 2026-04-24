@@ -1,5 +1,6 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EMPTY_GLOSSARY } from '../../domain/glossary';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
 import { DEFAULT_ENDPOINTING_POLICY } from '../../domain/session/endpointing-policy';
 import { DEFAULT_TRANSLATION_CONTEXT_WINDOW } from '../../domain/session/translation-context-window';
@@ -77,6 +78,8 @@ const buildDependencies = (
     saveDefaultEndpointingPolicy: vi.fn(() => okAsync(undefined)),
     getDefaultTranslationContextWindow: vi.fn(() => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW)),
     saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
+    getDefaultGlossary: vi.fn(() => okAsync(EMPTY_GLOSSARY)),
+    saveDefaultGlossary: vi.fn(() => okAsync(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),

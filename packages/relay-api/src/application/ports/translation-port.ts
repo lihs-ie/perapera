@@ -15,12 +15,28 @@ export type PrecedingContext = Readonly<{
   finalizedAt: string;
 }>;
 
+/**
+ * 翻訳に適用する glossary エントリ (DD-238, Issue #123)。
+ *
+ * LLM 系プロバイダは system prompt に挿入し訳出でのマッピング遵守を促す。
+ * Relay 側の後処理 (`applyGlossaryPostProcess`) で translation 出力に対して
+ * 置換を強制するため、LLM が無視しても訳語を担保できる。NMT 系は native の
+ * glossary API があれば尊重、無ければ後処理置換のみを適用する。
+ */
+export type GlossaryEntry = Readonly<{
+  source: string;
+  target: string;
+  caseSensitive: boolean;
+}>;
+
 export type TranslationRequest = Readonly<{
   text: string;
   sourceLanguage: string | null;
   targetLanguage: string;
   /** IMPL-448: 翻訳に渡す直前確定字幕 (最大 5)。空配列可 */
   precedingContext?: readonly PrecedingContext[];
+  /** Issue #123: カスタム用語集エントリ。空配列で未指定を表す */
+  glossary?: readonly GlossaryEntry[];
 }>;
 
 export type TranslationResponse = Readonly<{

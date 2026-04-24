@@ -6,9 +6,11 @@ import {
 import { type SettingsStore } from '../application/ports/settings-store';
 import { type ExportService } from '../application/services/export-service';
 import { type SessionCommandService } from '../application/services/session-command-service';
+import { type GetGlossaryQuery } from '../application/use-cases/get-glossary-query';
 import { type GetSessionHistoryDetailQuery } from '../application/use-cases/get-session-history-detail-query';
 import { type GetSessionHistoryQuery } from '../application/use-cases/get-session-history-query';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
+import { type UpdateGlossaryUseCase } from '../application/use-cases/update-glossary-use-case';
 import { createOverlaySettings, type OverlaySettings } from '../domain/profile/overlay-settings';
 import {
   createEndpointingPolicy,
@@ -41,6 +43,8 @@ export type RuntimeDispatcherDependencies = Readonly<{
   getSessionMonitorStateQuery: GetSessionMonitorStateQuery;
   getSessionHistoryQuery: GetSessionHistoryQuery;
   getSessionHistoryDetailQuery: GetSessionHistoryDetailQuery;
+  getGlossaryQuery: GetGlossaryQuery;
+  updateGlossaryUseCase: UpdateGlossaryUseCase;
   settingsStore: SettingsStore;
 }>;
 
@@ -260,6 +264,10 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
             .mapErr(toApplicationError)
             .map(() => ({ saved: true })),
         );
+      case 'command.save-default-glossary':
+        return run(deps.updateGlossaryUseCase(request.input).map(() => ({ saved: true })));
+      case 'query.get-default-glossary':
+        return run(deps.getGlossaryQuery());
       case 'query.get-session-history':
         return run(deps.getSessionHistoryQuery({}));
       case 'query.get-session-history-detail':

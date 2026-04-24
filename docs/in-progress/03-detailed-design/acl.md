@@ -356,11 +356,11 @@ flowchart TD
 
 ### DD-413: TranslationProviderAdapter
 
-| 項目         | 内容                                                                                                                                                            |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 実装ポート   | `TranslationPort`                                                                                                                                               |
-| 外部サービス | Translation Provider (LLM 系 / NMT 系)                                                                                                                          |
-| 責務         | `translate()` 引数 `precedingContext: PrecedingContext[]` を LLM 系なら system prompt に挿入、NMT 系なら無視して本文のみ送信。応答に `contextSegmentIds` を付与 |
+| 項目         | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 実装ポート   | `TranslationPort`                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 外部サービス | Translation Provider (LLM 系 / NMT 系)                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 責務         | `translate()` 引数 `precedingContext: PrecedingContext[]` を LLM 系なら system prompt に挿入、NMT 系なら無視して本文のみ送信。応答に `contextSegmentIds` を付与。`glossary: GlossaryEntry[]` (Issue #123) は LLM 系なら system prompt に "Use these terminology mappings: ..." を挿入し、NMT 系は native 未対応を warn ログ。**全プロバイダ共通**で応答テキストに対し `applyGlossaryPostProcess` で強制置換を実行し、訳語の一貫性を担保する |
 
 ### DD-414: DeepgramAuraTtsAdapter
 
@@ -384,3 +384,4 @@ flowchart TD
 | ---------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0.1.0      | 2026-04-21 | Codex  | 初版作成                                                                                                                                                                                                                                        |
 | 0.2.0      | 2026-04-24 | Codex  | セグメント連続性 (Phase 4.1) 対応: `SttStreamPort.open()` に `endpointing` 引数を追加し DD-412 の provider 別マッピング表を §4.2 / §9 に記載、`TranslationPort.translate()` に `precedingContext` 引数を追加し DD-413 の LLM / NMT 別処理を明記 |
+| 0.3.0      | 2026-04-24 | Codex  | Issue #123 Glossary 対応: `TranslationPort.translate()` に `glossary: GlossaryEntry[]` 引数を追加。DD-413 の LLM 系は system prompt 挿入、NMT 系 (DeepL) は native 未対応 warn + `applyGlossaryPostProcess` による強制置換で訳語一貫性を担保    |

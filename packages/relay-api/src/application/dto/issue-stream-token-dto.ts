@@ -1,5 +1,9 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
+import {
+  GLOSSARY_ENTRY_FIELD_MAX_LENGTH,
+  GLOSSARY_MAX_ENTRIES,
+} from '../../domain/session/glossary';
 import { type DomainError, validationError } from '../../domain/shared/errors';
 
 /**
@@ -37,6 +41,23 @@ const translationContextWindowInputSchema = z
   })
   .optional();
 
+/**
+ * IMPL-448 (Issue #123): カスタム用語集 (Glossary)。セッション開始時に一括
+ * 受信し、`TranslationPort` の request に添えて LLM system prompt 注入や
+ * 後処理置換に利用する。NMT 系プロバイダでも後処理置換は有効。
+ */
+const glossaryEntryInputSchema = z.object({
+  source: z.string().min(1).max(GLOSSARY_ENTRY_FIELD_MAX_LENGTH),
+  target: z.string().min(1).max(GLOSSARY_ENTRY_FIELD_MAX_LENGTH),
+  caseSensitive: z.boolean(),
+});
+
+const glossaryInputSchema = z
+  .object({
+    entries: z.array(glossaryEntryInputSchema).max(GLOSSARY_MAX_ENTRIES),
+  })
+  .optional();
+
 const issueStreamTokenInputSchema = z.object({
   sourceType: z.enum(['tab', 'microphone', 'desktop']),
   displayName: z.string().min(1),
@@ -50,6 +71,7 @@ const issueStreamTokenInputSchema = z.object({
   }),
   endpointing: endpointingPolicyInputSchema,
   translationContext: translationContextWindowInputSchema,
+  glossary: glossaryInputSchema,
 });
 
 export type IssueStreamTokenInput = z.infer<typeof issueStreamTokenInputSchema>;

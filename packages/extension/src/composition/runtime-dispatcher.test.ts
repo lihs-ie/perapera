@@ -45,6 +45,10 @@ const buildFakeDeps = () => {
       errAsync(notFoundError({ resourceType: 'TranslationContextWindow', identifier: 'default' })),
     ),
     saveDefaultTranslationContextWindow: vi.fn(() => okAsync<void, DomainError>(undefined)),
+    getDefaultGlossary: vi.fn(() =>
+      errAsync(notFoundError({ resourceType: 'Glossary', identifier: 'default' })),
+    ),
+    saveDefaultGlossary: vi.fn(() => okAsync<void, DomainError>(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync<void, DomainError>(undefined)),
@@ -66,12 +70,18 @@ const buildFakeDeps = () => {
       lines: [],
     }),
   );
+  const getGlossaryQuery = vi.fn(() => okAsync({ entries: [] }));
+  const updateGlossaryUseCase = vi.fn(() =>
+    okAsync({ entryCount: 0, savedAt: '2026-04-24T00:00:00.000Z' }),
+  );
   return {
     sessionCommandService,
     exportService,
     getSessionMonitorStateQuery,
     getSessionHistoryQuery,
     getSessionHistoryDetailQuery,
+    getGlossaryQuery,
+    updateGlossaryUseCase,
     settingsStore,
   };
 };

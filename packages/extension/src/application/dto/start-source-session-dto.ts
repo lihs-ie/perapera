@@ -1,5 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
+import { GLOSSARY_ENTRY_FIELD_MAX_LENGTH, GLOSSARY_MAX_ENTRIES } from '../../domain/glossary';
 import { SOURCE_TYPES } from '../../domain/session/source-type';
 import { type DomainError, validationError } from '../../domain/shared/errors';
 
@@ -10,6 +11,18 @@ const overlayTargetSchema = z.object({
   tabId: z.number().int().nonnegative().optional(),
   pageId: z.string().min(1).optional(),
 });
+
+const glossaryEntryInputSchema = z.object({
+  source: z.string().min(1).max(GLOSSARY_ENTRY_FIELD_MAX_LENGTH),
+  target: z.string().min(1).max(GLOSSARY_ENTRY_FIELD_MAX_LENGTH),
+  caseSensitive: z.boolean(),
+});
+
+const glossaryInputSchema = z
+  .object({
+    entries: z.array(glossaryEntryInputSchema).max(GLOSSARY_MAX_ENTRIES),
+  })
+  .optional();
 
 /**
  * エンドポインティング方針 (REQ-NF-018) と翻訳文脈窓 (REQ-NF-019) の入力
@@ -42,6 +55,14 @@ export type TranslationContextWindowInput = Readonly<{
   includeTranslatedText?: boolean | undefined;
 }>;
 
+export type GlossaryInput = Readonly<{
+  entries: readonly {
+    source: string;
+    target: string;
+    caseSensitive: boolean;
+  }[];
+}>;
+
 /**
  * セッション開始入力 DTO (DTO-I-301, DD-301)。
  *
@@ -63,6 +84,7 @@ export type StartSourceSessionInput = {
   };
   endpointing?: EndpointingPolicyInput | undefined;
   translationContext?: TranslationContextWindowInput | undefined;
+  glossary?: GlossaryInput | undefined;
 };
 
 const startSourceSessionInputSchema = z.object({
@@ -74,6 +96,7 @@ const startSourceSessionInputSchema = z.object({
   overlayTarget: overlayTargetSchema,
   endpointing: endpointingPolicyInputSchema,
   translationContext: translationContextWindowInputSchema,
+  glossary: glossaryInputSchema,
 });
 
 export const parseStartSourceSessionInput = (

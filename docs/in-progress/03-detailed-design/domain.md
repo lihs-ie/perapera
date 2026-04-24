@@ -103,6 +103,7 @@ classDiagram
         +languagePair: LanguagePair
         +endpointing: EndpointingPolicy
         +translationContext: TranslationContextWindow
+        +glossary: Glossary
         +start() void
         +pause() void
         +resume() void
@@ -144,6 +145,7 @@ classDiagram
         +profileId: string
         +defaultLanguagePair: LanguagePair
         +defaultOverlaySettings: OverlaySettings
+        +defaultGlossary: Glossary
     }
 
     SourceSession "1" --> "1" SessionId
@@ -158,13 +160,14 @@ classDiagram
 
 ##### 不変条件リスト
 
-| No. | 不変条件                                                                                                         | 検証タイミング                                          | 違反時の振る舞い   |
-| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------ |
-| 1   | `sessionId` と `sourceId` の組み合わせは不変であること                                                           | セッション生成後                                        | ドメイン例外を送出 |
-| 2   | `idle -> requesting_permission -> connecting -> capturing/transcribing/translating` の順序を崩さないこと         | 状態変更時                                              | ドメイン例外を送出 |
-| 3   | `degraded` は翻訳障害時のみ遷移可能であること                                                                    | 劣化運転移行時                                          | ドメイン例外を送出 |
-| 4   | `stopped` 後に再度 `resume` できないこと                                                                         | 再開要求時                                              | ドメイン例外を送出 |
-| 5   | `endpointing` / `translationContext` は `stopped` 前のみ変更可能であること (変更は次の utterance から反映される) | `updateEndpointing` / `updateTranslationContext` 実行時 | ドメイン例外を送出 |
+| No. | 不変条件                                                                                                         | 検証タイミング                                          | 違反時の振る舞い                         |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------- |
+| 1   | `sessionId` と `sourceId` の組み合わせは不変であること                                                           | セッション生成後                                        | ドメイン例外を送出                       |
+| 2   | `idle -> requesting_permission -> connecting -> capturing/transcribing/translating` の順序を崩さないこと         | 状態変更時                                              | ドメイン例外を送出                       |
+| 3   | `degraded` は翻訳障害時のみ遷移可能であること                                                                    | 劣化運転移行時                                          | ドメイン例外を送出                       |
+| 4   | `stopped` 後に再度 `resume` できないこと                                                                         | 再開要求時                                              | ドメイン例外を送出                       |
+| 5   | `endpointing` / `translationContext` は `stopped` 前のみ変更可能であること (変更は次の utterance から反映される) | `updateEndpointing` / `updateTranslationContext` 実行時 | ドメイン例外を送出                       |
+| 6   | `glossary` はセッション開始時にスナップショットされ、セッション寿命中は不変 (Issue #123)                         | セッション生成時のみ設定、以降変更不可                  | 変更は次回セッション開始まで反映されない |
 
 ##### トランザクション境界
 
@@ -198,16 +201,17 @@ classDiagram
 
 ## 6. 値オブジェクト
 
-| ID     | 名前                     | 所属集約                                    | 等価性基準                                                          | バリデーションルール                                                                                                                     |
-| ------ | ------------------------ | ------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| DD-230 | SessionId                | ソースセッション集約                        | 文字列値の一致                                                      | 空文字不可                                                                                                                               |
-| DD-231 | SourceId                 | ソースセッション集約                        | 文字列値の一致                                                      | 空文字不可                                                                                                                               |
-| DD-232 | LanguagePair             | ソースセッション集約 / 拡張プロファイル集約 | 入力言語と翻訳先言語の一致                                          | BCP-47 または許可済みコードのみ                                                                                                          |
-| DD-233 | SessionState             | ソースセッション集約                        | 状態値の一致                                                        | 定義済み状態のみ                                                                                                                         |
-| DD-234 | OverlaySettings          | 拡張プロファイル集約                        | 位置・透明度・表示行数の一致                                        | 透明度 0〜1、行数 1 以上                                                                                                                 |
-| DD-235 | TimestampRange           | 字幕ストリーム集約                          | 開始 / 終了オフセットの一致                                         | `start <= end`                                                                                                                           |
-| DD-236 | EndpointingPolicy        | ソースセッション集約                        | `silenceThresholdMs` / `punctuationAware` / `minUtteranceMs` の一致 | `silenceThresholdMs` は 200〜1200ms（既定 600）、`minUtteranceMs` は 100〜3000ms（既定 500）、`punctuationAware` は boolean（既定 true） |
-| DD-237 | TranslationContextWindow | ソースセッション集約                        | `maxSegments` / `includeTranslatedText` の一致                      | `maxSegments` は 0〜5（既定 3）、`includeTranslatedText` は boolean（既定 true）                                                         |
+| ID     | 名前                     | 所属集約                                    | 等価性基準                                                          | バリデーションルール                                                                                                                         |
+| ------ | ------------------------ | ------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| DD-230 | SessionId                | ソースセッション集約                        | 文字列値の一致                                                      | 空文字不可                                                                                                                                   |
+| DD-231 | SourceId                 | ソースセッション集約                        | 文字列値の一致                                                      | 空文字不可                                                                                                                                   |
+| DD-232 | LanguagePair             | ソースセッション集約 / 拡張プロファイル集約 | 入力言語と翻訳先言語の一致                                          | BCP-47 または許可済みコードのみ                                                                                                              |
+| DD-233 | SessionState             | ソースセッション集約                        | 状態値の一致                                                        | 定義済み状態のみ                                                                                                                             |
+| DD-234 | OverlaySettings          | 拡張プロファイル集約                        | 位置・透明度・表示行数の一致                                        | 透明度 0〜1、行数 1 以上                                                                                                                     |
+| DD-235 | TimestampRange           | 字幕ストリーム集約                          | 開始 / 終了オフセットの一致                                         | `start <= end`                                                                                                                               |
+| DD-236 | EndpointingPolicy        | ソースセッション集約                        | `silenceThresholdMs` / `punctuationAware` / `minUtteranceMs` の一致 | `silenceThresholdMs` は 200〜1200ms（既定 600）、`minUtteranceMs` は 100〜3000ms（既定 500）、`punctuationAware` は boolean（既定 true）     |
+| DD-237 | TranslationContextWindow | ソースセッション集約                        | `maxSegments` / `includeTranslatedText` の一致                      | `maxSegments` は 0〜5（既定 3）、`includeTranslatedText` は boolean（既定 true）                                                             |
+| DD-238 | Glossary                 | ソースセッション集約 / 拡張プロファイル集約 | `entries` の原文・訳文・caseSensitive 完全一致                      | `entries` は最大 200 件、各 entry の `source` / `target` は 1〜64 文字、`source !== target`、`entries` 内の `source` は一意 (case-sensitive) |
 
 ## 7. ドメインサービス
 
