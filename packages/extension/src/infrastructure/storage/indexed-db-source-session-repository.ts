@@ -91,6 +91,25 @@ export const createIndexedDbSourceSessionRepository = (
         return okAsync<readonly SourceSession[], DomainError>(sessions);
       }),
 
+    findAllSessions: () =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          return connection.getAll(SESSIONS_STORE);
+        })(),
+        toPersistenceError('findAllSessions'),
+      ).andThen((rows): ResultAsync<readonly SourceSession[], DomainError> => {
+        const sessions: SourceSession[] = [];
+        for (const row of rows) {
+          const parsed = sessionFromRecord(row);
+          if (parsed.isErr()) {
+            return errAsync<readonly SourceSession[], DomainError>(parsed.error);
+          }
+          sessions.push(parsed.value);
+        }
+        return okAsync<readonly SourceSession[], DomainError>(sessions);
+      }),
+
     save: (session) =>
       ResultAsync.fromPromise(
         (async () => {

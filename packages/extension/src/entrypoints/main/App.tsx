@@ -5,6 +5,7 @@ import {
   createBackgroundClient,
   type StartSourceSessionResult,
 } from '../../presentation/infrastructure/background-client';
+import { SessionHistoryView } from '../../presentation/organisms/session-history-view';
 import { SessionToolbar, type ActiveSession } from '../../presentation/organisms/session-toolbar';
 import { SettingsView } from '../../presentation/organisms/settings-view';
 import { StartSessionForm } from '../../presentation/organisms/start-session-form';
@@ -30,6 +31,7 @@ export function App() {
   });
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const handleStarted = useCallback(
     (result: StartSourceSessionResult, input: StartSourceSessionInput) => {
@@ -51,6 +53,12 @@ export function App() {
   }, []);
   const closeSettings = useCallback(() => {
     setShowSettings(false);
+  }, []);
+  const openHistory = useCallback(() => {
+    setShowHistory(true);
+  }, []);
+  const closeHistory = useCallback(() => {
+    setShowHistory(false);
   }, []);
 
   useEffect(() => {
@@ -90,19 +98,33 @@ export function App() {
     );
   }
 
+  if (showHistory) {
+    return <SessionHistoryView client={client} onClose={closeHistory} />;
+  }
+
   const defaultLanguagePair = defaultSettingsQuery.state.data?.languagePair ?? null;
   const formKey =
     defaultLanguagePair !== null
       ? `${defaultLanguagePair.source}:${defaultLanguagePair.target}`
       : 'loading';
   const formSlot = (
-    <StartSessionForm
-      key={formKey}
-      client={client}
-      onStarted={handleStarted}
-      initialSourceLanguage={defaultLanguagePair?.source}
-      initialTargetLanguage={defaultLanguagePair?.target}
-    />
+    <>
+      <StartSessionForm
+        key={formKey}
+        client={client}
+        onStarted={handleStarted}
+        initialSourceLanguage={defaultLanguagePair?.source}
+        initialTargetLanguage={defaultLanguagePair?.target}
+      />
+      <button
+        type="button"
+        className="historyButton"
+        aria-label="セッション履歴を開く"
+        onClick={openHistory}
+      >
+        過去のセッションを見る
+      </button>
+    </>
   );
   const toolbarSlot =
     active !== null ? (

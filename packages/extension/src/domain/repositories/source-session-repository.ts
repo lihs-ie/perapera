@@ -26,5 +26,12 @@ import { type DomainError } from '../shared/errors';
 export type SourceSessionRepository = Readonly<{
   findById: (sessionIdentifier: SessionIdentifier) => ResultAsync<SourceSession, DomainError>;
   findActiveSessions: () => ResultAsync<readonly SourceSession[], DomainError>;
+  /**
+   * Issue #109: 履歴画面用に **stopped 含む全件** を取得する。
+   * `findActiveSessions` がアクティブのみフィルタするのに対し、本メソッドは
+   * フィルタせず IndexedDB の全レコードを返す。
+   * 0 件は `ok([])`、整合失敗は `invariantViolationError` を返す。
+   */
+  findAllSessions: () => ResultAsync<readonly SourceSession[], DomainError>;
   save: (session: SourceSession) => ResultAsync<void, DomainError>;
 }>;

@@ -134,6 +134,39 @@ export type DefaultSettingsResult = z.infer<typeof defaultSettingsOutputSchema>;
 const savedAckSchema = z.object({ saved: z.literal(true) });
 export type SavedAckResult = z.infer<typeof savedAckSchema>;
 
+const sessionHistorySummarySchema = z.object({
+  sessionId: z.string().min(1),
+  displayName: z.string(),
+  sourceType: z.string().min(1),
+  state: z.string().min(1),
+  sourceLanguage: z.string(),
+  targetLanguage: z.string(),
+  startedAt: z.string().min(1),
+  stoppedAt: z.string().min(1).nullable(),
+  durationMs: z.number().nonnegative().nullable(),
+});
+
+const sessionHistoryListOutputSchema = z.object({
+  sessions: z.array(sessionHistorySummarySchema),
+});
+export type SessionHistoryListResult = z.infer<typeof sessionHistoryListOutputSchema>;
+
+const overlayLineOutputSchema = z.object({
+  segmentIdentifier: z.string().min(1),
+  originalText: z.string().nullable(),
+  translatedText: z.string().nullable(),
+  targetLanguage: z.string().nullable(),
+  isFinal: z.boolean(),
+  precedingSegmentIdentifier: z.string().min(1).nullable(),
+  hasTranslationContext: z.boolean(),
+});
+
+const sessionHistoryDetailOutputSchema = z.object({
+  summary: sessionHistorySummarySchema,
+  lines: z.array(overlayLineOutputSchema),
+});
+export type SessionHistoryDetailResult = z.infer<typeof sessionHistoryDetailOutputSchema>;
+
 const sessionMonitorStateOutputSchema = z.object({
   sessions: z.array(
     z.object({
@@ -256,6 +289,10 @@ export type BackgroundClient = Readonly<{
     input: RelayConnectionOverrideInput,
   ) => Promise<BackgroundResponse<SavedAckResult>>;
   clearRelayConnectionOverride: () => Promise<BackgroundResponse<SavedAckResult>>;
+  getSessionHistory: () => Promise<BackgroundResponse<SessionHistoryListResult>>;
+  getSessionHistoryDetail: (input: {
+    sessionId: string;
+  }) => Promise<BackgroundResponse<SessionHistoryDetailResult>>;
 }>;
 
 /**
@@ -314,4 +351,12 @@ export const createBackgroundClient = (
     sendTyped(sender, { type: 'command.save-relay-connection-override', input }, savedAckSchema),
   clearRelayConnectionOverride: () =>
     sendTyped(sender, { type: 'command.clear-relay-connection-override' }, savedAckSchema),
+  getSessionHistory: () =>
+    sendTyped(sender, { type: 'query.get-session-history' }, sessionHistoryListOutputSchema),
+  getSessionHistoryDetail: (input) =>
+    sendTyped(
+      sender,
+      { type: 'query.get-session-history-detail', input },
+      sessionHistoryDetailOutputSchema,
+    ),
 });

@@ -6,6 +6,8 @@ import {
 import { type SettingsStore } from '../application/ports/settings-store';
 import { type ExportService } from '../application/services/export-service';
 import { type SessionCommandService } from '../application/services/session-command-service';
+import { type GetSessionHistoryDetailQuery } from '../application/use-cases/get-session-history-detail-query';
+import { type GetSessionHistoryQuery } from '../application/use-cases/get-session-history-query';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createOverlaySettings, type OverlaySettings } from '../domain/profile/overlay-settings';
 import {
@@ -37,6 +39,8 @@ export type RuntimeDispatcherDependencies = Readonly<{
   sessionCommandService: SessionCommandService;
   exportService: ExportService;
   getSessionMonitorStateQuery: GetSessionMonitorStateQuery;
+  getSessionHistoryQuery: GetSessionHistoryQuery;
+  getSessionHistoryDetailQuery: GetSessionHistoryDetailQuery;
   settingsStore: SettingsStore;
 }>;
 
@@ -256,6 +260,10 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
             .mapErr(toApplicationError)
             .map(() => ({ saved: true })),
         );
+      case 'query.get-session-history':
+        return run(deps.getSessionHistoryQuery({}));
+      case 'query.get-session-history-detail':
+        return run(deps.getSessionHistoryDetailQuery(request.input));
     }
   };
 };

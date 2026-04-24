@@ -33,6 +33,7 @@ const buildDependencies = (
   const sourceSessionRepository: SourceSessionRepository = {
     findById: vi.fn(() => okAsync(buildSession())),
     findActiveSessions: vi.fn(() => okAsync([])),
+    findAllSessions: vi.fn(() => okAsync([])),
     save: vi.fn(() => okAsync(undefined)),
   };
   const overlayPresenter: OverlayPresenter = {
@@ -127,6 +128,7 @@ describe('createUpdateSourceSettingsUseCase (IMPL-212, DD-303)', () => {
           ),
         ),
         findActiveSessions: vi.fn(() => okAsync([])),
+        findAllSessions: vi.fn(() => okAsync([])),
         save: vi.fn(() => okAsync(undefined)),
       },
     });

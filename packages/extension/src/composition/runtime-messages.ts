@@ -92,6 +92,18 @@ const getDefaultSettingsRequestSchema = z.object({
   input: z.object({}).optional(),
 });
 
+const getSessionHistoryRequestSchema = z.object({
+  type: z.literal('query.get-session-history'),
+  input: z.object({}).optional(),
+});
+
+const getSessionHistoryDetailRequestSchema = z.object({
+  type: z.literal('query.get-session-history-detail'),
+  input: z.object({
+    sessionId: z.string().min(1),
+  }),
+});
+
 const defaultLanguagePairPayloadSchema = z.object({
   source: bcp47Schema,
   target: bcp47Schema,
@@ -156,6 +168,8 @@ export const backgroundRequestSchema = z.discriminatedUnion('type', [
   saveDefaultTranslationContextWindowRequestSchema,
   saveRelayConnectionOverrideRequestSchema,
   clearRelayConnectionOverrideRequestSchema,
+  getSessionHistoryRequestSchema,
+  getSessionHistoryDetailRequestSchema,
 ]);
 
 export type BackgroundRequest = z.infer<typeof backgroundRequestSchema>;

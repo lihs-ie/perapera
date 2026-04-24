@@ -54,6 +54,7 @@ const buildDependencies = (
   const sourceSessionRepository: SourceSessionRepository = {
     findById: vi.fn(() => okAsync(buildSessionIdle())),
     findActiveSessions: vi.fn(() => okAsync([])),
+    findAllSessions: vi.fn(() => okAsync([])),
     save: vi.fn(() => okAsync(undefined)),
   };
   const extensionProfileRepository: ExtensionProfileRepository = {
@@ -229,6 +230,7 @@ describe('createStartSourceSessionUseCase (IMPL-210, DD-301)', () => {
       sourceSessionRepository: {
         findById: vi.fn(() => okAsync(buildSessionIdle())),
         findActiveSessions: vi.fn(() => okAsync(existing)),
+        findAllSessions: vi.fn(() => okAsync(existing)),
         save: vi.fn(() => okAsync(undefined)),
       },
     });

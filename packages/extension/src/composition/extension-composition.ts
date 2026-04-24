@@ -1,6 +1,14 @@
 import { okAsync } from 'neverthrow';
 import { ulid } from 'ulidx';
 import { createExportSessionResultUseCase } from '../application/use-cases/export-session-result-use-case';
+import {
+  createGetSessionHistoryDetailQuery,
+  type GetSessionHistoryDetailQuery,
+} from '../application/use-cases/get-session-history-detail-query';
+import {
+  createGetSessionHistoryQuery,
+  type GetSessionHistoryQuery,
+} from '../application/use-cases/get-session-history-query';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';
 import { createHandleTranscriptPartialUseCase } from '../application/use-cases/handle-transcript-partial-use-case';
@@ -215,6 +223,8 @@ export type ExtensionApp = Readonly<{
   sessionCommandService: SessionCommandService;
   exportService: ExportService;
   getSessionMonitorStateQuery: GetSessionMonitorStateQuery;
+  getSessionHistoryQuery: GetSessionHistoryQuery;
+  getSessionHistoryDetailQuery: GetSessionHistoryDetailQuery;
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
@@ -399,6 +409,13 @@ export const createExtensionApp = (
     transcriptStreamRepository,
     settingsStore,
   });
+  const getSessionHistoryQuery = createGetSessionHistoryQuery({
+    sourceSessionRepository,
+  });
+  const getSessionHistoryDetailQuery = createGetSessionHistoryDetailQuery({
+    sessionStore,
+    settingsStore,
+  });
 
   // --------------- Application services (Phase 3 facades) ---------------
   const sessionCommandService = createSessionCommandService({
@@ -422,6 +439,8 @@ export const createExtensionApp = (
     sessionCommandService,
     exportService,
     getSessionMonitorStateQuery,
+    getSessionHistoryQuery,
+    getSessionHistoryDetailQuery,
     sessionRegistry,
     captureOrchestrator,
     audioFramePump,

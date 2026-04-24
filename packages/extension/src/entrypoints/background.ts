@@ -182,6 +182,8 @@ export default defineBackground(() => {
     sessionCommandService: app.sessionCommandService,
     exportService: app.exportService,
     getSessionMonitorStateQuery: app.getSessionMonitorStateQuery,
+    getSessionHistoryQuery: app.getSessionHistoryQuery,
+    getSessionHistoryDetailQuery: app.getSessionHistoryDetailQuery,
     settingsStore: app.settingsStore,
   });
 

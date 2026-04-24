@@ -51,6 +51,8 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
   saveDefaultTranslationContextWindow: vi.fn(() => Promise.resolve(SAVED_ACK)),
   saveRelayConnectionOverride: vi.fn(() => Promise.resolve(SAVED_ACK)),
   clearRelayConnectionOverride: vi.fn(() => Promise.resolve(SAVED_ACK)),
+  getSessionHistory: vi.fn(),
+  getSessionHistoryDetail: vi.fn(),
   ...overrides,
 });
 

@@ -29,6 +29,7 @@ describe('SourceSessionRepository (DD-260)', () => {
       const mock: SourceSessionRepository = {
         findById: () => okAsync(buildSession(SESSION_ID, SOURCE_ID)),
         findActiveSessions: () => okAsync([]),
+        findAllSessions: () => okAsync([]),
         save: () => okAsync(undefined),
       };
       expect(typeof mock.findById).toBe('function');
@@ -43,6 +44,7 @@ describe('SourceSessionRepository (DD-260)', () => {
       const mock: SourceSessionRepository = {
         findById: () => okAsync(session),
         findActiveSessions: () => okAsync([]),
+        findAllSessions: () => okAsync([]),
         save: () => okAsync(undefined),
       };
       const result = await mock.findById(sessionIdentifier);
@@ -57,6 +59,7 @@ describe('SourceSessionRepository (DD-260)', () => {
             notFoundError({ resourceType: 'SourceSession', identifier: id }),
           ),
         findActiveSessions: () => okAsync([]),
+        findAllSessions: () => okAsync([]),
         save: () => okAsync(undefined),
       };
       const result = await mock.findById(sessionIdentifier);
@@ -76,6 +79,7 @@ describe('SourceSessionRepository (DD-260)', () => {
       const mock: SourceSessionRepository = {
         findById: () => okAsync(buildSession(SESSION_ID, SOURCE_ID)),
         findActiveSessions: () => okAsync([]),
+        findAllSessions: () => okAsync([]),
         save: () => okAsync(undefined),
       };
       const result = await mock.findActiveSessions();
@@ -91,6 +95,7 @@ describe('SourceSessionRepository (DD-260)', () => {
       const mock: SourceSessionRepository = {
         findById: () => okAsync(sessions[0]!),
         findActiveSessions: () => okAsync(sessions),
+        findAllSessions: () => okAsync(sessions),
         save: () => okAsync(undefined),
       };
       const result = await mock.findActiveSessions();
@@ -108,6 +113,7 @@ describe('SourceSessionRepository (DD-260)', () => {
       const mock: SourceSessionRepository = {
         findById: () => okAsync(buildSession(SESSION_ID, SOURCE_ID)),
         findActiveSessions: () => okAsync([]),
+        findAllSessions: () => okAsync([]),
         save: () => okAsync(undefined),
       };
       const result = await mock.save(buildSession(SESSION_ID, SOURCE_ID));

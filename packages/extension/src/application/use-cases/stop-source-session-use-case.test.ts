@@ -41,6 +41,7 @@ const buildDependencies = (
   const sourceSessionRepository: SourceSessionRepository = {
     findById: vi.fn(() => okAsync(buildActiveSession())),
     findActiveSessions: vi.fn(() => okAsync([])),
+    findAllSessions: vi.fn(() => okAsync([])),
     save: vi.fn(() => okAsync(undefined)),
   };
   const relayGateway: RelayGateway = {
@@ -148,6 +149,7 @@ describe('createStopSourceSessionUseCase (IMPL-215, DD-306)', () => {
           ),
         ),
         findActiveSessions: vi.fn(() => okAsync([])),
+        findAllSessions: vi.fn(() => okAsync([])),
         save: vi.fn(() => okAsync(undefined)),
       },
     });
@@ -164,6 +166,7 @@ describe('createStopSourceSessionUseCase (IMPL-215, DD-306)', () => {
       sourceSessionRepository: {
         findById: vi.fn(() => okAsync(stopped)),
         findActiveSessions: vi.fn(() => okAsync([])),
+        findAllSessions: vi.fn(() => okAsync([])),
         save: vi.fn(() => okAsync(undefined)),
       },
     });
@@ -274,6 +277,7 @@ describe('createStopSourceSessionUseCase (IMPL-215, DD-306)', () => {
       sourceSessionRepository: {
         findById: vi.fn(() => okAsync(buildActiveSession())),
         findActiveSessions: vi.fn(() => okAsync([])),
+        findAllSessions: vi.fn(() => okAsync([])),
         save: vi.fn(() =>
           errAsync<void, DomainError>(
             invariantViolationError({ invariant: 'storage-write-failed', details: 'quota' }),
