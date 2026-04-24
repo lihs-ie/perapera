@@ -424,9 +424,11 @@ describe('createRelayWebSocketGateway (IMPL-320, DD-105 / DD-411)', () => {
       const frameResult = await gateway.sendAudioFrame({
         sessionIdentifier,
         sequenceNumber: 0,
-        capturedAt: '2026-04-21T00:00:02.000Z',
-        frameDurationMs: 100,
+        sampleRate: 16000,
+        channels: 1,
         pcm16Base64: 'AAAA=',
+        capturedAt: '2026-04-21T00:00:02.000Z',
+        durationMs: 100,
       });
       expect(frameResult.isErr()).toBe(true);
       if (frameResult.isErr()) {
