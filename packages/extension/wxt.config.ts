@@ -31,6 +31,25 @@ export default defineConfig({
     action: {
       default_title: 'perapera',
     },
+    // Issue #112: chrome.commands によるキーボードショートカット。
+    // 既定キーはユーザが chrome://extensions/shortcuts から変更可能。
+    // Chrome の仕様上 Alt キーは Mac では Option として機能する。
+    commands: {
+      'open-main-window': {
+        suggested_key: {
+          default: 'Alt+Shift+P',
+          mac: 'Alt+Shift+P',
+        },
+        description: 'perapera の main window を起動 / focus する',
+      },
+      'stop-active-session': {
+        suggested_key: {
+          default: 'Alt+Shift+S',
+          mac: 'Alt+Shift+S',
+        },
+        description: '活性セッションを停止する',
+      },
+    },
     web_accessible_resources: [
       {
         resources: ['main.html'],

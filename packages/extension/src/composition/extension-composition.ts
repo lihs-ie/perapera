@@ -103,6 +103,7 @@ import {
   type WebSocketFactory,
 } from '../infrastructure/relay/websocket-factory';
 import { type SettingsStore } from '../application/ports/settings-store';
+import { type SourceSessionRepository } from '../domain/repositories/source-session-repository';
 import {
   createChromeLocalExtensionProfileRepository,
   createChromeLocalSettingsStore,
@@ -234,6 +235,8 @@ export type ExtensionApp = Readonly<{
   ensureDefaultProfile: EnsureDefaultProfile;
   transcriptAssembler: TranscriptAssembler;
   settingsStore: SettingsStore;
+  /** Issue #112: keyboard shortcut 経由の active session 検索に公開 */
+  sourceSessionRepository: SourceSessionRepository;
   close: () => Promise<void>;
 }>;
 
@@ -450,6 +453,7 @@ export const createExtensionApp = (
     ensureDefaultProfile,
     transcriptAssembler,
     settingsStore,
+    sourceSessionRepository,
     close: async () => {
       relaySessionSubscriber.stopAll();
       audioFramePump.stopAll();

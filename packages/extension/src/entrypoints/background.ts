@@ -5,6 +5,10 @@ import {
   type ExtensionRuntimeConfig,
 } from '../composition/extension-composition';
 import {
+  defaultChromeCommandsApi,
+  registerKeyboardCommandHandler,
+} from '../composition/keyboard-command-handler';
+import {
   createChromeLocalMainWindowBoundsStore,
   createMainWindowLifecycle,
   defaultWindowsApi,
@@ -185,6 +189,15 @@ export default defineBackground(() => {
       console.warn('[perapera] ensureDefaultProfile failed:', error);
     },
   );
+
+  // Issue #112: chrome.commands キーボードショートカット。
+  // `open-main-window` / `stop-active-session` を配線する。
+  registerKeyboardCommandHandler({
+    commandsApi: defaultChromeCommandsApi,
+    mainWindowLifecycle,
+    sessionCommandService: app.sessionCommandService,
+    sourceSessionRepository: app.sourceSessionRepository,
+  });
 
   const dispatch: RuntimeDispatcher = createRuntimeDispatcher({
     sessionCommandService: app.sessionCommandService,
