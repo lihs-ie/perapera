@@ -44,8 +44,14 @@ import { type UpdateSourceSettingsUseCase } from '../use-cases/update-source-set
  * - `transcript.partial` → HandleTranscriptPartialUseCase (時刻は clock() から合成)
  * - `transcript.final` → HandleTranscriptFinalUseCase (translation なし)
  * - `translation.final` → HandleTranscriptFinalUseCase (translation 付き)
- * - `session.ready` / `session.state.changed` / `session.error` は現状 no-op。
- *   これらは `SessionRegistry` や controller 側の UI 更新でハンドリング想定
+ * - `session.ready` は no-op (controller 側の UI 更新でハンドリング)
+ * - `session.state.changed` は `sessionStateBroadcaster` で main window へ push
+ * - `session.error(retryable=true, fatal=false)` は **自動で stopSource を発火** し
+ *   audio frame pump / relay / overlay をクリーンアップする (gateway は既に
+ *   socket を tear-down 済)。これによりユーザーは手動で stop しなくても
+ *   session が error 状態で停止し、UI から再度 session.start できる。
+ * - `session.error(fatal=true)` / `retryable=false` も同様に stopSource を発火
+ *   (session が続行不可のため)
  *
  * 注: `transcript.partial` / `final` の `timeRange` は RelayEvent に含まれない
  * ため `clock()` を起点に 100ms 幅で合成する。将来 Relay API が時刻を含む
@@ -145,12 +151,17 @@ export const createSessionCommandService = (
   applySourceSettings: (input) => deps.updateSourceSettingsUseCase(input),
   handleRelayEvent: (event) => {
     if (event.type === 'session.error') {
-      console.error('[session-command-service] relay session.error:', {
-        code: event.code,
-        message: event.message,
-        retryable: event.retryable,
-        fatal: event.fatal,
-      });
+      // JSON.stringify to survive log pipelines that string-coerce arguments
+      // (plain `console.error("...", {obj})` renders as "[object Object]" in some).
+      console.error(
+        `[session-command-service] relay session.error: ${JSON.stringify({
+          sessionId: event.sessionIdentifier,
+          code: event.code,
+          message: event.message,
+          retryable: event.retryable,
+          fatal: event.fatal,
+        })}`,
+      );
     } else {
       console.log('[session-command-service] relay event:', event.type);
     }
@@ -189,8 +200,31 @@ export const createSessionCommandService = (
           });
       }
       case 'session.ready':
-      case 'session.error':
         return okAsync<void, ApplicationError>(undefined);
+      case 'session.error': {
+        // PR #131 follow-up: server から session.error が届いたら自動で
+        // session を停止する (audio pump / relay / overlay をクリーンアップ)。
+        // gateway は既に `session.error(retryable=true)` で socket を
+        // tear-down しているが、audio pump はまだ frame を送り続けるため
+        // 明示的に stopSource を呼んで全経路を止める必要がある。
+        // stopSource が失敗してもここは warn に留めホットパスを止めない。
+        console.log(
+          `[session-command-service] auto-stopping session on relay session.error (sessionId=${event.sessionIdentifier}, code=${event.code})`,
+        );
+        return deps
+          .stopSourceSessionUseCase({ sessionId: event.sessionIdentifier })
+          .map((): void => undefined)
+          .orElse((appError) => {
+            // session が既に stopped / 存在しない場合など "session-not-found"
+            // は期待できるケース (重複受信、競合 stop 等)。warn のみ。
+            console.warn(
+              '[session-command-service] auto-stop on session.error failed:',
+              appError.type,
+              appError.message,
+            );
+            return okAsync<void, ApplicationError>(undefined);
+          });
+      }
     }
   },
 });

@@ -191,20 +191,12 @@ describe('createSessionCommandService (IMPL-340)', () => {
     expect(call?.translation?.text).toBe('こんにちは');
   });
 
-  it('handleRelayEvent returns ok for non-transcript events (no-op)', async () => {
+  it('handleRelayEvent returns ok for session.ready / session.state.changed (no transcript side-effect)', async () => {
     const mocks = buildMocks();
     const service = createSessionCommandService({ ...mocks, clock });
     const events: RelayEvent[] = [
       { type: 'session.ready', sessionIdentifier, heartbeatIntervalSec: 15 },
       { type: 'session.state.changed', sessionIdentifier, state: 'capturing' },
-      {
-        type: 'session.error',
-        sessionIdentifier,
-        code: 'STT_ERROR',
-        message: 'boom',
-        retryable: true,
-        fatal: false,
-      },
     ];
     for (const event of events) {
       const result = await service.handleRelayEvent(event);
@@ -212,6 +204,43 @@ describe('createSessionCommandService (IMPL-340)', () => {
     }
     expect(mocks.handleTranscriptPartialUseCase).not.toHaveBeenCalled();
     expect(mocks.handleTranscriptFinalUseCase).not.toHaveBeenCalled();
+    expect(mocks.stopSourceSessionUseCase).not.toHaveBeenCalled();
+  });
+
+  it('handleRelayEvent auto-stops the session when session.error is received (PR #131 follow-up)', async () => {
+    const mocks = buildMocks();
+    const service = createSessionCommandService({ ...mocks, clock });
+    const event: RelayEvent = {
+      type: 'session.error',
+      sessionIdentifier,
+      code: 'STT_STREAM_FAILED',
+      message: 'sendFrame failed: STT stream closed',
+      retryable: true,
+      fatal: false,
+    };
+    const result = await service.handleRelayEvent(event);
+    expect(result.isOk()).toBe(true);
+    expect(mocks.stopSourceSessionUseCase).toHaveBeenCalledWith({
+      sessionId: sessionIdentifier,
+    });
+  });
+
+  it('handleRelayEvent tolerates stopSource failure on session.error (logs, does not propagate)', async () => {
+    const mocks = buildMocks();
+    mocks.stopSourceSessionUseCase.mockReturnValueOnce(
+      errAsync(sessionNotFoundAppError({ identifier: SESSION_ID, message: 'already stopped' })),
+    );
+    const service = createSessionCommandService({ ...mocks, clock });
+    const event: RelayEvent = {
+      type: 'session.error',
+      sessionIdentifier,
+      code: 'STT_STREAM_FAILED',
+      message: 'boom',
+      retryable: true,
+      fatal: false,
+    };
+    const result = await service.handleRelayEvent(event);
+    expect(result.isOk()).toBe(true);
   });
 
   it('handleRelayEvent broadcasts session.state.changed via SessionStateBroadcaster (Issue #108)', async () => {
