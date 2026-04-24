@@ -82,6 +82,7 @@ const buildFakeDeps = () => {
   const purgeExpiredSessionsUseCase = vi.fn(() =>
     okAsync({ purgedSessionIds: [], totalPurged: 0 }),
   );
+  const searchSessionHistoryQuery = vi.fn(() => okAsync({ sessions: [] }));
   const sessionStore: SessionStore = {
     saveSession: vi.fn(() => okAsync(undefined)),
     appendTranscript: vi.fn(() => okAsync(undefined)),
@@ -100,6 +101,7 @@ const buildFakeDeps = () => {
     getGlossaryQuery,
     updateGlossaryUseCase,
     purgeExpiredSessionsUseCase,
+    searchSessionHistoryQuery,
     sessionStore,
     settingsStore,
   };

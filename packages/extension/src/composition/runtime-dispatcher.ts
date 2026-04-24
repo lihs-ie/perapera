@@ -12,6 +12,7 @@ import { type GetSessionHistoryDetailQuery } from '../application/use-cases/get-
 import { type GetSessionHistoryQuery } from '../application/use-cases/get-session-history-query';
 import { type GetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { type PurgeExpiredSessionsUseCase } from '../application/use-cases/purge-expired-sessions-use-case';
+import { type SearchSessionHistoryQuery } from '../application/use-cases/search-session-history-query';
 import { type UpdateGlossaryUseCase } from '../application/use-cases/update-glossary-use-case';
 import { createOverlaySettings, type OverlaySettings } from '../domain/profile/overlay-settings';
 import {
@@ -53,6 +54,7 @@ export type RuntimeDispatcherDependencies = Readonly<{
   getGlossaryQuery: GetGlossaryQuery;
   updateGlossaryUseCase: UpdateGlossaryUseCase;
   purgeExpiredSessionsUseCase: PurgeExpiredSessionsUseCase;
+  searchSessionHistoryQuery: SearchSessionHistoryQuery;
   sessionStore: SessionStore;
   settingsStore: SettingsStore;
 }>;
@@ -312,6 +314,8 @@ export const createRuntimeDispatcher = (deps: RuntimeDispatcherDependencies): Ru
             }))
             .mapErr(toApplicationError),
         );
+      case 'query.search-session-history':
+        return run(deps.searchSessionHistoryQuery(request.input));
       case 'query.get-session-history':
         return run(deps.getSessionHistoryQuery({}));
       case 'query.get-session-history-detail':

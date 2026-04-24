@@ -47,6 +47,7 @@ const buildDependencies = (
     appendPartial: vi.fn(() => okAsync(undefined)),
     appendFinal: vi.fn(() => okAsync(undefined)),
     appendTranslation: vi.fn(() => okAsync(undefined)),
+    search: vi.fn(() => okAsync([])),
   };
   const overlayPresenter: OverlayPresenter = {
     mount: vi.fn(() => okAsync(undefined)),
@@ -157,6 +158,7 @@ describe('createHandleTranscriptPartialUseCase (IMPL-213, DD-304)', () => {
         appendPartial: appendPartialMock,
         appendFinal: vi.fn(() => okAsync(undefined)),
         appendTranslation: vi.fn(() => okAsync(undefined)),
+        search: vi.fn(() => okAsync([])),
       },
     });
     const useCase = createHandleTranscriptPartialUseCase(deps);
@@ -206,6 +208,7 @@ describe('createHandleTranscriptPartialUseCase (IMPL-213, DD-304)', () => {
         ),
         appendFinal: vi.fn(() => okAsync(undefined)),
         appendTranslation: vi.fn(() => okAsync(undefined)),
+        search: vi.fn(() => okAsync([])),
       },
     });
     const useCase = createHandleTranscriptPartialUseCase(deps);

@@ -1,12 +1,18 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../atoms/button';
+import { Label } from '../atoms/label';
+import { Select } from '../atoms/select';
+import { TextInput } from '../atoms/text-input';
 import { useBackgroundCommand } from '../hooks/use-background-command';
 import { useBackgroundQuery } from '../hooks/use-background-query';
 import {
   type BackgroundClient,
+  type SearchSessionHistoryResult,
   type SessionHistoryDetailResult,
 } from '../infrastructure/background-client';
 import { TranscriptPairItem } from '../molecules/transcript-pair-item';
+
+const SEARCH_DEBOUNCE_MS = 300 as const;
 
 export type Props = Readonly<{
   client: BackgroundClient;
@@ -38,11 +44,49 @@ export function SessionHistoryView(props: Props) {
     input: undefined,
   });
   const detailCommand = useBackgroundCommand(props.client.getSessionHistoryDetail);
+  const searchCommand = useBackgroundCommand(props.client.searchSessionHistory);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SessionHistoryDetailResult | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState<string>('');
+  const [searchLanguage, setSearchLanguage] = useState<'source' | 'target' | 'both'>('both');
+  const [searchResult, setSearchResult] = useState<SearchSessionHistoryResult | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const sessions = useMemo(() => listQuery.state.data?.sessions ?? [], [listQuery.state.data]);
+
+  useEffect(() => {
+    if (searchKeyword.trim().length === 0) {
+      setSearchResult(null);
+      setSearchError(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void (async () => {
+        const response = await searchCommand.execute({
+          keyword: searchKeyword,
+          language: searchLanguage,
+          caseSensitive: false,
+        });
+        if (response.ok) {
+          setSearchResult(response.value);
+          setSearchError(null);
+        } else {
+          setSearchResult(null);
+          setSearchError(`検索に失敗しました: ${response.error.message}`);
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [searchKeyword, searchLanguage, searchCommand]);
+
+  const filteredSessions = useMemo(() => {
+    if (searchResult === null) return sessions;
+    const matchedIds = new Set(searchResult.sessions.map((s) => s.sessionIdentifier));
+    return sessions.filter((s) => matchedIds.has(s.sessionId));
+  }, [sessions, searchResult]);
 
   const handleSelect = useCallback(
     async (sessionId: string): Promise<void> => {
@@ -69,6 +113,40 @@ export function SessionHistoryView(props: Props) {
       </header>
       <div className="body" data-variant="history">
         <aside className="list" aria-label="履歴一覧">
+          <div className="search" role="search">
+            <Label htmlFor="history-search-input">字幕検索</Label>
+            <TextInput
+              id="history-search-input"
+              value={searchKeyword}
+              onChange={setSearchKeyword}
+              placeholder="原文 / 訳文から検索 (1〜256 文字)"
+              ariaLabel="字幕検索キーワード"
+              maxLength={256}
+            />
+            <Select
+              value={searchLanguage}
+              onChange={(value) => {
+                if (value === 'source' || value === 'target' || value === 'both') {
+                  setSearchLanguage(value);
+                }
+              }}
+              options={[
+                { value: 'both', label: '原文と訳文' },
+                { value: 'source', label: '原文のみ' },
+                { value: 'target', label: '訳文のみ' },
+              ]}
+              ariaLabel="検索対象言語"
+            />
+            {searchCommand.state.status === 'pending' ? <p className="message">検索中…</p> : null}
+            {searchError !== null ? (
+              <p className="message" role="alert">
+                {searchError}
+              </p>
+            ) : null}
+            {searchResult !== null && searchResult.sessions.length === 0 ? (
+              <p className="message">該当する字幕はありません。</p>
+            ) : null}
+          </div>
           {listQuery.state.status === 'pending' || listQuery.state.status === 'idle' ? (
             <p className="message">読み込み中…</p>
           ) : null}
@@ -77,11 +155,15 @@ export function SessionHistoryView(props: Props) {
               一覧の取得に失敗しました: {listQuery.state.error?.message ?? 'unknown error'}
             </p>
           ) : null}
-          {listQuery.state.status === 'success' && sessions.length === 0 ? (
-            <p className="message">過去のセッションはまだありません。</p>
+          {listQuery.state.status === 'success' && filteredSessions.length === 0 ? (
+            <p className="message">
+              {searchResult === null
+                ? '過去のセッションはまだありません。'
+                : '検索条件に一致するセッションはありません。'}
+            </p>
           ) : null}
           <ul className="items" role="list">
-            {sessions.map((summary) => (
+            {filteredSessions.map((summary) => (
               <li
                 key={summary.sessionId}
                 className="item"

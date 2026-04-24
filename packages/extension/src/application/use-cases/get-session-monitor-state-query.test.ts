@@ -87,6 +87,7 @@ const buildDependencies = (
     appendPartial: vi.fn(() => okAsync(undefined)),
     appendFinal: vi.fn(() => okAsync(undefined)),
     appendTranslation: vi.fn(() => okAsync(undefined)),
+    search: vi.fn(() => okAsync([])),
   };
   const settingsStore: SettingsStore = {
     getDefaultLanguagePair: vi.fn(() =>
@@ -186,6 +187,7 @@ describe('createGetSessionMonitorStateQuery (IMPL-211, DD-302)', () => {
         appendPartial: vi.fn(() => okAsync(undefined)),
         appendFinal: vi.fn(() => okAsync(undefined)),
         appendTranslation: vi.fn(() => okAsync(undefined)),
+        search: vi.fn(() => okAsync([])),
       },
     });
     const query = createGetSessionMonitorStateQuery(deps);

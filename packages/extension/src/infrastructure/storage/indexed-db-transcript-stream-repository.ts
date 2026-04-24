@@ -1,6 +1,12 @@
 import { ResultAsync, errAsync } from 'neverthrow';
-import { type TranscriptStreamRepository } from '../../domain/repositories/transcript-stream-repository';
-import { type SessionIdentifier } from '../../domain/session/session-identifier';
+import {
+  type TranscriptSearchMatch,
+  type TranscriptStreamRepository,
+} from '../../domain/repositories/transcript-stream-repository';
+import {
+  parseSessionIdentifier,
+  type SessionIdentifier,
+} from '../../domain/session/session-identifier';
 import {
   invariantViolationError,
   notFoundError,
@@ -163,6 +169,63 @@ export const createIndexedDbTranscriptStreamRepository = (
           })(),
           toPersistenceError('appendTranslation/put'),
         );
+      }),
+
+    search: (query) =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const connection = await handle.get();
+          const transcripts =
+            query.language === 'target' ? [] : await connection.getAll(TRANSCRIPT_STORE);
+          const translations =
+            query.language === 'source' ? [] : await connection.getAll(TRANSLATION_STORE);
+          return { transcripts, translations };
+        })(),
+        toPersistenceError('search'),
+      ).andThen((raw): ResultAsync<readonly TranscriptSearchMatch[], DomainError> => {
+        const keyword = query.caseSensitive ? query.keyword : query.keyword.toLowerCase();
+        const matches: TranscriptSearchMatch[] = [];
+        const snippetAround = (text: string, start: number): string => {
+          const before = Math.max(0, start - 20);
+          const after = Math.min(text.length, start + query.keyword.length + 20);
+          return `${before > 0 ? '…' : ''}${text.slice(before, after)}${
+            after < text.length ? '…' : ''
+          }`;
+        };
+        for (const row of raw.transcripts) {
+          if (!row.isFinal) continue;
+          const haystack = query.caseSensitive ? row.text : row.text.toLowerCase();
+          const index = haystack.indexOf(keyword);
+          if (index === -1) continue;
+          const sessionResult = parseSessionIdentifier(row.sessionId);
+          if (sessionResult.isErr()) continue;
+          matches.push({
+            sessionIdentifier: sessionResult.value,
+            segmentIdentifier: row.segmentId,
+            snippet: snippetAround(row.text, index),
+            matchedLanguage: 'source',
+            startTimeMs: row.startMs,
+          });
+        }
+        for (const row of raw.translations) {
+          if (row.status !== 'completed') continue;
+          const haystack = query.caseSensitive ? row.text : row.text.toLowerCase();
+          const index = haystack.indexOf(keyword);
+          if (index === -1) continue;
+          const sessionResult = parseSessionIdentifier(row.sessionId);
+          if (sessionResult.isErr()) continue;
+          // 対応する transcript segment の startMs を取得する (ない場合は 0)
+          const transcriptRow = raw.transcripts.find((t) => t.segmentId === row.segmentId);
+          matches.push({
+            sessionIdentifier: sessionResult.value,
+            segmentIdentifier: row.segmentId,
+            snippet: snippetAround(row.text, index),
+            matchedLanguage: 'target',
+            startTimeMs: transcriptRow?.startMs ?? 0,
+          });
+        }
+        const readonlyMatches: readonly TranscriptSearchMatch[] = matches;
+        return ResultAsync.fromSafePromise(Promise.resolve(readonlyMatches));
       }),
 
     close: handle.close,

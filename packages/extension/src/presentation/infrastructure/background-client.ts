@@ -157,6 +157,23 @@ const purgeResultOutputSchema = z.object({
 });
 export type PurgeSessionsResult = z.infer<typeof purgeResultOutputSchema>;
 
+const searchSessionHistoryOutputSchema = z.object({
+  sessions: z.array(
+    z.object({
+      sessionIdentifier: z.string(),
+      matches: z.array(
+        z.object({
+          segmentIdentifier: z.string(),
+          snippet: z.string(),
+          matchedLanguage: z.enum(['source', 'target']),
+          startTimeMs: z.number(),
+        }),
+      ),
+    }),
+  ),
+});
+export type SearchSessionHistoryResult = z.infer<typeof searchSessionHistoryOutputSchema>;
+
 const sessionHistorySummarySchema = z.object({
   sessionId: z.string().min(1),
   displayName: z.string(),
@@ -331,6 +348,11 @@ export type BackgroundClient = Readonly<{
   ) => Promise<BackgroundResponse<SavedAckResult>>;
   purgeExpiredSessions: () => Promise<BackgroundResponse<PurgeSessionsResult>>;
   purgeAllSessions: () => Promise<BackgroundResponse<PurgeSessionsResult>>;
+  searchSessionHistory: (input: {
+    keyword: string;
+    language: 'source' | 'target' | 'both';
+    caseSensitive: boolean;
+  }) => Promise<BackgroundResponse<SearchSessionHistoryResult>>;
   getSessionHistory: () => Promise<BackgroundResponse<SessionHistoryListResult>>;
   getSessionHistoryDetail: (input: {
     sessionId: string;
@@ -409,6 +431,12 @@ export const createBackgroundClient = (
     sendTyped(sender, { type: 'command.purge-expired-sessions' }, purgeResultOutputSchema),
   purgeAllSessions: () =>
     sendTyped(sender, { type: 'command.purge-all-sessions' }, purgeResultOutputSchema),
+  searchSessionHistory: (input) =>
+    sendTyped(
+      sender,
+      { type: 'query.search-session-history', input },
+      searchSessionHistoryOutputSchema,
+    ),
   getSessionHistory: () =>
     sendTyped(sender, { type: 'query.get-session-history' }, sessionHistoryListOutputSchema),
   getSessionHistoryDetail: (input) =>

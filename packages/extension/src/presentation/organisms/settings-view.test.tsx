@@ -72,6 +72,7 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
     (): Promise<BackgroundResponse<PurgeSessionsResult>> =>
       Promise.resolve({ ok: true, value: { purgedSessionIds: [], totalPurged: 0 } }),
   ),
+  searchSessionHistory: vi.fn(),
   getSessionHistory: vi.fn(),
   getSessionHistoryDetail: vi.fn(),
   ...overrides,
