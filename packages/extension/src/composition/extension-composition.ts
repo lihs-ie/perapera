@@ -76,6 +76,7 @@ import {
 import { createChromeTabStreamIdResolver } from '../infrastructure/capture/chrome-tab-stream-id-resolver';
 import {
   createChromeMessagingOverlayPresenter,
+  createChromeMessagingSessionStateBroadcaster,
   defaultOverlayMessagingBridge,
   type OverlayMessagingBridge,
 } from '../infrastructure/overlay/chrome-messaging-overlay-presenter';
@@ -294,6 +295,11 @@ export const createExtensionApp = (
   const overlayPresenter = createChromeMessagingOverlayPresenter({
     bridge: ports.overlayMessagingBridge,
   });
+  // Issue #108: SessionStateBroadcaster は overlay と同じ bridge を共有する
+  // (main window 側 useOverlayMessages が一括購読する設計のため)。
+  const sessionStateBroadcaster = createChromeMessagingSessionStateBroadcaster({
+    bridge: ports.overlayMessagingBridge,
+  });
 
   // --------------- Application services (先に構築: circular dep 回避) ---------------
   // MV3 SW では MediaStream / AudioContext が動作しないため、CaptureOrchestrator は
@@ -401,6 +407,7 @@ export const createExtensionApp = (
     updateSourceSettingsUseCase,
     handleTranscriptPartialUseCase,
     handleTranscriptFinalUseCase,
+    sessionStateBroadcaster,
     clock: ports.clockMs,
   });
   // 構築完了後に late-bind 用 ref に保存。以降 relaySessionSubscriber の

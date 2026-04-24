@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react';
 import { type OverlayLine } from '../../application/ports/overlay-presenter';
 import { type SessionIdentifier } from '../../domain/session/session-identifier';
+import { type SessionState } from '../../domain/session/session-state';
 import { parseOverlayCommand } from '../../infrastructure/overlay/overlay-commands';
 
 export type OverlayMessagesState = Readonly<{
   sessionIdentifier: SessionIdentifier | null;
   lines: readonly OverlayLine[];
+  /** Issue #108: 直近受信した session state ('connecting' / 'capturing' 等) */
+  sessionState: SessionState | null;
+  /** Issue #108: degraded / error 等で Relay が付与した補足理由 */
+  sessionStateReason: string | null;
 }>;
 
 const initialState: OverlayMessagesState = {
   sessionIdentifier: null,
   lines: [],
+  sessionState: null,
+  sessionStateReason: null,
 };
 
 /**
@@ -47,7 +54,12 @@ export const useOverlayMessages = (): OverlayMessagesState => {
       setState((prev): OverlayMessagesState => {
         switch (command.type) {
           case 'overlay.mount':
-            return { sessionIdentifier: command.sessionIdentifier, lines: [] };
+            return {
+              sessionIdentifier: command.sessionIdentifier,
+              lines: [],
+              sessionState: prev.sessionState,
+              sessionStateReason: prev.sessionStateReason,
+            };
           case 'overlay.render':
             // prior mount が無くても先行 render を adopt する。現状
             // start-source-session-use-case は overlayPresenter.mount を
@@ -70,12 +82,30 @@ export const useOverlayMessages = (): OverlayMessagesState => {
             return {
               sessionIdentifier: command.model.sessionIdentifier,
               lines: command.model.lines,
+              sessionState: prev.sessionState,
+              sessionStateReason: prev.sessionStateReason,
             };
           case 'overlay.unmount':
             if (prev.sessionIdentifier !== command.sessionIdentifier) return prev;
             return initialState;
           case 'overlay.update-settings':
             return prev;
+          case 'session.state':
+            // Issue #108: 別 session の state は無視 (active session のみ追従)。
+            // active が null の場合は最初の state イベント自体で session を
+            // 採用する (start レスポンスより先に届く可能性に備える)。
+            if (
+              prev.sessionIdentifier !== null &&
+              prev.sessionIdentifier !== command.sessionIdentifier
+            ) {
+              return prev;
+            }
+            return {
+              sessionIdentifier: command.sessionIdentifier,
+              lines: prev.lines,
+              sessionState: command.state,
+              sessionStateReason: command.reason,
+            };
         }
       });
       sendResponse(undefined);

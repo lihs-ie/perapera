@@ -13,6 +13,11 @@ import {
   parseSessionIdentifier,
   type SessionIdentifier,
 } from '../../domain/session/session-identifier';
+import {
+  parseSessionState,
+  SESSION_STATES,
+  type SessionState,
+} from '../../domain/session/session-state';
 import { validationError, type DomainError } from '../../domain/shared/errors';
 
 /**
@@ -76,11 +81,24 @@ const unmountCommandSchema = z.object({
   sessionIdentifier: z.string().min(1),
 });
 
+/**
+ * Issue #108: session.state.changed を main window へ push する command。
+ * Relay からの WebSocket イベントを `SessionCommandService` 経由で受けて
+ * `chrome.runtime.sendMessage` で broadcast する。
+ */
+const sessionStateCommandSchema = z.object({
+  type: z.literal('session.state'),
+  sessionIdentifier: z.string().min(1),
+  state: z.enum(SESSION_STATES),
+  reason: z.string().nullable(),
+});
+
 const overlayCommandRawSchema = z.discriminatedUnion('type', [
   mountCommandSchema,
   renderCommandSchema,
   updateSettingsCommandSchema,
   unmountCommandSchema,
+  sessionStateCommandSchema,
 ]);
 
 /**
@@ -97,7 +115,13 @@ export type OverlayCommand =
       sessionIdentifier: SessionIdentifier;
       settings: OverlaySettings;
     }>
-  | Readonly<{ type: 'overlay.unmount'; sessionIdentifier: SessionIdentifier }>;
+  | Readonly<{ type: 'overlay.unmount'; sessionIdentifier: SessionIdentifier }>
+  | Readonly<{
+      type: 'session.state';
+      sessionIdentifier: SessionIdentifier;
+      state: SessionState;
+      reason: string | null;
+    }>;
 
 const toOverlayLine = (
   raw: z.infer<typeof overlayLineRawSchema>,
@@ -184,6 +208,17 @@ export const parseOverlayCommand = (raw: unknown): Result<OverlayCommand, Domain
           type: 'overlay.unmount',
           sessionIdentifier,
         }),
+      );
+    case 'session.state':
+      return parseSessionIdentifier(data.sessionIdentifier).andThen((sessionIdentifier) =>
+        parseSessionState(data.state).map(
+          (state): OverlayCommand => ({
+            type: 'session.state',
+            sessionIdentifier,
+            state,
+            reason: data.reason,
+          }),
+        ),
       );
   }
 };

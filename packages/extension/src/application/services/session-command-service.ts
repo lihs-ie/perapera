@@ -21,6 +21,7 @@ import {
 } from '../dto/update-source-settings-dto';
 import { type ApplicationError } from '../errors/application-errors';
 import { type RelayEvent } from '../ports/relay-gateway';
+import { type SessionStateBroadcaster } from '../ports/session-state-broadcaster';
 import { type HandleTranscriptFinalUseCase } from '../use-cases/handle-transcript-final-use-case';
 import { type HandleTranscriptPartialUseCase } from '../use-cases/handle-transcript-partial-use-case';
 import { type StartSourceSessionUseCase } from '../use-cases/start-source-session-use-case';
@@ -69,6 +70,8 @@ export type SessionCommandServiceDependencies = Readonly<{
   updateSourceSettingsUseCase: UpdateSourceSettingsUseCase;
   handleTranscriptPartialUseCase: HandleTranscriptPartialUseCase;
   handleTranscriptFinalUseCase: HandleTranscriptFinalUseCase;
+  /** Issue #108: 必須 DI。session.state.changed を main window へ broadcast する */
+  sessionStateBroadcaster: SessionStateBroadcaster;
   clock: () => number;
 }>;
 
@@ -170,8 +173,22 @@ export const createSessionCommandService = (
           .handleTranscriptFinalUseCase(input)
           .map((_output: HandleTranscriptFinalOutput): void => undefined);
       }
+      case 'session.state.changed': {
+        // Issue #108: main window 側 SessionToolbar / banner の更新材料を push。
+        // broadcast 失敗 (受信者ゼロを含む) はホットパスを止めず warn だけにする。
+        return deps.sessionStateBroadcaster
+          .broadcast({
+            sessionIdentifier: event.sessionIdentifier,
+            state: event.state,
+            reason: null,
+          })
+          .map((): void => undefined)
+          .orElse((domainError) => {
+            console.warn('[session-command-service] session.state broadcast failed:', domainError);
+            return okAsync<void, ApplicationError>(undefined);
+          });
+      }
       case 'session.ready':
-      case 'session.state.changed':
       case 'session.error':
         return okAsync<void, ApplicationError>(undefined);
     }

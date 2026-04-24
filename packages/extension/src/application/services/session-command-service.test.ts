@@ -17,6 +17,7 @@ import {
 } from '../dto/update-source-settings-dto';
 import { internalAppError, sessionNotFoundAppError } from '../errors/application-errors';
 import { type RelayEvent } from '../ports/relay-gateway';
+import { type SessionStateBroadcaster } from '../ports/session-state-broadcaster';
 import { type HandleTranscriptFinalUseCase } from '../use-cases/handle-transcript-final-use-case';
 import { type HandleTranscriptPartialUseCase } from '../use-cases/handle-transcript-partial-use-case';
 import { type StartSourceSessionUseCase } from '../use-cases/start-source-session-use-case';
@@ -47,6 +48,9 @@ type Mocks = {
   updateSourceSettingsUseCase: ReturnType<typeof vi.fn<UpdateSourceSettingsUseCase>>;
   handleTranscriptPartialUseCase: ReturnType<typeof vi.fn<HandleTranscriptPartialUseCase>>;
   handleTranscriptFinalUseCase: ReturnType<typeof vi.fn<HandleTranscriptFinalUseCase>>;
+  sessionStateBroadcaster: SessionStateBroadcaster & {
+    broadcast: ReturnType<typeof vi.fn<SessionStateBroadcaster['broadcast']>>;
+  };
 };
 
 const buildMocks = (): Mocks => ({
@@ -92,6 +96,9 @@ const buildMocks = (): Mocks => ({
       },
     }),
   ),
+  sessionStateBroadcaster: {
+    broadcast: vi.fn<SessionStateBroadcaster['broadcast']>(() => okAsync<void, never>(undefined)),
+  },
 });
 
 describe('createSessionCommandService (IMPL-340)', () => {
@@ -205,6 +212,23 @@ describe('createSessionCommandService (IMPL-340)', () => {
     }
     expect(mocks.handleTranscriptPartialUseCase).not.toHaveBeenCalled();
     expect(mocks.handleTranscriptFinalUseCase).not.toHaveBeenCalled();
+  });
+
+  it('handleRelayEvent broadcasts session.state.changed via SessionStateBroadcaster (Issue #108)', async () => {
+    const mocks = buildMocks();
+    const service = createSessionCommandService({ ...mocks, clock });
+    const event: RelayEvent = {
+      type: 'session.state.changed',
+      sessionIdentifier,
+      state: 'degraded',
+    };
+    const result = await service.handleRelayEvent(event);
+    expect(result.isOk()).toBe(true);
+    expect(mocks.sessionStateBroadcaster.broadcast).toHaveBeenCalledWith({
+      sessionIdentifier,
+      state: 'degraded',
+      reason: null,
+    });
   });
 
   it('handleRelayEvent surfaces UseCase failures', async () => {

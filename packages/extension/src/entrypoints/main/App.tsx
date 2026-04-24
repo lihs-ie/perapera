@@ -59,6 +59,25 @@ export function App() {
     }
   }, [overlay.sessionIdentifier]);
 
+  // Issue #108: Relay からの session.state.changed で active.state を最新化。
+  // `stopped` を受信したら自動で idle 画面に戻す (form 表示)。
+  useEffect(() => {
+    const nextState = overlay.sessionState;
+    if (nextState === null) return;
+    if (nextState === 'stopped') {
+      setActive(null);
+      return;
+    }
+    setActive((current) => {
+      if (current === null) return current;
+      if (overlay.sessionIdentifier !== null && current.sessionId !== overlay.sessionIdentifier) {
+        return current;
+      }
+      if (current.state === nextState) return current;
+      return { ...current, state: nextState };
+    });
+  }, [overlay.sessionState, overlay.sessionIdentifier]);
+
   if (showSettings) {
     return (
       <SettingsView
@@ -90,6 +109,7 @@ export function App() {
       <SessionToolbar
         client={client}
         session={active}
+        stateReason={overlay.sessionStateReason}
         onStopped={handleStopped}
         onOpenSettings={openSettings}
       />
