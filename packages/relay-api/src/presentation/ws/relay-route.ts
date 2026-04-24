@@ -395,6 +395,13 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
       let activeStream: ActiveStream | null = null;
       let audioFrameReceivedCount = 0;
       /**
+       * Runtime STT 切断時に `session.error (STT_STREAM_FAILED)` を一度だけ emit
+       * するための guard。`handleAudioFrame` の sendFrame 失敗、および transcript
+       * loop の予期しない終了の両方から共有する。session.start で再接続時に
+       * reset する (新しい stream に対しては再度通知可能にする)。
+       */
+      let streamFailureNotified = false;
+      /**
        * `session.start` を受信してから `sttPort.openStream` が resolve するまで
        * の一時状態。この間 `audio.frame` が届いても `SESSION_NOT_READY` を
        * 返さず、`pendingFrames` に buffer する。client (browser extension) は
@@ -513,89 +520,96 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
 
       const runTranscriptLoop = (stream: ActiveStream): void => {
         void (async () => {
-          for await (const event of stream.handle.events) {
-            try {
-              if (event.type === 'partial') {
-                emitTranscriptPartial(socket, context, nextSequence, deps.clock, event);
-                continue;
-              }
-              // IMPL-449: 直前の final が同じ接続内にあれば precedingSegmentId として
-              // 付与する (overlay 連結表示用のヒント)。先頭 final は null。
-              const precedingSegmentId =
-                finalTail.length === 0
-                  ? null
-                  : (finalTail[finalTail.length - 1]?.segmentId ?? null);
-              emitTranscriptFinal(
-                socket,
-                context,
-                nextSequence,
-                deps.clock,
-                event,
-                precedingSegmentId,
-                event.endpointingTrigger,
-              );
+          let iteratorThrew: unknown = null;
+          try {
+            for await (const event of stream.handle.events) {
+              try {
+                if (event.type === 'partial') {
+                  emitTranscriptPartial(socket, context, nextSequence, deps.clock, event);
+                  continue;
+                }
+                // IMPL-449: 直前の final が同じ接続内にあれば precedingSegmentId として
+                // 付与する (overlay 連結表示用のヒント)。先頭 final は null。
+                const precedingSegmentId =
+                  finalTail.length === 0
+                    ? null
+                    : (finalTail[finalTail.length - 1]?.segmentId ?? null);
+                emitTranscriptFinal(
+                  socket,
+                  context,
+                  nextSequence,
+                  deps.clock,
+                  event,
+                  precedingSegmentId,
+                  event.endpointingTrigger,
+                );
 
-              // IMPL-404 / IMPL-448: 翻訳 context を組み立てる (maxSegments=0 なら空)。
-              const precedingContext = composeTranslationContext({
-                finalTail,
-                maxSegments: effectiveTranslationContext.maxSegments,
-                includeTranslatedText: effectiveTranslationContext.includeTranslatedText,
-              });
-
-              // 新 final を finalTail に push (translatedText は後続の translate 応答で埋める)。
-              const newEntry: PrecedingContext = {
-                segmentId: event.segmentId,
-                sourceText: event.text,
-                finalizedAt: event.finalizedAt,
-              };
-              finalTail = [...finalTail, newEntry];
-              trimFinalTail();
-
-              const holdWindowMs = effectiveTranslationContext.holdWindowMs;
-              if (holdWindowMs <= 0) {
-                // 従来パス: 即時 translate 発火 (fire-and-forget)。
-                void dispatchTranslation({
-                  segmentIds: [event.segmentId],
-                  text: event.text,
-                  sourceLanguage: stream.sourceLanguage,
-                  targetLanguage: stream.targetLanguage,
-                  precedingContext,
+                // IMPL-404 / IMPL-448: 翻訳 context を組み立てる (maxSegments=0 なら空)。
+                const precedingContext = composeTranslationContext({
+                  finalTail,
+                  maxSegments: effectiveTranslationContext.maxSegments,
+                  includeTranslatedText: effectiveTranslationContext.includeTranslatedText,
                 });
-                continue;
-              }
 
-              // IMPL-460: hold-window 有効時。既存 pending を cancel して新 final を
-              // merge。precedingContext は merge 開始時点のものを固定利用する
-              // (merge 対象 final を context に含めないため)。
-              if (pendingTimer !== null) {
-                clearTimeout(pendingTimer);
-                pendingTimer = null;
+                // 新 final を finalTail に push (translatedText は後続の translate 応答で埋める)。
+                const newEntry: PrecedingContext = {
+                  segmentId: event.segmentId,
+                  sourceText: event.text,
+                  finalizedAt: event.finalizedAt,
+                };
+                finalTail = [...finalTail, newEntry];
+                trimFinalTail();
+
+                const holdWindowMs = effectiveTranslationContext.holdWindowMs;
+                if (holdWindowMs <= 0) {
+                  // 従来パス: 即時 translate 発火 (fire-and-forget)。
+                  void dispatchTranslation({
+                    segmentIds: [event.segmentId],
+                    text: event.text,
+                    sourceLanguage: stream.sourceLanguage,
+                    targetLanguage: stream.targetLanguage,
+                    precedingContext,
+                  });
+                  continue;
+                }
+
+                // IMPL-460: hold-window 有効時。既存 pending を cancel して新 final を
+                // merge。precedingContext は merge 開始時点のものを固定利用する
+                // (merge 対象 final を context に含めないため)。
+                if (pendingTimer !== null) {
+                  clearTimeout(pendingTimer);
+                  pendingTimer = null;
+                }
+                pendingTranslation =
+                  pendingTranslation === null
+                    ? {
+                        segmentIds: [event.segmentId],
+                        text: event.text,
+                        sourceLanguage: stream.sourceLanguage,
+                        targetLanguage: stream.targetLanguage,
+                        precedingContext,
+                      }
+                    : {
+                        segmentIds: [...pendingTranslation.segmentIds, event.segmentId],
+                        text: `${pendingTranslation.text} ${event.text}`,
+                        sourceLanguage: pendingTranslation.sourceLanguage,
+                        targetLanguage: pendingTranslation.targetLanguage,
+                        precedingContext: pendingTranslation.precedingContext,
+                      };
+                const snapshotForTimer = pendingTranslation;
+                pendingTimer = setTimeout(() => {
+                  pendingTranslation = null;
+                  pendingTimer = null;
+                  void dispatchTranslation(snapshotForTimer);
+                }, holdWindowMs);
+              } catch (cause) {
+                request.log.error({ err: cause }, 'transcript loop iteration failed');
               }
-              pendingTranslation =
-                pendingTranslation === null
-                  ? {
-                      segmentIds: [event.segmentId],
-                      text: event.text,
-                      sourceLanguage: stream.sourceLanguage,
-                      targetLanguage: stream.targetLanguage,
-                      precedingContext,
-                    }
-                  : {
-                      segmentIds: [...pendingTranslation.segmentIds, event.segmentId],
-                      text: `${pendingTranslation.text} ${event.text}`,
-                      sourceLanguage: pendingTranslation.sourceLanguage,
-                      targetLanguage: pendingTranslation.targetLanguage,
-                      precedingContext: pendingTranslation.precedingContext,
-                    };
-              const snapshotForTimer = pendingTranslation;
-              pendingTimer = setTimeout(() => {
-                pendingTranslation = null;
-                pendingTimer = null;
-                void dispatchTranslation(snapshotForTimer);
-              }, holdWindowMs);
-            } catch (cause) {
-              request.log.error({ err: cause }, 'transcript loop iteration failed');
             }
+          } catch (cause) {
+            // iterator が throw した (Deepgram 側の error イベント等)。
+            iteratorThrew = cause;
+            request.log.warn({ err: cause }, 'transcript loop aborted by iterator error');
           }
           // stream 終了時に pending があれば強制 flush
           if (pendingTimer !== null) {
@@ -606,6 +620,13 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
             const snapshot = pendingTranslation;
             pendingTranslation = null;
             void dispatchTranslation(snapshot);
+          }
+          // iterator が throw した場合のみクライアントへ通知する。
+          // 正常終了 (iterator が finite に flush した) は通知しない —
+          // Deepgram が無音終了で EOF を返す正常フローで false positive を
+          // 避けるため。sendFrame 失敗パスの通知で zombie 状態は既に拾える。
+          if (iteratorThrew !== null && activeStream === stream) {
+            notifyStreamFailure('transcript stream aborted unexpectedly');
           }
         })();
       };
@@ -640,6 +661,9 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
           'session.start accepted — opening STT stream',
         );
         sttOpening = true;
+        // 新しい STT stream に対しては再度 STT_STREAM_FAILED を emit できる
+        // ようにリセット (前回の stream クローズ通知と衝突しないよう guard)。
+        streamFailureNotified = false;
         // JWT claims / session.start payload どちらからも language を決定
         const sourceLanguage =
           event.payload.sourceLanguage ??
@@ -669,6 +693,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                   { count: pendingFrames.length, sessionId: context.sessionId },
                   'flushing pending audio.frame buffer after session.start',
                 );
+                let flushHitStreamClosed = false;
                 for (const frame of pendingFrames) {
                   const flushResult = handle.sendFrame(frame);
                   if (flushResult.isErr()) {
@@ -676,9 +701,18 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                       { err: flushResult.error },
                       'stt sendFrame failed during pending flush',
                     );
+                    if (
+                      flushResult.error.kind === 'invariant-violation' &&
+                      flushResult.error.invariant === 'deepgram-stream-closed'
+                    ) {
+                      flushHitStreamClosed = true;
+                    }
                   }
                 }
                 pendingFrames = [];
+                if (flushHitStreamClosed) {
+                  notifyStreamFailure('sendFrame failed during pending flush: STT stream closed');
+                }
               }
               runTranscriptLoop(stream);
             },
@@ -747,7 +781,36 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
         });
         if (result.isErr()) {
           request.log.warn({ err: result.error }, 'stt sendFrame failed');
+          // Deepgram WebSocket がサーバ都合で閉じた場合 (`deepgram-stream-closed`)
+          // は activeStream を null 化してクライアントへ retryable エラーを一度
+          // だけ通知する。これにより拡張側は session.stop → session.start で
+          // 再接続できる。それ以外の一時的送信失敗 (transient) は WARN のみ。
+          const isStreamClosed =
+            result.error.kind === 'invariant-violation' &&
+            result.error.invariant === 'deepgram-stream-closed';
+          if (isStreamClosed) {
+            notifyStreamFailure('sendFrame failed: STT stream closed');
+          }
         }
+      };
+
+      /**
+       * STT ストリームが運用中に閉じたことをクライアントへ一度だけ通知し、
+       * activeStream を null 化する。二度目以降の呼び出しは no-op。
+       * `streamFailureNotified` は次回 session.start で reset される。
+       */
+      const notifyStreamFailure = (reason: string): void => {
+        if (streamFailureNotified) return;
+        streamFailureNotified = true;
+        if (activeStream !== null) {
+          closeActiveStream();
+        }
+        sendSessionError(socket, context, nextSequence, deps.clock, {
+          code: 'STT_STREAM_FAILED',
+          message: reason,
+          retryable: true,
+          fatal: false,
+        });
       };
 
       const handleSessionStop = (): void => {
