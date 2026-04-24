@@ -4,6 +4,7 @@ import {
   type TranslationResponse,
 } from '../../application/ports/translation-port';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
+import { applyGlossaryPostProcess } from './glossary-post-process';
 
 /**
  * IMPL-445 DeepL translation provider (DD-413)。
@@ -67,9 +68,23 @@ export const createDeepLTranslationProvider = (
   const baseUrl = config.baseUrl ?? 'https://api-free.deepl.com';
   const fetchImpl = config.fetchImpl ?? fetch;
   const monotonic = config.monotonicClock ?? (() => performance.now());
+  let warnedAboutGlossaryUnsupported = false;
 
   return {
     translate: (request) => {
+      if (
+        request.glossary !== undefined &&
+        request.glossary.length > 0 &&
+        !warnedAboutGlossaryUnsupported
+      ) {
+        // DeepL v2/translate は glossary を native 対応していない (DeepL API
+        // Pro の別エンドポイント経由では可能だが MVP 範囲外)。後処理置換で
+        // 担保するが、その事実を 1 回だけ warn ログに残す。
+        console.warn(
+          '[deepl-translation-provider] glossary is not natively supported by DeepL; falling back to post-process replacement',
+        );
+        warnedAboutGlossaryUnsupported = true;
+      }
       const startedAt = monotonic();
       const body = {
         text: [request.text],
@@ -125,8 +140,9 @@ export const createDeepLTranslationProvider = (
             );
           }
           const latencyMs = Math.max(0, Math.round(monotonic() - startedAt));
+          const finalText = applyGlossaryPostProcess(first.text, request.glossary ?? []);
           return okAsync<TranslationResponse, DomainError>({
-            text: first.text,
+            text: finalText,
             detectedSourceLanguage: first.detected_source_language ?? request.sourceLanguage,
             latencyMs,
           });

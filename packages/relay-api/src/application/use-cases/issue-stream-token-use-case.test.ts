@@ -101,6 +101,9 @@ describe('createIssueStreamTokenUseCase (IMPL-401, stateless)', () => {
         includeTranslatedText: true,
         holdWindowMs: 0,
       },
+      glossary: {
+        entries: [],
+      },
     });
   });
 

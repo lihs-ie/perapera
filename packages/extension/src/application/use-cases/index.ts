@@ -4,6 +4,11 @@ export {
   type ExportSessionResultUseCase,
 } from './export-session-result-use-case';
 export {
+  createGetGlossaryQuery,
+  type GetGlossaryDependencies,
+  type GetGlossaryQuery,
+} from './get-glossary-query';
+export {
   createGetSessionMonitorStateQuery,
   type GetSessionMonitorStateDependencies,
   type GetSessionMonitorStateQuery,
@@ -29,6 +34,11 @@ export {
   type StopSourceSessionDependencies,
   type StopSourceSessionUseCase,
 } from './stop-source-session-use-case';
+export {
+  createUpdateGlossaryUseCase,
+  type UpdateGlossaryDependencies,
+  type UpdateGlossaryUseCase,
+} from './update-glossary-use-case';
 export {
   createUpdateSourceSettingsUseCase,
   type UpdateSourceSettingsDependencies,

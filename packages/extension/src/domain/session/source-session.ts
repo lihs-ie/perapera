@@ -1,5 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
+import { EMPTY_GLOSSARY, type Glossary } from '../glossary';
 import {
   canTransitionSessionState,
   validateSessionStateTransition,
@@ -40,6 +41,12 @@ export type SourceSession = Readonly<{
   degradedReason: string | null;
   endpointing: EndpointingPolicy;
   translationContext: TranslationContextWindow;
+  /**
+   * セッション開始時点の glossary スナップショット (DD-238)。POST /sessions に
+   * 送信され Relay 側でセッション寿命中メモリ保持される。セッション中の
+   * 変更は active session に反映されず、次回開始時の snapshot から反映される。
+   */
+  glossary: Glossary;
 }>;
 
 const iso8601Schema = z.string().datetime();
@@ -68,6 +75,7 @@ export const createSourceSession = (params: {
   startedAt: string;
   endpointing?: EndpointingPolicy;
   translationContext?: TranslationContextWindow;
+  glossary?: Glossary;
 }): Result<SourceSession, DomainError> => {
   const startedAtResult = iso8601Schema.safeParse(params.startedAt);
   if (!startedAtResult.success) {
@@ -92,6 +100,7 @@ export const createSourceSession = (params: {
           degradedReason: null,
           endpointing: params.endpointing ?? DEFAULT_ENDPOINTING_POLICY,
           translationContext: params.translationContext ?? DEFAULT_TRANSLATION_CONTEXT_WINDOW,
+          glossary: params.glossary ?? EMPTY_GLOSSARY,
         }),
       ),
     ),

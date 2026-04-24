@@ -82,6 +82,13 @@ const toSessionClaims = (session: RelaySession): Readonly<Record<string, unknown
     includeTranslatedText: session.translationContext.includeTranslatedText,
     holdWindowMs: session.translationContext.holdWindowMs,
   },
+  glossary: {
+    entries: session.glossary.entries.map((entry) => ({
+      source: entry.source,
+      target: entry.target,
+      caseSensitive: entry.caseSensitive,
+    })),
+  },
 });
 
 export const createIssueStreamTokenUseCase = (
@@ -111,6 +118,7 @@ export const createIssueStreamTokenUseCase = (
         expiresAt,
         endpointing: input.endpointing,
         translationContext: input.translationContext,
+        glossary: input.glossary,
       }).asyncAndThen((session) =>
         deps.jwtSigner
           .sign({

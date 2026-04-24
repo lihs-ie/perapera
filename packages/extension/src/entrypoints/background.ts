@@ -205,6 +205,8 @@ export default defineBackground(() => {
     getSessionMonitorStateQuery: app.getSessionMonitorStateQuery,
     getSessionHistoryQuery: app.getSessionHistoryQuery,
     getSessionHistoryDetailQuery: app.getSessionHistoryDetailQuery,
+    getGlossaryQuery: app.getGlossaryQuery,
+    updateGlossaryUseCase: app.updateGlossaryUseCase,
     settingsStore: app.settingsStore,
   });
 

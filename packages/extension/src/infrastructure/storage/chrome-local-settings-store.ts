@@ -1,5 +1,6 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { z } from 'zod';
+import { createGlossary, type Glossary } from '../../domain/glossary';
 import { createOverlaySettings, type OverlaySettings } from '../../domain/profile/overlay-settings';
 import {
   createEndpointingPolicy,
@@ -26,6 +27,7 @@ const LANGUAGE_KEY = 'settings.language.defaultLanguagePair';
 const OVERLAY_KEY = 'settings.overlay.defaultOverlaySettings';
 const STT_KEY = 'settings.stt.defaultEndpointingPolicy';
 const TRANSLATION_KEY = 'settings.translation.defaultContextWindow';
+const GLOSSARY_KEY = 'settings.glossary.defaultGlossary';
 const RELAY_OVERRIDE_KEY = 'settings.relay.connectionOverride';
 
 const relayOverrideSchema = z.object({
@@ -167,6 +169,25 @@ export const createChromeLocalSettingsStore = (adapter: ChromeStorageAdapter): S
       writeRaw(adapter, TRANSLATION_KEY, {
         maxSegments: window.maxSegments,
         includeTranslatedText: window.includeTranslatedText,
+      }),
+
+    getDefaultGlossary: () =>
+      readRaw(adapter, GLOSSARY_KEY).andThen((raw): ResultAsync<Glossary, DomainError> => {
+        if (raw === undefined) {
+          return errAsync<Glossary, DomainError>(
+            notFoundError({ resourceType: 'Glossary', identifier: 'default' }),
+          );
+        }
+        return okAsync<unknown, DomainError>(raw).andThen((value) => createGlossary(value));
+      }),
+
+    saveDefaultGlossary: (glossary) =>
+      writeRaw(adapter, GLOSSARY_KEY, {
+        entries: glossary.entries.map((entry) => ({
+          source: entry.source,
+          target: entry.target,
+          caseSensitive: entry.caseSensitive,
+        })),
       }),
 
     getRelayConnectionOverride: () =>

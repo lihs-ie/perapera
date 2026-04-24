@@ -1,5 +1,6 @@
 import { errAsync, okAsync } from 'neverthrow';
 import { describe, expect, it, vi } from 'vitest';
+import { EMPTY_GLOSSARY } from '../../domain/glossary';
 import { type SourceSessionRepository } from '../../domain/repositories/source-session-repository';
 import { type TranscriptStreamRepository } from '../../domain/repositories/transcript-stream-repository';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
@@ -97,6 +98,8 @@ const buildDependencies = (
     saveDefaultEndpointingPolicy: vi.fn(() => okAsync(undefined)),
     getDefaultTranslationContextWindow: vi.fn(() => okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW)),
     saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
+    getDefaultGlossary: vi.fn(() => okAsync(EMPTY_GLOSSARY)),
+    saveDefaultGlossary: vi.fn(() => okAsync(undefined)),
     getRelayConnectionOverride: vi.fn(() => okAsync(null)),
     saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
     clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
@@ -211,6 +214,8 @@ describe('createGetSessionMonitorStateQuery (IMPL-211, DD-302)', () => {
           okAsync(DEFAULT_TRANSLATION_CONTEXT_WINDOW),
         ),
         saveDefaultTranslationContextWindow: vi.fn(() => okAsync(undefined)),
+        getDefaultGlossary: vi.fn(() => okAsync(EMPTY_GLOSSARY)),
+        saveDefaultGlossary: vi.fn(() => okAsync(undefined)),
         getRelayConnectionOverride: vi.fn(() => okAsync(null)),
         saveRelayConnectionOverride: vi.fn(() => okAsync(undefined)),
         clearRelayConnectionOverride: vi.fn(() => okAsync(undefined)),

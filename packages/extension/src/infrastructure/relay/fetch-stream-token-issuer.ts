@@ -96,7 +96,7 @@ const buildRequestBody = (
   const sourceLanguage: string | null = config.resolveAutoDetectLanguage(session)
     ? null
     : session.languagePair.source;
-  return {
+  const body: Record<string, unknown> = {
     sourceType: session.sourceType satisfies SourceType,
     displayName: config.resolveDisplayName(session),
     sourceLanguage,
@@ -108,6 +108,16 @@ const buildRequestBody = (
       protocolVersion: config.protocolVersion,
     },
   };
+  if (session.glossary.entries.length > 0) {
+    body.glossary = {
+      entries: session.glossary.entries.map((entry) => ({
+        source: entry.source,
+        target: entry.target,
+        caseSensitive: entry.caseSensitive,
+      })),
+    };
+  }
+  return body;
 };
 
 /**

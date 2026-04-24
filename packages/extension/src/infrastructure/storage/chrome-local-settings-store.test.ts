@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createGlossary } from '../../domain/glossary';
 import { createOverlaySettings } from '../../domain/profile/overlay-settings';
 import { createLanguagePair } from '../../domain/session/language-pair';
 import {
@@ -8,6 +9,7 @@ import {
 
 const LANGUAGE_KEY = 'settings.language.defaultLanguagePair';
 const OVERLAY_KEY = 'settings.overlay.defaultOverlaySettings';
+const GLOSSARY_KEY = 'settings.glossary.defaultGlossary';
 
 type MockAdapter = ChromeStorageAdapter & {
   get: ReturnType<typeof vi.fn<ChromeStorageAdapter['get']>>;
@@ -153,6 +155,92 @@ describe('createChromeLocalSettingsStore (IMPL-311, DD-107 / DB-005)', () => {
       expect(result.isOk()).toBe(true);
       const lastCall = adapter.set.mock.calls[0]?.[0];
       expect(lastCall).toHaveProperty(OVERLAY_KEY);
+    });
+  });
+
+  describe('getDefaultGlossary', () => {
+    it('returns Glossary when valid row exists', async () => {
+      adapter.get.mockResolvedValue({
+        [GLOSSARY_KEY]: {
+          entries: [
+            { source: 'API', target: 'インターフェース', caseSensitive: true },
+            { source: 'SDK', target: '開発キット', caseSensitive: false },
+          ],
+        },
+      });
+      const store = createChromeLocalSettingsStore(adapter);
+      const result = await store.getDefaultGlossary();
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.entries).toHaveLength(2);
+        expect(result.value.entries[0]?.source).toBe('API');
+      }
+    });
+
+    it('returns Glossary for empty entries array', async () => {
+      adapter.get.mockResolvedValue({
+        [GLOSSARY_KEY]: { entries: [] },
+      });
+      const store = createChromeLocalSettingsStore(adapter);
+      const result = await store.getDefaultGlossary();
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) expect(result.value.entries).toHaveLength(0);
+    });
+
+    it('returns notFoundError when key is missing', async () => {
+      adapter.get.mockResolvedValue({});
+      const store = createChromeLocalSettingsStore(adapter);
+      const result = await store.getDefaultGlossary();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.kind).toBe('not-found');
+    });
+
+    it('returns validation error when stored value violates Glossary schema (duplicate sources)', async () => {
+      adapter.get.mockResolvedValue({
+        [GLOSSARY_KEY]: {
+          entries: [
+            { source: 'API', target: 'X', caseSensitive: true },
+            { source: 'API', target: 'Y', caseSensitive: false },
+          ],
+        },
+      });
+      const store = createChromeLocalSettingsStore(adapter);
+      const result = await store.getDefaultGlossary();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.kind).toBe('validation');
+    });
+
+    it('returns invariant-violation when chrome.storage rejects', async () => {
+      adapter.get.mockRejectedValue(new Error('quota exceeded'));
+      const store = createChromeLocalSettingsStore(adapter);
+      const result = await store.getDefaultGlossary();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.kind).toBe('invariant-violation');
+    });
+  });
+
+  describe('saveDefaultGlossary', () => {
+    it('writes a primitive payload and resolves ok', async () => {
+      const store = createChromeLocalSettingsStore(adapter);
+      const glossary = createGlossary({
+        entries: [{ source: 'API', target: 'インターフェース', caseSensitive: true }],
+      })._unsafeUnwrap();
+      const result = await store.saveDefaultGlossary(glossary);
+      expect(result.isOk()).toBe(true);
+      expect(adapter.set).toHaveBeenCalledWith({
+        [GLOSSARY_KEY]: {
+          entries: [{ source: 'API', target: 'インターフェース', caseSensitive: true }],
+        },
+      });
+    });
+
+    it('returns invariant-violation when storage write fails', async () => {
+      adapter.set.mockRejectedValue(new Error('quota exceeded'));
+      const store = createChromeLocalSettingsStore(adapter);
+      const glossary = createGlossary({ entries: [] })._unsafeUnwrap();
+      const result = await store.saveDefaultGlossary(glossary);
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.kind).toBe('invariant-violation');
     });
   });
 });

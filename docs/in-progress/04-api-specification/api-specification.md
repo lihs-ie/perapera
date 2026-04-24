@@ -227,23 +227,27 @@ HTTP レートリミット応答には次のヘッダーを含める。
 
 **リクエストボディ:**
 
-| フィールド                                 | 型             | 必須 | 説明                                             |
-| ------------------------------------------ | -------------- | ---- | ------------------------------------------------ |
-| `sourceType`                               | string         | Yes  | `tab` / `microphone` / `desktop`                 |
-| `displayName`                              | string         | Yes  | UI 表示用のソース名                              |
-| `sourceLanguage`                           | string \| null | No   | 入力言語。自動判定時は `null`                    |
-| `autoDetectLanguage`                       | boolean        | Yes  | 入力言語の自動判定有無                           |
-| `targetLanguage`                           | string         | Yes  | 翻訳先言語                                       |
-| `overlayTarget.kind`                       | string         | Yes  | `tab` / `extension-monitor`                      |
-| `overlayTarget.tabId`                      | integer        | No   | `kind=tab` の場合の対象タブ ID                   |
-| `overlayTarget.pageId`                     | string         | No   | `kind=extension-monitor` の場合の固定 ID         |
-| `client.extensionVersion`                  | string         | Yes  | 拡張機能バージョン                               |
-| `client.protocolVersion`                   | string         | Yes  | API プロトコルバージョン                         |
-| `endpointing.silenceThresholdMs`           | integer        | No   | 200〜1200、既定 600。STT が文末と判定する無音長  |
-| `endpointing.punctuationAware`             | boolean        | No   | 既定 true。句読点を文末判定に利用するか          |
-| `endpointing.minUtteranceMs`               | integer        | No   | 100〜3000、既定 500。最小発話長 (これ未満は保留) |
-| `translationContext.maxSegments`           | integer        | No   | 0〜5、既定 3。翻訳時に渡す直前確定字幕の数       |
-| `translationContext.includeTranslatedText` | boolean        | No   | 既定 true。context に訳済みテキストも含めるか    |
+| フィールド                                 | 型             | 必須 | 説明                                                                                                                                           |
+| ------------------------------------------ | -------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sourceType`                               | string         | Yes  | `tab` / `microphone` / `desktop`                                                                                                               |
+| `displayName`                              | string         | Yes  | UI 表示用のソース名                                                                                                                            |
+| `sourceLanguage`                           | string \| null | No   | 入力言語。自動判定時は `null`                                                                                                                  |
+| `autoDetectLanguage`                       | boolean        | Yes  | 入力言語の自動判定有無                                                                                                                         |
+| `targetLanguage`                           | string         | Yes  | 翻訳先言語                                                                                                                                     |
+| `overlayTarget.kind`                       | string         | Yes  | `tab` / `extension-monitor`                                                                                                                    |
+| `overlayTarget.tabId`                      | integer        | No   | `kind=tab` の場合の対象タブ ID                                                                                                                 |
+| `overlayTarget.pageId`                     | string         | No   | `kind=extension-monitor` の場合の固定 ID                                                                                                       |
+| `client.extensionVersion`                  | string         | Yes  | 拡張機能バージョン                                                                                                                             |
+| `client.protocolVersion`                   | string         | Yes  | API プロトコルバージョン                                                                                                                       |
+| `endpointing.silenceThresholdMs`           | integer        | No   | 200〜1200、既定 600。STT が文末と判定する無音長                                                                                                |
+| `endpointing.punctuationAware`             | boolean        | No   | 既定 true。句読点を文末判定に利用するか                                                                                                        |
+| `endpointing.minUtteranceMs`               | integer        | No   | 100〜3000、既定 500。最小発話長 (これ未満は保留)                                                                                               |
+| `translationContext.maxSegments`           | integer        | No   | 0〜5、既定 3。翻訳時に渡す直前確定字幕の数                                                                                                     |
+| `translationContext.includeTranslatedText` | boolean        | No   | 既定 true。context に訳済みテキストも含めるか                                                                                                  |
+| `glossary.entries`                         | array          | No   | Issue #123: カスタム用語集。最大 200 件、各 entry は `{source, target, caseSensitive}`。原文 / 訳文は 1〜64 文字、原文 (case-sensitive) は一意 |
+| `glossary.entries[].source`                | string         | Yes  | 原文 (1〜64 文字)                                                                                                                              |
+| `glossary.entries[].target`                | string         | Yes  | 訳文 (1〜64 文字、`source !== target`)                                                                                                         |
+| `glossary.entries[].caseSensitive`         | boolean        | Yes  | 大文字小文字を区別するか                                                                                                                       |
 
 **リクエスト例:**
 
@@ -270,13 +274,20 @@ HTTP レートリミット応答には次のヘッダーを含める。
   "translationContext": {
     "maxSegments": 3,
     "includeTranslatedText": true
+  },
+  "glossary": {
+    "entries": [
+      { "source": "API", "target": "インターフェース", "caseSensitive": true },
+      { "source": "machine learning", "target": "機械学習", "caseSensitive": false }
+    ]
   }
 }
 ```
 
-`endpointing` / `translationContext` はすべて省略可能で、未指定の場合は Relay API
-がプロファイル既定値を適用する。既存クライアント (v0.1 準拠) は送信しなくて
-よい。
+`endpointing` / `translationContext` / `glossary` はすべて省略可能で、未指定の場合
+は Relay API がプロファイル既定値を適用する。既存クライアント (v0.1 準拠) は
+送信しなくてよい。glossary は session 寿命中メモリ保持され、各 translate() 呼び
+出しで LLM system prompt 挿入 + 後処理強制置換に利用される。
 
 **成功レスポンス（201 Created）:**
 

@@ -9,11 +9,19 @@ import {
   createGetSessionHistoryQuery,
   type GetSessionHistoryQuery,
 } from '../application/use-cases/get-session-history-query';
+import {
+  createGetGlossaryQuery,
+  type GetGlossaryQuery,
+} from '../application/use-cases/get-glossary-query';
 import { createGetSessionMonitorStateQuery } from '../application/use-cases/get-session-monitor-state-query';
 import { createHandleTranscriptFinalUseCase } from '../application/use-cases/handle-transcript-final-use-case';
 import { createHandleTranscriptPartialUseCase } from '../application/use-cases/handle-transcript-partial-use-case';
 import { createStartSourceSessionUseCase } from '../application/use-cases/start-source-session-use-case';
 import { createStopSourceSessionUseCase } from '../application/use-cases/stop-source-session-use-case';
+import {
+  createUpdateGlossaryUseCase,
+  type UpdateGlossaryUseCase,
+} from '../application/use-cases/update-glossary-use-case';
 import { createUpdateSourceSettingsUseCase } from '../application/use-cases/update-source-settings-use-case';
 import {
   createAudioFramePump,
@@ -226,6 +234,8 @@ export type ExtensionApp = Readonly<{
   getSessionMonitorStateQuery: GetSessionMonitorStateQuery;
   getSessionHistoryQuery: GetSessionHistoryQuery;
   getSessionHistoryDetailQuery: GetSessionHistoryDetailQuery;
+  getGlossaryQuery: GetGlossaryQuery;
+  updateGlossaryUseCase: UpdateGlossaryUseCase;
   sessionRegistry: SessionRegistry;
   captureOrchestrator: CaptureOrchestrator;
   audioFramePump: AudioFramePump;
@@ -367,6 +377,7 @@ export const createExtensionApp = (
     audioFramePump,
     offscreenCommandSender,
     tabStreamIdResolver,
+    settingsStore,
     clock: ports.clockIso,
     idFactory: {
       session: ports.sessionIdFactory,
@@ -419,6 +430,11 @@ export const createExtensionApp = (
     sessionStore,
     settingsStore,
   });
+  const getGlossaryQuery = createGetGlossaryQuery({ settingsStore });
+  const updateGlossaryUseCase = createUpdateGlossaryUseCase({
+    settingsStore,
+    clock: ports.clockIso,
+  });
 
   // --------------- Application services (Phase 3 facades) ---------------
   const sessionCommandService = createSessionCommandService({
@@ -444,6 +460,8 @@ export const createExtensionApp = (
     getSessionMonitorStateQuery,
     getSessionHistoryQuery,
     getSessionHistoryDetailQuery,
+    getGlossaryQuery,
+    updateGlossaryUseCase,
     sessionRegistry,
     captureOrchestrator,
     audioFramePump,

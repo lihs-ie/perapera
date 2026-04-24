@@ -8,12 +8,14 @@ import { useBackgroundQuery } from '../hooks/use-background-query';
 import {
   type BackgroundClient,
   type DefaultEndpointingPolicyInput,
+  type DefaultGlossaryInput,
   type DefaultLanguagePairInput,
   type DefaultOverlaySettingsInput,
   type DefaultSettingsResult,
   type DefaultTranslationContextWindowInput,
   type RelayConnectionOverrideInput,
 } from '../infrastructure/background-client';
+import { GlossaryEditor, type GlossaryEntryValue } from '../molecules/glossary-editor';
 import { LanguagePairSelector } from '../molecules/language-pair-selector';
 import {
   OverlaySettingsForm,
@@ -90,12 +92,16 @@ export function SettingsView(props: Props) {
   const query = useBackgroundQuery(() => props.client.getDefaultSettings(), {
     input: undefined,
   });
+  const glossaryQuery = useBackgroundQuery(() => props.client.getDefaultGlossary(), {
+    input: undefined,
+  });
   const saveLanguageCommand = useBackgroundCommand(props.client.saveDefaultLanguagePair);
   const saveOverlayCommand = useBackgroundCommand(props.client.saveDefaultOverlaySettings);
   const saveEndpointingCommand = useBackgroundCommand(props.client.saveDefaultEndpointingPolicy);
   const saveTranslationContextCommand = useBackgroundCommand(
     props.client.saveDefaultTranslationContextWindow,
   );
+  const saveGlossaryCommand = useBackgroundCommand(props.client.saveDefaultGlossary);
   const saveRelayCommand = useBackgroundCommand(props.client.saveRelayConnectionOverride);
   const clearRelayCommand = useBackgroundCommand(() => props.client.clearRelayConnectionOverride());
 
@@ -113,6 +119,8 @@ export function SettingsView(props: Props) {
   const [relayBaseUrl, setRelayBaseUrl] = useState<string>('');
   const [relayAccessToken, setRelayAccessToken] = useState<string>('');
   const [relayOverrideActive, setRelayOverrideActive] = useState<boolean>(false);
+  const [glossaryEntries, setGlossaryEntries] = useState<readonly GlossaryEntryValue[]>([]);
+  const [glossaryResultMessage, setGlossaryResultMessage] = useState<string | null>(null);
   const [saveResultMessage, setSaveResultMessage] = useState<string | null>(null);
   const [relayResultMessage, setRelayResultMessage] = useState<string | null>(null);
 
@@ -141,6 +149,11 @@ export function SettingsView(props: Props) {
       setRelayOverrideActive(false);
     }
   }, [query.state]);
+
+  useEffect(() => {
+    if (glossaryQuery.state.status !== 'success' || glossaryQuery.state.data === null) return;
+    setGlossaryEntries(glossaryQuery.state.data.entries);
+  }, [glossaryQuery.state]);
 
   const handleLanguageChange = useCallback(
     (pair: { sourceLanguage: string; targetLanguage: string }) => {
@@ -249,6 +262,68 @@ export function SettingsView(props: Props) {
       setRelayResultMessage(`クリアに失敗しました: ${response.error.message}`);
     }
   }, [clearRelayCommand]);
+
+  const handleSaveGlossary = useCallback(async (): Promise<void> => {
+    setGlossaryResultMessage(null);
+    const input: DefaultGlossaryInput = {
+      entries: glossaryEntries.map((entry) => ({
+        source: entry.source,
+        target: entry.target,
+        caseSensitive: entry.caseSensitive,
+      })),
+    };
+    const response = await saveGlossaryCommand.execute(input);
+    if (response.ok) {
+      setGlossaryResultMessage('用語集を保存しました。次のセッション開始から反映されます。');
+    } else {
+      setGlossaryResultMessage(`保存に失敗しました: ${response.error.message}`);
+    }
+  }, [glossaryEntries, saveGlossaryCommand]);
+
+  const handleExportGlossaryCsv = useCallback((): void => {
+    const header = 'source,target,caseSensitive';
+    const escapeCsvField = (value: string): string =>
+      /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+    const rows = glossaryEntries.map((entry) =>
+      [
+        escapeCsvField(entry.source),
+        escapeCsvField(entry.target),
+        entry.caseSensitive ? 'true' : 'false',
+      ].join(','),
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'perapera-glossary.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, [glossaryEntries]);
+
+  const handleImportGlossaryCsv = useCallback(async (file: File): Promise<void> => {
+    setGlossaryResultMessage(null);
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter((line) => line.length > 0);
+    const header = lines[0]?.toLowerCase() ?? '';
+    const body = header.startsWith('source,') ? lines.slice(1) : lines;
+    const parsed: GlossaryEntryValue[] = [];
+    const seenSources = new Set<string>();
+    for (const line of body) {
+      const parts = line.split(',');
+      const source = parts[0]?.trim() ?? '';
+      const target = parts[1]?.trim() ?? '';
+      const caseSensitive = (parts[2]?.trim() ?? 'false').toLowerCase() === 'true';
+      if (source.length === 0 || target.length === 0 || source === target) continue;
+      if (seenSources.has(source)) continue;
+      seenSources.add(source);
+      parsed.push({ source, target, caseSensitive });
+    }
+    setGlossaryEntries(parsed);
+    setGlossaryResultMessage(
+      `CSV から ${String(parsed.length)} 件読み込みました。「保存」で確定します。`,
+    );
+  }, []);
 
   if (query.state.status === 'idle' || query.state.status === 'pending') {
     return (
@@ -417,6 +492,57 @@ export function SettingsView(props: Props) {
             {isSavingDefaults ? '保存中…' : '保存'}
           </Button>
         </div>
+
+        <section className="section" aria-label="用語集">
+          <h3 className="subtitle">用語集</h3>
+          <p className="hint">
+            原文→訳文のペアを登録すると、翻訳時に強制置換されます。変更は次のセッション開始から反映されます。
+          </p>
+          <GlossaryEditor
+            entries={glossaryEntries}
+            onChange={setGlossaryEntries}
+            disabled={saveGlossaryCommand.state.status === 'pending'}
+          />
+          {glossaryResultMessage !== null ? (
+            <p className="message" role="status">
+              {glossaryResultMessage}
+            </p>
+          ) : null}
+          <div className="actions">
+            <Button
+              variant="secondary"
+              disabled={
+                saveGlossaryCommand.state.status === 'pending' || glossaryEntries.length === 0
+              }
+              onClick={handleExportGlossaryCsv}
+              ariaLabel="用語集を CSV でエクスポート"
+            >
+              CSV エクスポート
+            </Button>
+            <label className="import-label">
+              <input
+                type="file"
+                accept="text/csv,.csv"
+                disabled={saveGlossaryCommand.state.status === 'pending'}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file !== undefined) void handleImportGlossaryCsv(file);
+                }}
+                aria-label="用語集を CSV からインポート"
+              />
+              CSV インポート
+            </label>
+            <Button
+              variant="primary"
+              disabled={saveGlossaryCommand.state.status === 'pending'}
+              onClick={() => {
+                void handleSaveGlossary();
+              }}
+            >
+              {saveGlossaryCommand.state.status === 'pending' ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        </section>
 
         <section className="section" aria-label="Relay 接続">
           <h3 className="subtitle">

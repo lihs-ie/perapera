@@ -11,6 +11,7 @@ import {
   mergeEndpointingPolicy,
   type EndpointingPolicy,
 } from './endpointing-policy';
+import { createGlossary, EMPTY_GLOSSARY, type Glossary } from './glossary';
 import { parseSessionIdentifier, type SessionIdentifier } from './session-identifier';
 import { parseStreamTokenIdentifier, type StreamTokenIdentifier } from './stream-token-identifier';
 import { type RelaySessionState } from './relay-session-state';
@@ -60,6 +61,12 @@ export type RelaySession = Readonly<{
   expiresAt: string;
   endpointing: EndpointingPolicy;
   translationContext: TranslationContextWindow;
+  /**
+   * セッション開始時の用語集 (DD-238)。セッション寿命中メモリ保持され、
+   * `TranslationPort.translate` の request に添えて LLM system prompt 注入や
+   * 後処理置換に利用される。空配列で未設定 (no-op) を表す。
+   */
+  glossary: Glossary;
 }>;
 
 export type CreateRelaySessionParams = {
@@ -86,6 +93,15 @@ export type CreateRelaySessionParams = {
         maxSegments?: number | undefined;
         includeTranslatedText?: boolean | undefined;
         holdWindowMs?: number | undefined;
+      }
+    | undefined;
+  glossary?:
+    | {
+        entries: readonly {
+          source: string;
+          target: string;
+          caseSensitive: boolean;
+        }[];
       }
     | undefined;
 };
@@ -194,27 +210,35 @@ export const createRelaySession = (
                 mergeTranslationContextWindow(
                   DEFAULT_TRANSLATION_CONTEXT_WINDOW,
                   params.translationContext,
-                ).map(
-                  (translationContext): RelaySession => ({
-                    sessionIdentifier,
-                    streamTokenIdentifier,
-                    state: 'created',
-                    sourceType: sourceTypeResult.data,
-                    displayName: params.displayName,
-                    sourceLanguage: params.sourceLanguage,
-                    autoDetectLanguage: params.autoDetectLanguage,
-                    targetLanguage: targetLangResult.data,
-                    overlayTarget,
-                    client: {
-                      extensionVersion: params.client.extensionVersion,
-                      protocolVersion: params.client.protocolVersion,
-                    },
-                    createdAt,
-                    expiresAt,
-                    endpointing,
-                    translationContext,
-                  }),
-                ),
+                ).andThen((translationContext) => {
+                  const glossaryInput = params.glossary;
+                  const glossaryResult: Result<Glossary, DomainError> =
+                    glossaryInput === undefined
+                      ? ok(EMPTY_GLOSSARY)
+                      : createGlossary({ entries: glossaryInput.entries });
+                  return glossaryResult.map(
+                    (glossary): RelaySession => ({
+                      sessionIdentifier,
+                      streamTokenIdentifier,
+                      state: 'created',
+                      sourceType: sourceTypeResult.data,
+                      displayName: params.displayName,
+                      sourceLanguage: params.sourceLanguage,
+                      autoDetectLanguage: params.autoDetectLanguage,
+                      targetLanguage: targetLangResult.data,
+                      overlayTarget,
+                      client: {
+                        extensionVersion: params.client.extensionVersion,
+                        protocolVersion: params.client.protocolVersion,
+                      },
+                      createdAt,
+                      expiresAt,
+                      endpointing,
+                      translationContext,
+                      glossary,
+                    }),
+                  );
+                }),
             );
           }),
         ),

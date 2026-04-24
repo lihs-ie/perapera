@@ -82,6 +82,7 @@ describe('SessionRow mapper (DD-106, DB-001)', () => {
       endpointingMinUtteranceMs: null,
       translationContextMaxSegments: null,
       translationContextIncludeTranslatedText: null,
+      glossaryEntries: null,
     };
     const restored = sessionFromRecord(row);
     expect(restored.isOk()).toBe(true);
@@ -108,6 +109,7 @@ describe('SessionRow mapper (DD-106, DB-001)', () => {
       endpointingMinUtteranceMs: null,
       translationContextMaxSegments: null,
       translationContextIncludeTranslatedText: null,
+      glossaryEntries: null,
     };
     expect(sessionFromRecord(row).isErr()).toBe(true);
   });
@@ -128,6 +130,7 @@ describe('SessionRow mapper (DD-106, DB-001)', () => {
       endpointingMinUtteranceMs: null,
       translationContextMaxSegments: null,
       translationContextIncludeTranslatedText: null,
+      glossaryEntries: null,
     };
     expect(sessionFromRecord(row).isErr()).toBe(true);
   });
@@ -257,6 +260,7 @@ describe('Type shape checks', () => {
       endpointingMinUtteranceMs: null,
       translationContextMaxSegments: null,
       translationContextIncludeTranslatedText: null,
+      glossaryEntries: null,
     };
     const tRow: TranscriptSegmentRow = {
       segmentId: SEGMENT_ID,

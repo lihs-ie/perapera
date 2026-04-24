@@ -1,4 +1,5 @@
 import { errAsync, okAsync, ResultAsync } from 'neverthrow';
+import { createGlossary, EMPTY_GLOSSARY, type Glossary } from '../../domain/glossary';
 import { type ExtensionProfileRepository } from '../../domain/repositories/extension-profile-repository';
 import { type SourceSessionRepository } from '../../domain/repositories/source-session-repository';
 import { validateSessionConcurrency } from '../../domain/services/session-concurrency-policy';
@@ -22,6 +23,7 @@ import {
 } from '../errors/application-errors';
 import { type PermissionCoordinator } from '../ports/permission-coordinator';
 import { type RelayGateway } from '../ports/relay-gateway';
+import { type SettingsStore } from '../ports/settings-store';
 import { type StartSourceCommand } from '../ports/source-adapter';
 import { type TabStreamIdResolver } from '../ports/tab-stream-id-resolver';
 import { type AudioFramePump } from '../services/audio-frame-pump';
@@ -45,6 +47,12 @@ export type StartSourceSessionDependencies = Readonly<{
    * 未指定の場合は streamId なしで送信 (Step 2b-2b の tabStreamApi 未注入時と同様)。
    */
   tabStreamIdResolver?: TabStreamIdResolver;
+  /**
+   * Optional。指定すると session start 時に glossary snapshot を読み取り、
+   * `input.glossary` が未指定なら defaultGlossary を適用する (DD-238 / issue #123)。
+   * 未指定の場合は `input.glossary` のみを使用 (未指定なら EMPTY_GLOSSARY)。
+   */
+  settingsStore?: SettingsStore;
   clock: () => string;
   idFactory: Readonly<{
     session: () => string;
@@ -65,6 +73,40 @@ type ChainError = DomainError | ApplicationError;
 const normalizeChainError = (error: ChainError): ApplicationError => {
   if ('type' in error) return error;
   return toApplicationError(error);
+};
+
+/**
+ * input.glossary が指定されていればそれを採用、無ければ SettingsStore の
+ * defaultGlossary を取得、どちらも無ければ EMPTY_GLOSSARY を返す。
+ * SettingsStore 側で not-found や I/O 失敗が起きても session start は続行する
+ * (glossary は空で開始、ログに warn)。
+ */
+const resolveGlossary = (
+  deps: StartSourceSessionDependencies,
+  inputGlossary:
+    | {
+        entries: readonly { source: string; target: string; caseSensitive: boolean }[];
+      }
+    | undefined,
+): ResultAsync<Glossary, DomainError> => {
+  if (inputGlossary !== undefined) {
+    const createResult = createGlossary({ entries: inputGlossary.entries });
+    if (createResult.isErr()) return errAsync<Glossary, DomainError>(createResult.error);
+    return okAsync<Glossary, DomainError>(createResult.value);
+  }
+  if (deps.settingsStore === undefined) {
+    return okAsync<Glossary, DomainError>(EMPTY_GLOSSARY);
+  }
+  return deps.settingsStore.getDefaultGlossary().orElse((error) => {
+    if (error.kind !== 'not-found') {
+      console.warn(
+        `[use-case:start-source-session] failed to load defaultGlossary (continuing with empty): ${describeDomainError(
+          error,
+        )}`,
+      );
+    }
+    return okAsync<Glossary, DomainError>(EMPTY_GLOSSARY);
+  });
 };
 
 const toStartSourceCommand = (session: SourceSession): StartSourceCommand => {
@@ -114,127 +156,136 @@ export const createStartSourceSessionUseCase = (
         validateSessionConcurrency(active).asyncAndThen(() =>
           deps.extensionProfileRepository.getDefault().andThen((profile) => {
             const sourceLang = parsed.sourceLanguage ?? profile.defaultLanguagePair.source;
-            return createLanguagePair({
-              source: sourceLang,
-              target: parsed.targetLanguage,
-            })
-              .andThen((languagePair) =>
-                createSourceSession({
-                  sessionIdentifier: deps.idFactory.session(),
-                  sourceIdentifier: deps.idFactory.source(),
-                  sourceType: parsed.sourceType,
-                  languagePair,
-                  startedAt: deps.clock(),
-                }),
-              )
-              .andThen((idleSession) => startSourceSession(idleSession))
-              .asyncAndThen((requesting) =>
-                deps.sourceSessionRepository.save(requesting).map(() => requesting),
-              )
-              .andThen(
-                (savedSession): ResultAsync<SourceSession, ChainError> =>
-                  deps.permissionCoordinator
-                    .requestFor(parsed.sourceType)
-                    .andThen((grant): ResultAsync<SourceSession, ChainError> => {
-                      if (grant.status === 'granted') {
-                        return transitionSourceSessionState(
-                          savedSession,
-                          'connecting',
-                        ).asyncAndThen((connecting) =>
-                          deps.captureOrchestrator
-                            .connect(toStartSourceCommand(connecting))
-                            .andThen((activeCapture) =>
-                              deps.relayGateway.openSession(connecting).map(() => activeCapture),
-                            )
-                            .andThen((activeCapture) => {
-                              // tab source の overlayTarget.tabId を capture 対象 tab として利用。
-                              // MV3 では `chrome.tabCapture.getMediaStreamId({targetTabId})` で
-                              // 取得した streamId を offscreen に渡し、offscreen 側が
-                              // `getUserMedia` で MediaStream を確保する (IMPL-611/612)。
-                              const targetTabId =
-                                parsed.sourceType === 'tab' &&
-                                parsed.overlayTarget.kind === 'tab' &&
-                                parsed.overlayTarget.tabId !== undefined
-                                  ? parsed.overlayTarget.tabId
-                                  : undefined;
-                              console.log(
-                                '[use-case:start-source-session] tab-stream-id chain preconditions',
-                                {
-                                  sourceType: parsed.sourceType,
-                                  overlayTargetKind: parsed.overlayTarget.kind,
-                                  targetTabId,
-                                  hasResolver: deps.tabStreamIdResolver !== undefined,
-                                },
-                              );
-                              const tabStreamIdChain: ResultAsync<string | undefined, ChainError> =
-                                targetTabId !== undefined && deps.tabStreamIdResolver !== undefined
-                                  ? deps.tabStreamIdResolver
-                                      .resolve(targetTabId)
-                                      .map((streamId): string | undefined => {
-                                        console.log(
-                                          `[use-case:start-source-session] tab-stream-id resolved for tab ${String(
-                                            targetTabId,
-                                          )} → ${streamId.slice(0, 8)}...`,
-                                        );
-                                        return streamId;
-                                      })
-                                      .orElse(
-                                        (error): ResultAsync<string | undefined, ChainError> => {
-                                          console.warn(
-                                            `[use-case:start-source-session] tab-stream-id resolve failed (continuing without streamId): ${describeDomainError(
-                                              error,
-                                            )}`,
-                                          );
-                                          return okAsync<string | undefined, ChainError>(undefined);
-                                        },
-                                      )
-                                  : (() => {
-                                      console.warn(
-                                        '[use-case:start-source-session] tab-stream-id chain skipped; audio frames will NOT flow',
-                                      );
-                                      return okAsync<string | undefined, ChainError>(undefined);
-                                    })();
-                              return tabStreamIdChain.andThen((tabStreamId) => {
+            return resolveGlossary(deps, parsed.glossary).andThen((glossary) =>
+              createLanguagePair({
+                source: sourceLang,
+                target: parsed.targetLanguage,
+              })
+                .andThen((languagePair) =>
+                  createSourceSession({
+                    sessionIdentifier: deps.idFactory.session(),
+                    sourceIdentifier: deps.idFactory.source(),
+                    sourceType: parsed.sourceType,
+                    languagePair,
+                    startedAt: deps.clock(),
+                    glossary,
+                  }),
+                )
+                .andThen((idleSession) => startSourceSession(idleSession))
+                .asyncAndThen((requesting) =>
+                  deps.sourceSessionRepository.save(requesting).map(() => requesting),
+                )
+                .andThen(
+                  (savedSession): ResultAsync<SourceSession, ChainError> =>
+                    deps.permissionCoordinator
+                      .requestFor(parsed.sourceType)
+                      .andThen((grant): ResultAsync<SourceSession, ChainError> => {
+                        if (grant.status === 'granted') {
+                          return transitionSourceSessionState(
+                            savedSession,
+                            'connecting',
+                          ).asyncAndThen((connecting) =>
+                            deps.captureOrchestrator
+                              .connect(toStartSourceCommand(connecting))
+                              .andThen((activeCapture) =>
+                                deps.relayGateway.openSession(connecting).map(() => activeCapture),
+                              )
+                              .andThen((activeCapture) => {
+                                // tab source の overlayTarget.tabId を capture 対象 tab として利用。
+                                // MV3 では `chrome.tabCapture.getMediaStreamId({targetTabId})` で
+                                // 取得した streamId を offscreen に渡し、offscreen 側が
+                                // `getUserMedia` で MediaStream を確保する (IMPL-611/612)。
+                                const targetTabId =
+                                  parsed.sourceType === 'tab' &&
+                                  parsed.overlayTarget.kind === 'tab' &&
+                                  parsed.overlayTarget.tabId !== undefined
+                                    ? parsed.overlayTarget.tabId
+                                    : undefined;
                                 console.log(
-                                  `[use-case:start-source-session] offscreen.openAudioContext (tabStreamId=${
-                                    tabStreamId !== undefined ? 'present' : 'absent'
-                                  })`,
+                                  '[use-case:start-source-session] tab-stream-id chain preconditions',
+                                  {
+                                    sourceType: parsed.sourceType,
+                                    overlayTargetKind: parsed.overlayTarget.kind,
+                                    targetTabId,
+                                    hasResolver: deps.tabStreamIdResolver !== undefined,
+                                  },
                                 );
-                                return deps.offscreenCommandSender
-                                  .openAudioContext(
-                                    connecting.sessionIdentifier,
-                                    tabStreamId !== undefined ? { tabStreamId } : undefined,
-                                  )
-                                  .map(() => activeCapture);
-                              });
-                            })
-                            .andThen((activeCapture) => {
-                              deps.audioFramePump.start(
-                                connecting.sessionIdentifier,
-                                activeCapture.frameChannel,
-                                (frame) => deps.relayGateway.sendAudioFrame(frame),
-                              );
-                              deps.relaySessionSubscriber.start(connecting.sessionIdentifier);
-                              return deps.sourceSessionRepository
-                                .save(connecting)
-                                .map(() => connecting);
-                            }),
-                        );
-                      }
-                      return transitionSourceSessionState(savedSession, 'error').asyncAndThen(
-                        (errorSession) =>
-                          deps.sourceSessionRepository.save(errorSession).andThen(() =>
-                            errAsync<SourceSession, ChainError>(
-                              permissionRequiredAppError({
-                                sourceType: grant.sourceType,
-                                message:
-                                  grant.reason ?? `permission denied for ${grant.sourceType}`,
+                                const tabStreamIdChain: ResultAsync<
+                                  string | undefined,
+                                  ChainError
+                                > =
+                                  targetTabId !== undefined &&
+                                  deps.tabStreamIdResolver !== undefined
+                                    ? deps.tabStreamIdResolver
+                                        .resolve(targetTabId)
+                                        .map((streamId): string | undefined => {
+                                          console.log(
+                                            `[use-case:start-source-session] tab-stream-id resolved for tab ${String(
+                                              targetTabId,
+                                            )} → ${streamId.slice(0, 8)}...`,
+                                          );
+                                          return streamId;
+                                        })
+                                        .orElse(
+                                          (error): ResultAsync<string | undefined, ChainError> => {
+                                            console.warn(
+                                              `[use-case:start-source-session] tab-stream-id resolve failed (continuing without streamId): ${describeDomainError(
+                                                error,
+                                              )}`,
+                                            );
+                                            return okAsync<string | undefined, ChainError>(
+                                              undefined,
+                                            );
+                                          },
+                                        )
+                                    : (() => {
+                                        console.warn(
+                                          '[use-case:start-source-session] tab-stream-id chain skipped; audio frames will NOT flow',
+                                        );
+                                        return okAsync<string | undefined, ChainError>(undefined);
+                                      })();
+                                return tabStreamIdChain.andThen((tabStreamId) => {
+                                  console.log(
+                                    `[use-case:start-source-session] offscreen.openAudioContext (tabStreamId=${
+                                      tabStreamId !== undefined ? 'present' : 'absent'
+                                    })`,
+                                  );
+                                  return deps.offscreenCommandSender
+                                    .openAudioContext(
+                                      connecting.sessionIdentifier,
+                                      tabStreamId !== undefined ? { tabStreamId } : undefined,
+                                    )
+                                    .map(() => activeCapture);
+                                });
+                              })
+                              .andThen((activeCapture) => {
+                                deps.audioFramePump.start(
+                                  connecting.sessionIdentifier,
+                                  activeCapture.frameChannel,
+                                  (frame) => deps.relayGateway.sendAudioFrame(frame),
+                                );
+                                deps.relaySessionSubscriber.start(connecting.sessionIdentifier);
+                                return deps.sourceSessionRepository
+                                  .save(connecting)
+                                  .map(() => connecting);
                               }),
+                          );
+                        }
+                        return transitionSourceSessionState(savedSession, 'error').asyncAndThen(
+                          (errorSession) =>
+                            deps.sourceSessionRepository.save(errorSession).andThen(() =>
+                              errAsync<SourceSession, ChainError>(
+                                permissionRequiredAppError({
+                                  sourceType: grant.sourceType,
+                                  message:
+                                    grant.reason ?? `permission denied for ${grant.sourceType}`,
+                                }),
+                              ),
                             ),
-                          ),
-                      );
-                    }),
-              );
+                        );
+                      }),
+                ),
+            );
           }),
         ),
       ),

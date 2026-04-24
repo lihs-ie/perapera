@@ -4,6 +4,7 @@ import {
   type ExportFormat,
   type ExportRecord,
 } from '../../domain/export/export-record';
+import { createGlossary, EMPTY_GLOSSARY, type Glossary } from '../../domain/glossary';
 import {
   createEndpointingPolicy,
   DEFAULT_ENDPOINTING_POLICY,
@@ -43,9 +44,19 @@ import {
 // ---------- DB-001 sessions ----------
 
 /**
- * `SessionRow` v2: `endpointing*` / `translationContext*` フィールドが
- * null 許容で追加された (IMPL-318)。既存 v1 レコードは null のまま残り、
- * `sessionFromRecord` が読み込み時に VO 既定値を適用する (後方互換)。
+ * セッション開始時 glossary スナップショットの永続表現 (DD-238)。
+ */
+export type GlossaryEntryRow = {
+  source: string;
+  target: string;
+  caseSensitive: boolean;
+};
+
+/**
+ * `SessionRow` v3: `glossaryEntries` が nullable で追加された (IMPL-319)。
+ * v2: `endpointing*` / `translationContext*` が nullable で追加 (IMPL-318)。
+ * 既存 v1/v2 レコードは該当フィールドが null のまま残り、`sessionFromRecord`
+ * が読み込み時に VO 既定値 (`EMPTY_GLOSSARY` 等) を適用する (後方互換)。
  */
 export type SessionRow = {
   sessionId: string;
@@ -62,6 +73,7 @@ export type SessionRow = {
   endpointingMinUtteranceMs: number | null;
   translationContextMaxSegments: number | null;
   translationContextIncludeTranslatedText: boolean | null;
+  glossaryEntries: GlossaryEntryRow[] | null;
 };
 
 export const sessionToRecord = (session: SourceSession): SessionRow => ({
@@ -79,6 +91,11 @@ export const sessionToRecord = (session: SourceSession): SessionRow => ({
   endpointingMinUtteranceMs: session.endpointing.minUtteranceMs,
   translationContextMaxSegments: session.translationContext.maxSegments,
   translationContextIncludeTranslatedText: session.translationContext.includeTranslatedText,
+  glossaryEntries: session.glossary.entries.map((entry) => ({
+    source: entry.source,
+    target: entry.target,
+    caseSensitive: entry.caseSensitive,
+  })),
 });
 
 const endpointingFromRow = (row: SessionRow): EndpointingPolicy => {
@@ -111,6 +128,12 @@ const translationContextFromRow = (row: SessionRow): TranslationContextWindow =>
   return result.isOk() ? result.value : DEFAULT_TRANSLATION_CONTEXT_WINDOW;
 };
 
+const glossaryFromRow = (row: SessionRow): Glossary => {
+  if (row.glossaryEntries === null) return EMPTY_GLOSSARY;
+  const result = createGlossary({ entries: row.glossaryEntries });
+  return result.isOk() ? result.value : EMPTY_GLOSSARY;
+};
+
 export const sessionFromRecord = (row: SessionRow): Result<SourceSession, DomainError> =>
   createLanguagePair({ source: row.sourceLanguage, target: row.targetLanguage }).andThen(
     (languagePair) =>
@@ -122,6 +145,7 @@ export const sessionFromRecord = (row: SessionRow): Result<SourceSession, Domain
         startedAt: row.startedAt,
         endpointing: endpointingFromRow(row),
         translationContext: translationContextFromRow(row),
+        glossary: glossaryFromRow(row),
       }).map((session) => ({
         ...session,
         state: row.state,
