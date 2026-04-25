@@ -12,23 +12,34 @@ import {
  * Deepgram adapter が要求する最小 API を満たす test fake。
  * `MinimalDeepgramSocket` を直接実装し、EventEmitter は使わず Map に直接
  * listener を保持することで型情報を失わず (cast 不要) dispatch する。
+ *
+ * `manualOpen: true` を渡すと 'open' event を自動 emit しない (open 待ち
+ * テスト用)。既定では `socket.on('open', ...)` 登録時に setImmediate で
+ * emit するため、provider の openStream 待機が既存テストでは透過に進む。
  */
 type FakeSocket = MinimalDeepgramSocket & {
   emitMessage: (raw: DeepgramRawData) => void;
-  emitClose: () => void;
+  emitOpen: () => void;
+  emitClose: (code?: number, reason?: Buffer) => void;
+  emitError: (err: Error) => void;
+  emitUnexpectedResponse: (req: unknown, res: unknown) => void;
   sendSpy: ReturnType<typeof vi.fn>;
   closeSpy: ReturnType<typeof vi.fn>;
 };
 
-const createFakeSocket = (): FakeSocket => {
+type FakeSocketOptions = Readonly<{ manualOpen?: boolean }>;
+
+const createFakeSocket = (options: FakeSocketOptions = {}): FakeSocket => {
   const messageListeners: ((data: DeepgramRawData) => void)[] = [];
-  const closeListeners: (() => void)[] = [];
+  const closeListeners: ((code: number, reason: Buffer) => void)[] = [];
   const errorListeners: ((err: Error) => void)[] = [];
+  const openListeners: (() => void)[] = [];
+  const unexpectedResponseListeners: ((req: unknown, res: unknown) => void)[] = [];
 
   const sendSpy = vi.fn<(data: Buffer, options: { binary: boolean }) => void>();
   const closeSpy = vi.fn<(code: number, reason: string) => void>(() => {
     setImmediate(() => {
-      for (const listener of closeListeners) listener();
+      for (const listener of closeListeners) listener(1000, Buffer.from(''));
     });
   });
 
@@ -44,9 +55,13 @@ const createFakeSocket = (): FakeSocket => {
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const m = listener as (data: DeepgramRawData) => void;
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-    const c = listener as () => void;
+    const c = listener as (code: number, reason: Buffer) => void;
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     const e = listener as (err: Error) => void;
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+    const o = listener as () => void;
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+    const u = listener as (req: unknown, res: unknown) => void;
     switch (event) {
       case 'message':
         messageListeners.push(m);
@@ -58,14 +73,21 @@ const createFakeSocket = (): FakeSocket => {
         errorListeners.push(e);
         return undefined;
       case 'open':
+        openListeners.push(o);
+        if (options.manualOpen !== true) {
+          // production 互換: 'open' event は socket 作成後に非同期で発火する。
+          // 既定で auto-emit して既存テストの openStream 待機を透過に進める。
+          setImmediate(() => o());
+        }
+        return undefined;
       case 'unexpected-response':
-        // 診断 log 用の listener。本テストでは emit しないため no-op で握りつぶす。
+        unexpectedResponseListeners.push(u);
         return undefined;
     }
   };
   const once: MinimalDeepgramSocket['once'] = (event, listener) => {
     if (event === 'close') {
-      const wrapper = () => {
+      const wrapper = (_code: number, _reason: Buffer) => {
         const idx = closeListeners.indexOf(wrapper);
         if (idx >= 0) closeListeners.splice(idx, 1);
         listener();
@@ -83,8 +105,17 @@ const createFakeSocket = (): FakeSocket => {
     emitMessage: (raw) => {
       for (const listener of messageListeners) listener(raw);
     },
-    emitClose: () => {
-      for (const listener of closeListeners) listener();
+    emitOpen: () => {
+      for (const listener of openListeners) listener();
+    },
+    emitClose: (code = 1000, reason = Buffer.from('')) => {
+      for (const listener of closeListeners) listener(code, reason);
+    },
+    emitError: (err: Error) => {
+      for (const listener of errorListeners) listener(err);
+    },
+    emitUnexpectedResponse: (req: unknown, res: unknown) => {
+      for (const listener of unexpectedResponseListeners) listener(req, res);
     },
     sendSpy,
     closeSpy,
@@ -246,5 +277,119 @@ describe('createDeepgramSttProvider (IMPL-444)', () => {
     expect(url).toContain('detect_language=true');
     // `language=` 単体 query (detect_language= ではない) が含まれないこと
     expect(url).not.toMatch(/(?<!detect_)language=/);
+  });
+
+  describe('openStream waits for WebSocket open event', () => {
+    it('does not resolve until "open" event fires (manual emit)', async () => {
+      const fakeSocket = createFakeSocket({ manualOpen: true });
+      const provider = createDeepgramSttProvider({
+        apiKey: 'dg-secret',
+        webSocketFactory: () => fakeSocket,
+      });
+      const opening = provider.openStream({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+      });
+      // 'open' を emit するまでは pending — 非同期に決着する race を作って
+      // 「先に Promise.race で sentinel が勝つ」ことで pending 状態を確認する
+      const sentinel = Symbol('still-pending');
+      const racedBefore = await Promise.race([
+        opening.then((r) => r.isOk()),
+        new Promise((resolve) => setImmediate(() => resolve(sentinel))),
+      ]);
+      expect(racedBefore).toBe(sentinel);
+
+      fakeSocket.emitOpen();
+      const result = await opening;
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('rejects with deepgram-open-rejected on unexpected-response (e.g. 401)', async () => {
+      const fakeSocket = createFakeSocket({ manualOpen: true });
+      const provider = createDeepgramSttProvider({
+        apiKey: 'dg-secret',
+        webSocketFactory: () => fakeSocket,
+      });
+      const opening = provider.openStream({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+      });
+      // ws の unexpected-response は (req, res) を引数に取る。res に statusCode を含む
+      setImmediate(() => fakeSocket.emitUnexpectedResponse({}, { statusCode: 401 }));
+      const result = await opening;
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('invariant-violation');
+        if (result.error.kind === 'invariant-violation') {
+          expect(result.error.invariant).toBe('deepgram-open-rejected');
+          expect(result.error.details).toContain('401');
+        }
+      }
+    });
+
+    it('rejects with deepgram-open-failed on error before open', async () => {
+      const fakeSocket = createFakeSocket({ manualOpen: true });
+      const provider = createDeepgramSttProvider({
+        apiKey: 'dg-secret',
+        webSocketFactory: () => fakeSocket,
+      });
+      const opening = provider.openStream({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+      });
+      setImmediate(() => fakeSocket.emitError(new Error('ECONNRESET')));
+      const result = await opening;
+      expect(result.isErr()).toBe(true);
+      if (result.isErr() && result.error.kind === 'invariant-violation') {
+        expect(result.error.invariant).toBe('deepgram-open-failed');
+        expect(result.error.details).toContain('ECONNRESET');
+      }
+    });
+
+    it('rejects with deepgram-open-failed when socket closes before open', async () => {
+      const fakeSocket = createFakeSocket({ manualOpen: true });
+      const provider = createDeepgramSttProvider({
+        apiKey: 'dg-secret',
+        webSocketFactory: () => fakeSocket,
+      });
+      const opening = provider.openStream({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+      });
+      setImmediate(() => fakeSocket.emitClose(1006, Buffer.from('')));
+      const result = await opening;
+      expect(result.isErr()).toBe(true);
+      if (result.isErr() && result.error.kind === 'invariant-violation') {
+        expect(result.error.invariant).toBe('deepgram-open-failed');
+        expect(result.error.details).toContain('1006');
+      }
+    });
+
+    it('rejects with deepgram-open-timeout when open never fires', async () => {
+      vi.useFakeTimers();
+      try {
+        const fakeSocket = createFakeSocket({ manualOpen: true });
+        const provider = createDeepgramSttProvider({
+          apiKey: 'dg-secret',
+          webSocketFactory: () => fakeSocket,
+          openTimeoutMs: 100,
+        });
+        const opening = provider.openStream({
+          sourceLanguage: 'en-US',
+          autoDetectLanguage: false,
+        });
+        await vi.advanceTimersByTimeAsync(150);
+        const result = await opening;
+        expect(result.isErr()).toBe(true);
+        if (result.isErr() && result.error.kind === 'invariant-violation') {
+          expect(result.error.invariant).toBe('deepgram-open-timeout');
+          expect(result.error.details).toContain('100ms');
+        }
+        // timeout 時に socket.close が呼ばれていることも確認 (resource leak 防止)
+        expect(fakeSocket.closeSpy).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
