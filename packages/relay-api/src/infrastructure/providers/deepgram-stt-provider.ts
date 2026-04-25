@@ -191,11 +191,22 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
         qs.set('language', streamConfig.sourceLanguage);
       }
       // IMPL-447 (DD-412): endpointing 設定を Deepgram 固有パラメータへマップ。
-      // Deepgram は `endpointing` (ms) と `utterance_end_ms` を受け取る。
-      // `punctuate` は `smart_format=true` と組み合わせて句読点付与を強化する。
+      //
+      // 送信する param:
+      // - `endpointing`: 無音時間 (ms)。発話終端の判定に使う
+      // - `punctuate`: `smart_format=true` と組み合わせて句読点付与を強化
+      //
+      // 送信しない param:
+      // - `utterance_end_ms`: Deepgram の最小値は **1000ms** であり、SttEndpointingConfig
+      //   の `minUtteranceMs` (default 500) を渡すと HTTP 400 で reject される。
+      //   さらに意味的にも mapping が誤り (`minUtteranceMs` は「utterance の最小長」、
+      //   Deepgram の `utterance_end_ms` は「UtteranceEnd event を発火させる無音時間」
+      //   で別概念)。本 adapter は `Results` メッセージの `is_final` / `speech_final`
+      //   のみ consume し UtteranceEnd event は使っていないため、付与しないのが安全。
+      //   将来 UtteranceEnd を活用したくなったら別 config field を追加し >= 1000 に
+      //   clamp して渡すこと。
       if (streamConfig.endpointing !== undefined) {
         qs.set('endpointing', String(streamConfig.endpointing.silenceThresholdMs));
-        qs.set('utterance_end_ms', String(streamConfig.endpointing.minUtteranceMs));
         qs.set('punctuate', streamConfig.endpointing.punctuationAware ? 'true' : 'false');
       }
       const url = `${baseUrl}?${qs.toString()}`;
