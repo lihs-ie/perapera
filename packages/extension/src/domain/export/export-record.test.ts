@@ -5,8 +5,8 @@ const VALID_EXPORT_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X8';
 const VALID_SESSION_ID = '01HZX8Y1R8M7D3Q2P4T5V6W7X9';
 
 describe('ExportRecord', () => {
-  it('exposes TXT / JSON as the allowed formats (DD-273)', () => {
-    expect(EXPORT_FORMATS).toEqual(['txt', 'json']);
+  it('exposes TXT / JSON / CSV as the allowed formats (DD-273)', () => {
+    expect(EXPORT_FORMATS).toEqual(['txt', 'json', 'csv']);
   });
 
   it.each(EXPORT_FORMATS)('creates a record with format=%s', (format) => {

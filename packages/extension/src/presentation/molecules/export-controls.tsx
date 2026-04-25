@@ -9,7 +9,7 @@ import {
   type ExportSessionResultResult,
 } from '../infrastructure/background-client';
 
-export type ExportFormat = 'txt' | 'json';
+export type ExportFormat = 'txt' | 'json' | 'csv';
 
 export type Props = Readonly<{
   client: BackgroundClient;
@@ -24,11 +24,13 @@ export type Props = Readonly<{
 const FORMAT_OPTIONS = [
   { value: 'txt' as const, label: 'TXT' },
   { value: 'json' as const, label: 'JSON' },
+  { value: 'csv' as const, label: 'CSV' },
 ];
 
 const MIME_TYPE: Readonly<Record<ExportFormat, string>> = {
   txt: 'text/plain;charset=utf-8',
   json: 'application/json;charset=utf-8',
+  csv: 'text/csv;charset=utf-8',
 };
 
 const downloadViaAnchor = (params: {
@@ -61,7 +63,7 @@ const buildFilename = (sessionId: string, format: ExportFormat): string => {
  * IMPL-533 (再導入) ExportControls molecule (Issue #106)。
  *
  * セッション停止後 (capturing 中も可) に、保存済 transcript / translation を
- * TXT / JSON 形式でローカルダウンロードする。`BackgroundClient.exportSessionResult`
+ * TXT / JSON / CSV 形式でローカルダウンロードする。`BackgroundClient.exportSessionResult`
  * の応答に含まれる整形済 `content` を `Blob` 化し、`a.download` でファイルを
  * 取得する。
  *
@@ -122,7 +124,7 @@ export function ExportControls(props: Props) {
           ariaLabel="エクスポート形式"
           options={FORMAT_OPTIONS}
           onChange={(next) => {
-            if (next === 'txt' || next === 'json') setFormat(next);
+            if (next === 'txt' || next === 'json' || next === 'csv') setFormat(next);
           }}
           disabled={isPending}
         />

@@ -120,6 +120,42 @@ describe('ExportControls molecule (Issue #106)', () => {
     expect(args?.filename).toMatch(/perapera-.*\.json$/);
   });
 
+  it('switches MIME type and extension when format=CSV', async () => {
+    const client = buildClient({
+      exportSessionResult: vi.fn(() =>
+        Promise.resolve(
+          okResult({
+            format: 'csv',
+            content: '﻿session_identifier,segment_identifier\r\n',
+            bytes: 36,
+          }),
+        ),
+      ),
+    });
+    const download =
+      vi.fn<(params: { filename: string; content: string; mimeType: string }) => void>();
+    render(<ExportControls client={client} sessionId={SESSION_ID} download={download} />);
+    fireEvent.change(screen.getByLabelText('エクスポート形式'), {
+      target: { value: 'csv' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'エクスポート' }));
+    await waitFor(() => {
+      expect(client.exportSessionResult).toHaveBeenCalledWith({
+        sessionId: SESSION_ID,
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: true,
+      });
+    });
+    await waitFor(() => {
+      expect(download).toHaveBeenCalledTimes(1);
+    });
+    const args = download.mock.calls[0]?.[0];
+    expect(args?.mimeType).toBe('text/csv;charset=utf-8');
+    expect(args?.filename).toMatch(/perapera-.*\.csv$/);
+    expect(args?.content.startsWith('﻿')).toBe(true);
+  });
+
   it('shows failure message when exportSessionResult fails', async () => {
     const client = buildClient({
       exportSessionResult: vi.fn(() =>
