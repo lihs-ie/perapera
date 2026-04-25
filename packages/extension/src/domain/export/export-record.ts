@@ -6,9 +6,13 @@ import { parseExportIdentifier, type ExportIdentifier } from './export-identifie
 
 /**
  * エクスポート形式の列挙 (DD-273 ExportFormatSpecification)。
- * TXT / JSON のみ許可する。
+ * TXT / JSON / CSV を許可する。
+ *
+ * - txt: 人が読みやすいプレーンテキスト
+ * - json: プログラムから扱いやすい構造化形式
+ * - csv: スプレッドシート / pandas / R 等の表形式ツールに直接読み込める
  */
-export const EXPORT_FORMATS = ['txt', 'json'] as const;
+export const EXPORT_FORMATS = ['txt', 'json', 'csv'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 /**

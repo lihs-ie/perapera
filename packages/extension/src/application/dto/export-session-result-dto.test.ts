@@ -31,10 +31,20 @@ describe('ExportSessionResultDTO (DD-307)', () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it('rejects unknown format values', () => {
+    it('accepts csv as valid format', () => {
       const result = parseExportSessionResultInput({
         sessionId: SESSION_ID,
         format: 'csv',
+        includeOriginal: true,
+        includeTranslation: true,
+      });
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('rejects unknown format values', () => {
+      const result = parseExportSessionResultInput({
+        sessionId: SESSION_ID,
+        format: 'xml',
         includeOriginal: true,
         includeTranslation: true,
       });

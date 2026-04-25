@@ -170,4 +170,28 @@ describe('createExportSessionResultUseCase (IMPL-216, DD-307)', () => {
       }).not.toThrow();
     }
   });
+
+  it('emits CSV format with UTF-8 BOM, header row, and byte count matching UTF-8 encoded length', async () => {
+    const deps = buildDependencies();
+    const useCase = createExportSessionResultUseCase(deps);
+    const result = await useCase({
+      sessionId: SESSION_ID,
+      format: 'csv',
+      includeOriginal: true,
+      includeTranslation: true,
+    });
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      expect(result.value.format).toBe('csv');
+      // CSV は BOM (`U+FEFF`) で始まる
+      expect(result.value.content.startsWith('﻿')).toBe(true);
+      // header 行が含まれる
+      expect(result.value.content).toContain(
+        'session_identifier,segment_identifier,start_ms,end_ms,original_text,target_language,translation_text',
+      );
+      // bytes は UTF-8 byte length と一致 (BOM 含む)
+      const encoded = new TextEncoder().encode(result.value.content);
+      expect(result.value.bytes).toBe(encoded.length);
+    }
+  });
 });

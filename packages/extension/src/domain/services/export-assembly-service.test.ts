@@ -428,4 +428,204 @@ describe('ExportAssemblyService (DD-242)', () => {
       }
     });
   });
+
+  describe('CSV format', () => {
+    const BOM = '﻿';
+    const HEADER =
+      'session_identifier,segment_identifier,start_ms,end_ms,original_text,target_language,translation_text';
+
+    it('returns BOM + header only for an empty stream', () => {
+      const result = assembleExport(emptyStream(), {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: true,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) expect(result.value).toBe(BOM + HEADER);
+    });
+
+    it('starts content with UTF-8 BOM', () => {
+      const stream = buildStream([
+        { segmentIdentifier: SEGMENT_IDS[0], startMs: 0, endMs: 1000, text: 'hi' },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: false,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) expect(result.value.startsWith(BOM)).toBe(true);
+    });
+
+    it('uses CRLF line ending between header and rows', () => {
+      const stream = buildStream([
+        { segmentIdentifier: SEGMENT_IDS[0], startMs: 0, endMs: 1000, text: 'hi' },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: false,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value).toContain('\r\n');
+        expect(result.value.split('\r\n').length).toBe(2); // header + 1 row
+      }
+    });
+
+    it('formats a single segment with original + completed translation', () => {
+      const stream = buildStream([
+        {
+          segmentIdentifier: SEGMENT_IDS[0],
+          startMs: 0,
+          endMs: 1500,
+          text: 'hello',
+          translation: {
+            translationIdentifier: TRANSLATION_IDS[0],
+            targetLanguage: 'ja-JP',
+            text: 'こんにちは',
+          },
+        },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: true,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        const rows = result.value.slice(BOM.length).split('\r\n');
+        expect(rows[0]).toBe(HEADER);
+        expect(rows[1]).toBe(`${SESSION_ID},${SEGMENT_IDS[0]},0,1500,hello,ja-JP,こんにちは`);
+      }
+    });
+
+    it('escapes quotes/commas/newlines per RFC 4180', () => {
+      const stream = buildStream([
+        {
+          segmentIdentifier: SEGMENT_IDS[0],
+          startMs: 0,
+          endMs: 1000,
+          text: 'he said, "hi"\nthen left',
+        },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: false,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        const rows = result.value.slice(BOM.length).split('\r\n');
+        // 内部 `"` は `""` へ escape、全体を `"..."` で囲む。\n もそのまま値内に保持
+        expect(rows[1]).toBe(
+          `${SESSION_ID},${SEGMENT_IDS[0]},0,1000,"he said, ""hi""\nthen left",,`,
+        );
+      }
+    });
+
+    it('emits empty original_text column when includeOriginal is false', () => {
+      const stream = buildStream([
+        {
+          segmentIdentifier: SEGMENT_IDS[0],
+          startMs: 0,
+          endMs: 1500,
+          text: 'hello',
+          translation: {
+            translationIdentifier: TRANSLATION_IDS[0],
+            targetLanguage: 'ja-JP',
+            text: 'こんにちは',
+          },
+        },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: false,
+        includeTranslation: true,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        const rows = result.value.slice(BOM.length).split('\r\n');
+        // original_text 列は空、target_language / translation_text は値あり
+        expect(rows[1]).toBe(`${SESSION_ID},${SEGMENT_IDS[0]},0,1500,,ja-JP,こんにちは`);
+      }
+    });
+
+    it('emits empty translation columns when includeTranslation is false', () => {
+      const stream = buildStream([
+        {
+          segmentIdentifier: SEGMENT_IDS[0],
+          startMs: 0,
+          endMs: 1500,
+          text: 'hello',
+          translation: {
+            translationIdentifier: TRANSLATION_IDS[0],
+            targetLanguage: 'ja-JP',
+            text: 'こんにちは',
+          },
+        },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: false,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        const rows = result.value.slice(BOM.length).split('\r\n');
+        expect(rows[1]).toBe(`${SESSION_ID},${SEGMENT_IDS[0]},0,1500,hello,,`);
+      }
+    });
+
+    it('emits empty translation columns for failed translations', () => {
+      const stream = buildStream([
+        {
+          segmentIdentifier: SEGMENT_IDS[0],
+          startMs: 0,
+          endMs: 1500,
+          text: 'hello',
+          translation: 'failed',
+        },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: true,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        const rows = result.value.slice(BOM.length).split('\r\n');
+        expect(rows[1]).toBe(`${SESSION_ID},${SEGMENT_IDS[0]},0,1500,hello,,`);
+      }
+    });
+
+    it('sorts rows by startMs ascending and excludes partials', () => {
+      const stream = buildStream([
+        { segmentIdentifier: SEGMENT_IDS[0], startMs: 5000, endMs: 6000, text: 'c' },
+        { segmentIdentifier: SEGMENT_IDS[1], startMs: 500, endMs: 1500, text: 'b' },
+        { segmentIdentifier: SEGMENT_IDS[2], startMs: 0, endMs: 400, text: 'a' },
+        {
+          segmentIdentifier: SEGMENT_IDS[3],
+          startMs: 7000,
+          endMs: 8000,
+          text: 'partial',
+          isFinal: false,
+        },
+      ]);
+      const result = assembleExport(stream, {
+        format: 'csv',
+        includeOriginal: true,
+        includeTranslation: false,
+      });
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        const rows = result.value.slice(BOM.length).split('\r\n');
+        expect(rows.length).toBe(4); // header + 3 final segments (partial excluded)
+        // 順序: a (0), b (500), c (5000)
+        expect(rows[1]?.endsWith(',a,,')).toBe(true);
+        expect(rows[2]?.endsWith(',b,,')).toBe(true);
+        expect(rows[3]?.endsWith(',c,,')).toBe(true);
+      }
+    });
+  });
 });

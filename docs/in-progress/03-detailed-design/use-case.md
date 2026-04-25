@@ -186,7 +186,7 @@ graph TD
 | DTO-I-304 | `HandleTranscriptPartialInput` | DD-304 | `sessionId`, `segmentId`, `revision`, `text`, `timeRange`                                                               | `revision >= 1`、文字列長上限                                          |
 | DTO-I-305 | `HandleTranscriptFinalInput`   | DD-305 | `sessionId`, `segmentId`, `text`, `translation?`, `timeRange`, `endpointingTrigger?`, `precedingSegmentId?`             | `segmentId` 必須、確定字幕空不可、`endpointingTrigger` は許可値のみ    |
 | DTO-I-306 | `StopSourceSessionInput`       | DD-306 | `sessionId`, `reason?`                                                                                                  | `sessionId` 必須                                                       |
-| DTO-I-307 | `ExportSessionResultInput`     | DD-307 | `sessionId`, `format`, `includeOriginal`, `includeTranslation`                                                          | 形式は `txt` / `json`                                                  |
+| DTO-I-307 | `ExportSessionResultInput`     | DD-307 | `sessionId`, `format`, `includeOriginal`, `includeTranslation`                                                          | 形式は `txt` / `json` / `csv`                                          |
 
 ### 5.2 出力DTO一覧
 
@@ -413,6 +413,13 @@ sequenceDiagram
 
 - 選択形式に応じた出力データが生成されること
 - `ExportRecord` が記録されること
+
+#### 受理形式
+
+- `txt`: 人が読みやすいプレーンテキスト (`[時刻] 原文` / `→ [言語] 翻訳`)
+- `json`: 構造化形式 (`sessionIdentifier`, `segments[]` を含む 1 行 JSON)
+- `csv`: スプレッドシート互換 (UTF-8 BOM + RFC 4180 quoting + CRLF 行末)。
+  Excel / Numbers / pandas 等で直接読み込み可能
 
 ## 11. Relay 側ユースケース追補
 

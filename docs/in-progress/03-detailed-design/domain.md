@@ -303,7 +303,7 @@ classDiagram
 | DD-270 | ConcurrentSessionLimitSpecification | ソースセッション集約           | 同時にアクティブなソースは最大 3 まで            |
 | DD-271 | TranslationAttachmentSpecification  | 字幕ストリーム集約             | 翻訳は確定字幕にのみ紐づけ可能                   |
 | DD-272 | OverlaySettingsSpecification        | 拡張プロファイル集約           | オーバーレイ表示値は UI で扱える範囲内に制限する |
-| DD-273 | ExportFormatSpecification           | 表示・エクスポートコンテキスト | エクスポート形式は TXT / JSON のみ許可する       |
+| DD-273 | ExportFormatSpecification           | 表示・エクスポートコンテキスト | エクスポート形式は TXT / JSON / CSV のみ許可する |
 
 ## 変更履歴
 

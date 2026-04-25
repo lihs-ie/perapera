@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type ExportSessionResultInput } from '../../application/dto/export-session-result-dto';
+import { EXPORT_FORMATS } from '../../domain/export/export-record';
 import { type GetSessionMonitorStateInput } from '../../application/dto/get-session-monitor-state-dto';
 import { type StartSourceSessionInput } from '../../application/dto/start-source-session-dto';
 import { type StopSourceSessionInput } from '../../application/dto/stop-source-session-dto';
@@ -93,7 +94,7 @@ export type UpdateSourceSettingsResult = z.infer<typeof updateSourceSettingsOutp
 
 const exportSessionResultOutputSchema = z.object({
   exportId: z.string().min(1),
-  format: z.enum(['txt', 'json']),
+  format: z.enum(EXPORT_FORMATS),
   bytes: z.number().int().nonnegative(),
   // Issue #106: 整形済み本文。presentation 層が Blob 化して download する。
   content: z.string(),
