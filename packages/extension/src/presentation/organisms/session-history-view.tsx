@@ -10,6 +10,7 @@ import {
   type SearchSessionHistoryResult,
   type SessionHistoryDetailResult,
 } from '../infrastructure/background-client';
+import { ExportControls } from '../molecules/export-controls';
 import { TranscriptPairItem } from '../molecules/transcript-pair-item';
 
 const SEARCH_DEBOUNCE_MS = 300 as const;
@@ -226,6 +227,7 @@ export function SessionHistoryView(props: Props) {
                   ))
                 )}
               </div>
+              <ExportControls client={props.client} sessionId={detail.summary.sessionId} />
             </div>
           ) : null}
         </section>
