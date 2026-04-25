@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type BackgroundClient,
   type BackgroundResponse,
+  type ExportSessionResultResult,
   type SessionHistoryDetailResult,
   type SessionHistoryListResult,
 } from '../infrastructure/background-client';
@@ -102,6 +103,13 @@ const buildClient = (overrides: Partial<BackgroundClient> = {}): BackgroundClien
 describe('SessionHistoryView organism (Issue #109)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // jsdom には URL.createObjectURL / revokeObjectURL が無い。
+    // ExportControls の downloadViaAnchor が依存するため stub する。
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:test'),
+      revokeObjectURL: vi.fn(),
+    });
   });
 
   it('renders the list of past sessions', async () => {
@@ -132,6 +140,56 @@ describe('SessionHistoryView organism (Issue #109)', () => {
     });
     expect(screen.getByText('hello world')).toBeInTheDocument();
     expect(screen.getByText('こんにちは')).toBeInTheDocument();
+  });
+
+  it('renders ExportControls in the detail panel after selecting a session', async () => {
+    const client = buildClient();
+    render(<SessionHistoryView client={client} onClose={() => undefined} />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: `セッション ${SESSION_ID} を開く` }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: `セッション ${SESSION_ID} を開く` }));
+    await waitFor(() => {
+      expect(screen.getByTestId('history-detail')).toBeInTheDocument();
+    });
+    // ExportControls molecule は data-testid="export-controls" を持つ
+    expect(screen.getByTestId('export-controls')).toBeInTheDocument();
+  });
+
+  it('invokes exportSessionResult with the selected sessionId via ExportControls', async () => {
+    const exportResult: BackgroundResponse<ExportSessionResultResult> = {
+      ok: true,
+      value: {
+        exportId: 'exp_history_1',
+        format: 'json',
+        bytes: 42,
+        content: '{"sessionIdentifier":"' + SESSION_ID + '","segments":[]}',
+      },
+    };
+    const client = buildClient({
+      exportSessionResult: vi.fn(() => Promise.resolve(exportResult)),
+    });
+    render(<SessionHistoryView client={client} onClose={() => undefined} />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: `セッション ${SESSION_ID} を開く` }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: `セッション ${SESSION_ID} を開く` }));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-controls')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'エクスポート' }));
+    await waitFor(() => {
+      expect(client.exportSessionResult).toHaveBeenCalledWith({
+        sessionId: SESSION_ID,
+        format: 'txt',
+        includeOriginal: true,
+        includeTranslation: true,
+      });
+    });
   });
 
   it('shows error message when detail fetch fails', async () => {
