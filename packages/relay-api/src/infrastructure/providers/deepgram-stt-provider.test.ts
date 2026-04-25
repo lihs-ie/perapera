@@ -392,4 +392,69 @@ describe('createDeepgramSttProvider (IMPL-444)', () => {
       }
     });
   });
+
+  describe('openStream URL construction (regression: HTTP 400 from invalid Deepgram params)', () => {
+    const captureUrl = async (
+      streamConfig: Parameters<ReturnType<typeof createDeepgramSttProvider>['openStream']>[0],
+    ): Promise<URLSearchParams> => {
+      const factory = vi.fn<DeepgramWebSocketFactory>(() => createFakeSocket());
+      const provider = createDeepgramSttProvider({
+        apiKey: 'dg-secret',
+        webSocketFactory: factory,
+      });
+      await provider.openStream(streamConfig);
+      const url = factory.mock.calls[0]?.[0] ?? '';
+      const queryStart = url.indexOf('?');
+      return new URLSearchParams(queryStart >= 0 ? url.slice(queryStart + 1) : '');
+    };
+
+    it('does NOT include utterance_end_ms (Deepgram requires >=1000ms; we cannot honor SttEndpointingConfig.minUtteranceMs default 500)', async () => {
+      const params = await captureUrl({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+        endpointing: {
+          silenceThresholdMs: 600,
+          minUtteranceMs: 500,
+          punctuationAware: true,
+        },
+      });
+      expect(params.has('utterance_end_ms')).toBe(false);
+    });
+
+    it('includes endpointing query param when SttEndpointingConfig provided', async () => {
+      const params = await captureUrl({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+        endpointing: {
+          silenceThresholdMs: 600,
+          minUtteranceMs: 500,
+          punctuationAware: true,
+        },
+      });
+      expect(params.get('endpointing')).toBe('600');
+    });
+
+    it('includes punctuate query param when SttEndpointingConfig provided', async () => {
+      const params = await captureUrl({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+        endpointing: {
+          silenceThresholdMs: 600,
+          minUtteranceMs: 500,
+          punctuationAware: true,
+        },
+      });
+      expect(params.get('punctuate')).toBe('true');
+    });
+
+    it('omits endpointing/punctuate when SttEndpointingConfig is undefined', async () => {
+      const params = await captureUrl({
+        sourceLanguage: 'en-US',
+        autoDetectLanguage: false,
+      });
+      expect(params.has('endpointing')).toBe(false);
+      expect(params.has('punctuate')).toBe(false);
+      expect(params.has('utterance_end_ms')).toBe(false);
+    });
+  });
 });

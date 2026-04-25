@@ -1,6 +1,6 @@
 import fastifyWebsocket from '@fastify/websocket';
 import { err, errAsync, ok, ok as okResult, okAsync, ResultAsync, type Result } from 'neverthrow';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { type AccessTokenVerifier } from '../../application/ports/access-token-verifier';
@@ -13,6 +13,13 @@ import {
 import { type TranslationPort } from '../../application/ports/translation-port';
 import { type IssueStreamTokenUseCase } from '../../application/use-cases/issue-stream-token-use-case';
 import { invariantViolationError, type DomainError } from '../../domain/shared/errors';
+import {
+  createDeepgramSttProvider,
+  type DeepgramSocketEvent,
+  type DeepgramSocketListener,
+  type DeepgramWebSocketFactory,
+  type MinimalDeepgramSocket,
+} from '../../infrastructure/providers/deepgram-stt-provider';
 import { createMockSttProvider } from '../../../tests/support/mock/mock-stt-provider';
 import { createMockTranslationProvider } from '../../../tests/support/mock/mock-translation-provider';
 import { buildApp } from '../http/server';
@@ -879,6 +886,153 @@ describe('WebSocket /relay route', () => {
       });
 
       expect(sendFrameCallCount).toBe(1);
+
+      ws.close();
+    }, 10000);
+  });
+
+  /**
+   * Integration: 本物の `createDeepgramSttProvider` を fake `webSocketFactory`
+   * 経由で配線し、Deepgram への URL 構築 + HTTP error propagation を end-to-end で検証する。
+   *
+   * MockSttProvider では Deepgram URL の構築ミスを捕まえられない (URL を作っていないため)。
+   * 本 describe ブロックの test は HTTP 400 (utterance_end_ms<1000 等の Deepgram 仕様
+   * 違反) regression を CI で防ぐためのもの。
+   */
+  describe('IMPL-444 Deepgram provider integration (HTTP 400 regression)', () => {
+    type IntegFakeSocket = MinimalDeepgramSocket & {
+      emitOpen: () => void;
+      emitUnexpectedResponse: (statusCode: number) => void;
+    };
+
+    const createIntegFakeSocket = (options: { autoOpen?: boolean } = {}): IntegFakeSocket => {
+      const openListeners: (() => void)[] = [];
+      const unexpectedResponseListeners: ((req: unknown, res: unknown) => void)[] = [];
+      const closeListeners: ((code: number, reason: Buffer) => void)[] = [];
+      const on: MinimalDeepgramSocket['on'] = (
+        event: DeepgramSocketEvent,
+        listener: DeepgramSocketListener,
+      ) => {
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        const o = listener as () => void;
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        const u = listener as (req: unknown, res: unknown) => void;
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        const c = listener as (code: number, reason: Buffer) => void;
+        switch (event) {
+          case 'open':
+            openListeners.push(o);
+            if (options.autoOpen === true) setImmediate(() => o());
+            return undefined;
+          case 'unexpected-response':
+            unexpectedResponseListeners.push(u);
+            return undefined;
+          case 'close':
+            closeListeners.push(c);
+            return undefined;
+          case 'message':
+          case 'error':
+            return undefined;
+        }
+      };
+      const once: MinimalDeepgramSocket['once'] = () => undefined;
+      return {
+        on,
+        once,
+        send: () => undefined,
+        close: () => undefined,
+        emitOpen: () => {
+          for (const listener of openListeners) listener();
+        },
+        emitUnexpectedResponse: (statusCode) => {
+          for (const listener of unexpectedResponseListeners) listener({}, { statusCode });
+        },
+      };
+    };
+
+    it('does not include utterance_end_ms in Deepgram URL (regression: HTTP 400 from <1000 minimum)', async () => {
+      const factory = vi.fn<DeepgramWebSocketFactory>(() =>
+        createIntegFakeSocket({ autoOpen: true }),
+      );
+      const realDeepgramPort = createDeepgramSttProvider({
+        apiKey: 'dg-test',
+        webSocketFactory: factory,
+      });
+      harness = await startApp(okVerifier, { sttPort: realDeepgramPort });
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'session.start',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sourceLanguage: 'en-US',
+            autoDetectLanguage: false,
+            targetLanguage: 'ja-JP',
+            translationEnabled: true,
+          },
+        }),
+      );
+
+      // factory が呼ばれて URL を観測できるまで待つ (openStream が走る)
+      await vi.waitFor(() => expect(factory).toHaveBeenCalled(), { timeout: 3000 });
+      const url = factory.mock.calls[0]?.[0] ?? '';
+      const queryStart = url.indexOf('?');
+      const params = new URLSearchParams(queryStart >= 0 ? url.slice(queryStart + 1) : '');
+      expect(params.has('utterance_end_ms')).toBe(false);
+      // endpointing と punctuate は引き続き含まれること
+      expect(params.has('endpointing')).toBe(true);
+      expect(params.has('punctuate')).toBe(true);
+
+      ws.close();
+    }, 10000);
+
+    it('propagates Deepgram HTTP 400 (unexpected-response) as session.error STT_ERROR', async () => {
+      const fakeSocket = createIntegFakeSocket();
+      const factory = vi.fn<DeepgramWebSocketFactory>(() => fakeSocket);
+      const realDeepgramPort = createDeepgramSttProvider({
+        apiKey: 'dg-test',
+        webSocketFactory: factory,
+      });
+      harness = await startApp(okVerifier, { sttPort: realDeepgramPort });
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'session.start',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sourceLanguage: 'en-US',
+            autoDetectLanguage: false,
+            targetLanguage: 'ja-JP',
+            translationEnabled: true,
+          },
+        }),
+      );
+
+      // factory 呼び出し直後に HTTP 400 を emit (Deepgram が param 不正で reject する状況)
+      await vi.waitFor(() => expect(factory).toHaveBeenCalled(), { timeout: 3000 });
+      fakeSocket.emitUnexpectedResponse(400);
+
+      const errorEvent = await queue.next(3000);
+      expect(errorEvent).toMatchObject({
+        eventType: 'session.error',
+        payload: {
+          code: 'STT_ERROR',
+          retryable: true,
+          fatal: false,
+        },
+      });
 
       ws.close();
     }, 10000);
