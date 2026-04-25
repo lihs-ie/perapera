@@ -693,7 +693,7 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                   { count: pendingFrames.length, sessionId: context.sessionId },
                   'flushing pending audio.frame buffer after session.start',
                 );
-                let flushHitStreamClosed = false;
+                let flushHitStreamFailure = false;
                 for (const frame of pendingFrames) {
                   const flushResult = handle.sendFrame(frame);
                   if (flushResult.isErr()) {
@@ -701,17 +701,23 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
                       { err: flushResult.error },
                       'stt sendFrame failed during pending flush',
                     );
+                    // `deepgram-stream-closed` (実運用 close) と
+                    // `deepgram-send-failed` (socket throw、e.g. CONNECTING 状態
+                    // で send) の両方を recovery 経路に乗せる。openStream が
+                    // 'open' を待つよう修正されたので後者は本来発生しないが
+                    // defense-in-depth として残す。
                     if (
                       flushResult.error.kind === 'invariant-violation' &&
-                      flushResult.error.invariant === 'deepgram-stream-closed'
+                      (flushResult.error.invariant === 'deepgram-stream-closed' ||
+                        flushResult.error.invariant === 'deepgram-send-failed')
                     ) {
-                      flushHitStreamClosed = true;
+                      flushHitStreamFailure = true;
                     }
                   }
                 }
                 pendingFrames = [];
-                if (flushHitStreamClosed) {
-                  notifyStreamFailure('sendFrame failed during pending flush: STT stream closed');
+                if (flushHitStreamFailure) {
+                  notifyStreamFailure('sendFrame failed during pending flush: STT stream unusable');
                 }
               }
               runTranscriptLoop(stream);
@@ -781,15 +787,18 @@ export const registerRelayRoute = (app: FastifyInstance, deps: RelayRouteDepende
         });
         if (result.isErr()) {
           request.log.warn({ err: result.error }, 'stt sendFrame failed');
-          // Deepgram WebSocket がサーバ都合で閉じた場合 (`deepgram-stream-closed`)
-          // は activeStream を null 化してクライアントへ retryable エラーを一度
-          // だけ通知する。これにより拡張側は session.stop → session.start で
-          // 再接続できる。それ以外の一時的送信失敗 (transient) は WARN のみ。
-          const isStreamClosed =
+          // Deepgram WebSocket がサーバ都合で閉じた (`deepgram-stream-closed`)、
+          // または socket.send が throw した (`deepgram-send-failed`、e.g.
+          // CONNECTING 状態で send) 場合は activeStream を null 化してクライアント
+          // へ retryable エラーを一度だけ通知する。これにより拡張側は
+          // session.stop → session.start で再接続できる。それ以外の transient
+          // 送信失敗は WARN のみ。
+          const isStreamUnusable =
             result.error.kind === 'invariant-violation' &&
-            result.error.invariant === 'deepgram-stream-closed';
-          if (isStreamClosed) {
-            notifyStreamFailure('sendFrame failed: STT stream closed');
+            (result.error.invariant === 'deepgram-stream-closed' ||
+              result.error.invariant === 'deepgram-send-failed');
+          if (isStreamUnusable) {
+            notifyStreamFailure('sendFrame failed: STT stream unusable');
           }
         }
       };

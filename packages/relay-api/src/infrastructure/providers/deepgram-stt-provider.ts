@@ -1,4 +1,4 @@
-import { ResultAsync, err, errAsync, ok, okAsync, type Result } from 'neverthrow';
+import { ResultAsync, err, errAsync, ok, type Result } from 'neverthrow';
 import { ulid } from 'ulid';
 import {
   type SttPort,
@@ -78,6 +78,11 @@ export type DeepgramSttProviderConfig = Readonly<{
   clock?: () => string;
   /** 診断ログ (close code / error reason の捕捉)。未指定は no-op (既存テスト互換) */
   logger?: DeepgramLogger;
+  /**
+   * WebSocket 'open' event 待機タイムアウト (既定 5000ms)。
+   * これを超えると `deepgram-open-timeout` で reject。test では短縮可能。
+   */
+  openTimeoutMs?: number;
 }>;
 
 type DeepgramMessageAlternative = {
@@ -168,6 +173,7 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
   const segmentIdFactory = config.segmentIdFactory ?? (() => ulid());
   const clock = config.clock ?? (() => new Date().toISOString());
   const logger = config.logger ?? NOOP_LOGGER;
+  const openTimeoutMs = config.openTimeoutMs ?? 5000;
 
   return {
     openStream: (streamConfig) => {
@@ -292,59 +298,6 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
         });
       });
 
-      // ws ライブラリの open / close / error / unexpected-response を診断ログ
-      // へつなぐ。これがないと Deepgram が「なぜ閉じたか」が永久に不明になる。
-      // 各 listener は DeepgramSocketListener union のいずれかのメンバーに
-      // 一致するため cast 不要で `socket.on` に直接渡せる。
-      const onOpen: () => void = () => {
-        logger.info('deepgram open: WebSocket established', {
-          framesQueued: eventQueue.length,
-        });
-      };
-      const onClose: (code: number, reason: Buffer) => void = (code, reason) => {
-        const reasonStr = Buffer.isBuffer(reason) ? reason.toString('utf8') : '';
-        // 1000 = normal、それ以外は異常終了。Deepgram 固有 code (4000-4999) は
-        // auth/billing/format mismatch などを示すので必ず WARN/ERROR。
-        const fields = {
-          code,
-          reason: reasonStr,
-          framesSent: frameCount,
-          sourceLanguage: streamConfig.sourceLanguage,
-          autoDetectLanguage: streamConfig.autoDetectLanguage,
-        };
-        if (code === 1000) {
-          logger.info('deepgram close: normal closure', fields);
-        } else if (code >= 4000) {
-          logger.error('deepgram close: provider-specific error code', fields);
-        } else {
-          logger.warn('deepgram close: abnormal closure', fields);
-        }
-        endStream();
-      };
-      const onError: (err: Error) => void = (cause) => {
-        logger.error('deepgram error', {
-          err: cause instanceof Error ? cause.message : String(cause),
-          framesSent: frameCount,
-        });
-        endStream();
-      };
-      const onUnexpectedResponse: (req: unknown, res: unknown) => void = (_req, res) => {
-        // ws の unexpected-response: HTTP upgrade が拒否された (status>=400)。
-        // auth fail (401) / quota (403) / bad request (400) などをここで捕捉する。
-        const statusCode =
-          typeof res === 'object' && res !== null && 'statusCode' in res
-            ? Reflect.get(res, 'statusCode')
-            : 'unknown';
-        logger.error('deepgram open: HTTP upgrade rejected', {
-          statusCode,
-        });
-      };
-
-      socket.on('open', onOpen);
-      socket.on('close', onClose);
-      socket.on('error', onError);
-      socket.on('unexpected-response', onUnexpectedResponse);
-
       const handle: SttStreamHandle = {
         sendFrame: (params): Result<void, DomainError> => {
           if (closed) {
@@ -416,7 +369,123 @@ export const createDeepgramSttProvider = (config: DeepgramSttProviderConfig): St
           }),
         },
       };
-      return okAsync<SttStreamHandle, DomainError>(handle);
+
+      // openStream contract: handle が返る時点で socket は send 可能 (readyState=1)
+      // でなければならない。WebSocket の 'open' event を待ってから resolve し、
+      // 'error' / 'unexpected-response' / timeout の場合は err で reject する。
+      // open 後に発火する 'close' / 'error' は endStream() を駆動 (運用中の終了検出)。
+      const openPromise = new Promise<Result<SttStreamHandle, DomainError>>((resolve) => {
+        let openSettled = false;
+        const settleOpen = (result: Result<SttStreamHandle, DomainError>): void => {
+          if (openSettled) return;
+          openSettled = true;
+          clearTimeout(openTimer);
+          resolve(result);
+        };
+        const openTimer = setTimeout(() => {
+          logger.error('deepgram open: timeout', {
+            timeoutMs: openTimeoutMs,
+            sourceLanguage: streamConfig.sourceLanguage,
+            autoDetectLanguage: streamConfig.autoDetectLanguage,
+          });
+          settleOpen(
+            err(
+              invariantViolationError({
+                invariant: 'deepgram-open-timeout',
+                details: `WebSocket open timeout ${String(openTimeoutMs)}ms`,
+              }),
+            ),
+          );
+          // socket がまだ CONNECTING の場合に resource leak を防ぐ
+          try {
+            socket.close(1000, 'open timeout');
+          } catch {
+            /* ignore */
+          }
+        }, openTimeoutMs);
+
+        const onOpen: () => void = () => {
+          logger.info('deepgram open: WebSocket established', {
+            framesQueued: eventQueue.length,
+          });
+          settleOpen(ok(handle));
+        };
+        const onClose: (code: number, reason: Buffer) => void = (code, reason) => {
+          const reasonStr = Buffer.isBuffer(reason) ? reason.toString('utf8') : '';
+          // 1000 = normal、それ以外は異常終了。Deepgram 固有 code (4000-4999) は
+          // auth/billing/format mismatch などを示すので必ず WARN/ERROR。
+          const fields = {
+            code,
+            reason: reasonStr,
+            framesSent: frameCount,
+            sourceLanguage: streamConfig.sourceLanguage,
+            autoDetectLanguage: streamConfig.autoDetectLanguage,
+          };
+          if (code === 1000) {
+            logger.info('deepgram close: normal closure', fields);
+          } else if (code >= 4000) {
+            logger.error('deepgram close: provider-specific error code', fields);
+          } else {
+            logger.warn('deepgram close: abnormal closure', fields);
+          }
+          // open 前に閉じたら open failure として扱う
+          if (!openSettled) {
+            settleOpen(
+              err(
+                invariantViolationError({
+                  invariant: 'deepgram-open-failed',
+                  details: `WebSocket closed before open (code=${String(code)}${reasonStr.length > 0 ? `, reason=${reasonStr}` : ''})`,
+                }),
+              ),
+            );
+          }
+          endStream();
+        };
+        const onError: (err: Error) => void = (cause) => {
+          logger.error('deepgram error', {
+            err: cause instanceof Error ? cause.message : String(cause),
+            framesSent: frameCount,
+          });
+          if (!openSettled) {
+            settleOpen(
+              err(
+                invariantViolationError({
+                  invariant: 'deepgram-open-failed',
+                  details: cause instanceof Error ? cause.message : 'unknown error before open',
+                }),
+              ),
+            );
+            return;
+          }
+          endStream();
+        };
+        const onUnexpectedResponse: (req: unknown, res: unknown) => void = (_req, res) => {
+          // ws の unexpected-response: HTTP upgrade が拒否された (status>=400)。
+          // auth fail (401) / quota (403) / bad request (400) などをここで捕捉する。
+          const statusCode =
+            typeof res === 'object' && res !== null && 'statusCode' in res
+              ? Reflect.get(res, 'statusCode')
+              : 'unknown';
+          logger.error('deepgram open: HTTP upgrade rejected', {
+            statusCode,
+          });
+          settleOpen(
+            err(
+              invariantViolationError({
+                invariant: 'deepgram-open-rejected',
+                details: `HTTP ${typeof statusCode === 'number' ? String(statusCode) : 'unknown'}`,
+              }),
+            ),
+          );
+        };
+
+        socket.on('open', onOpen);
+        socket.on('close', onClose);
+        socket.on('error', onError);
+        socket.on('unexpected-response', onUnexpectedResponse);
+      });
+
+      return new ResultAsync(openPromise);
     },
   };
 };

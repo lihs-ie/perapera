@@ -773,5 +773,114 @@ describe('WebSocket /relay route', () => {
 
       ws.close();
     }, 10000);
+
+    it('emits session.error STT_STREAM_FAILED when sendFrame returns deepgram-send-failed (defense-in-depth)', async () => {
+      // openStream 修正後 (open 待機) で本来は発生しないが、socket が突然
+      // 不安定になった場合の defense-in-depth として、`deepgram-send-failed`
+      // でも同じ recovery 経路に乗ることを検証する。
+      let sendFrameCallCount = 0;
+      const sendFailedSttPort: SttPort = {
+        openStream: () => {
+          const handle: SttStreamHandle = {
+            sendFrame: () => {
+              sendFrameCallCount += 1;
+              return err(
+                invariantViolationError({
+                  invariant: 'deepgram-send-failed',
+                  details: 'WebSocket is not open: readyState 0 (CONNECTING)',
+                }),
+              );
+            },
+            close: () => okAsync<void, DomainError>(undefined),
+            events: {
+              [Symbol.asyncIterator]: () => ({
+                next: (): Promise<IteratorResult<TranscriptEvent>> =>
+                  new Promise<IteratorResult<TranscriptEvent>>(() => {
+                    /* 無限保留 */
+                  }),
+              }),
+            },
+          };
+          return okAsync<SttStreamHandle, DomainError>(handle);
+        },
+      };
+      harness = await startApp(okVerifier, { sttPort: sendFailedSttPort });
+      const ws = connectWithAuth(relayUrl(harness), 'valid.jwt');
+      const queue = createMessageQueue(ws);
+      await awaitOpen(ws);
+      await queue.next(); // session.ready
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'session.start',
+          sessionId: SESSION_ID,
+          sequence: 1,
+          timestamp: new Date().toISOString(),
+          payload: {
+            sourceLanguage: 'en-US',
+            autoDetectLanguage: false,
+            targetLanguage: 'ja-JP',
+            translationEnabled: true,
+          },
+        }),
+      );
+
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 2,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_1',
+            audioBase64: 'AAAA=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+
+      const errorEvent = await queue.next(3000);
+      expect(errorEvent).toMatchObject({
+        eventType: 'session.error',
+        payload: {
+          code: 'STT_STREAM_FAILED',
+          retryable: true,
+          fatal: false,
+        },
+      });
+
+      // 二重送信防止: 同じ STT_STREAM_FAILED は 1 回のみ。
+      // 後続の audio.frame は activeStream=null になっているため SESSION_NOT_READY。
+      ws.send(
+        JSON.stringify({
+          eventType: 'audio.frame',
+          sessionId: SESSION_ID,
+          sequence: 3,
+          timestamp: new Date().toISOString(),
+          payload: {
+            chunkId: 'chk_2',
+            audioBase64: 'BBBB=',
+            encoding: 'pcm_s16le',
+            sampleRateHz: 16000,
+            channels: 1,
+            frameDurationMs: 100,
+            capturedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      const secondError = await queue.next(3000);
+      expect(secondError).toMatchObject({
+        eventType: 'session.error',
+        payload: { code: 'SESSION_NOT_READY' },
+      });
+
+      expect(sendFrameCallCount).toBe(1);
+
+      ws.close();
+    }, 10000);
   });
 });
