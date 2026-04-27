@@ -1,0 +1,45 @@
+/*
+ * PP keyframes — perapera-ui.jsx と PeraPera Design.html の <style> 部に定義された
+ * アニメーションを CSS にそのまま複写したもの。
+ *
+ * - pp-pulse: StatusPill の pulse ring (1.6s ease-out infinite)
+ * - pp-cursor: Transcript 末尾の点滅カーソル (1.05s steps(2) infinite)
+ * - pp-fade-up: 新規 transcript 行のフェードイン (280ms ease both)
+ */
+
+@keyframes pp-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes pp-cursor {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pp-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

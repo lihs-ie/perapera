@@ -1,82 +1,218 @@
+import type { CSSProperties } from 'react';
+import { CursorBlink } from '../atoms/cursor-blink';
+import type { TranscriptAge } from '../hooks/use-transcript-age';
+
 export type Props = Readonly<{
   originalText: string | null;
   translatedText: string | null;
   isFinal: boolean;
-  /** 話者ラベル。未指定時は "OTHER" を表示 */
   speakerLabel?: string;
-  /**
-   * IMPL-539: 直前の final セグメントとの連結を示すフラグ。
-   * true の場合、ラベルを省略して視覚的に連続表示する (息継ぎによる分断緩和)。
-   */
   connectedToPrevious?: boolean;
-  /**
-   * IMPL-539: 翻訳が precedingContext を利用して生成されたことを示す。
-   * true の場合は翻訳行の左端に「文脈あり」アイコン (·) を付与する。
-   */
   hasTranslationContext?: boolean;
-  /**
-   * Issue #126: ブックマーク状態。未指定は undefined (ブックマーク UI を非表示)。
-   * `onToggleBookmark` を合わせて指定すると ☆ トグルを描画する (final 字幕のみ)。
-   */
+  isLatest?: boolean;
+  age?: TranscriptAge;
+  density?: 'comfortable' | 'compact';
+  time?: string;
   isBookmarked?: boolean;
   onToggleBookmark?: () => void;
 }>;
 
 /**
- * TranscriptPairItem molecule。
+ * TranscriptPairItem molecule (perapera-transcript.jsx TranscriptItem 移植)。
  *
- * 1 segment 分の「話者ラベル + 原文 (gray) + 翻訳 (white bold)」ペアを表示する。
- * MVP では話者ラベルは固定文字列 "OTHER" (自分以外の発話 = 翻訳対象の音声)。
- * partial 状態は italic + opacity 軽減で表示し、final 確定後は通常表示に戻る。
- *
- * 翻訳がまだ届いていない segment でも原文は即時表示する (partial の hot-path)。
+ * 1 segment の「話者ラベル + 原文 + 翻訳」ペアを描画。
+ * 左に accent rail、age に応じた opacity (fresh=1 / recent=0.75 / old=0.45)、
+ * connected 時は header 省略 + border-bottom 非表示で chain 表現、
+ * partial 時は LISTENING… ラベル + 末尾 Cursor を表示。
+ * hasTranslationContext=true の場合は ·CTX バッジを表示。
  */
 export function TranscriptPairItem(props: Props) {
   const label = props.speakerLabel ?? 'OTHER';
   const original = props.originalText ?? '';
   const translation = props.translatedText ?? '';
-  const partial = props.isFinal ? 'false' : 'true';
-  const connected = props.connectedToPrevious === true ? 'true' : 'false';
-  const contextHint = props.hasTranslationContext === true ? 'true' : 'false';
+  const partial = !props.isFinal;
+  const connected = props.connectedToPrevious === true;
+  const hasContext = props.hasTranslationContext === true;
+  const compact = props.density === 'compact';
+  const age = props.age ?? 'fresh';
+  const isLatest = props.isLatest === true;
+
+  const ageOpacity = age === 'old' ? 0.45 : age === 'recent' ? 0.75 : 1;
+  const railTop = connected ? -2 : compact ? 12 : 16;
+  const railBackground = partial
+    ? 'linear-gradient(180deg, var(--pp-accent) 0%, rgba(45,212,191,0.35) 100%)'
+    : connected
+      ? 'var(--pp-accent-dim)'
+      : 'var(--pp-accent)';
+  const railOpacity = connected ? 0.45 : partial ? 1 : 0.85;
+
+  const itemStyle: CSSProperties = {
+    position: 'relative',
+    paddingLeft: 18,
+    paddingTop: connected ? 2 : compact ? 10 : 14,
+    paddingBottom: compact ? 8 : 12,
+    paddingRight: 4,
+    borderBottom: connected ? 'none' : '1px solid rgba(255,255,255,0.06)',
+    opacity: ageOpacity,
+    transition: 'opacity 500ms ease',
+    animation: isLatest && partial ? 'pp-fade-up 280ms ease both' : undefined,
+  };
 
   return (
     <div
-      className="item"
+      className="container"
+      data-component="transcript-pair-item"
       role="listitem"
       aria-label={label}
-      data-connected={connected}
-      data-context={contextHint}
+      data-connected={connected ? 'true' : 'false'}
+      data-context={hasContext ? 'true' : 'false'}
+      data-partial={partial ? 'true' : 'false'}
+      data-age={age}
+      style={itemStyle}
     >
-      {props.connectedToPrevious === true ? null : (
-        <span className="label" data-variant="speaker">
-          {label}
-        </span>
-      )}
-      {props.isFinal && props.onToggleBookmark !== undefined ? (
-        <button
-          type="button"
-          className="bookmark"
-          data-active={props.isBookmarked === true ? 'true' : 'false'}
-          aria-label={props.isBookmarked === true ? 'ブックマークを外す' : 'ブックマークに追加'}
-          aria-pressed={props.isBookmarked === true}
-          onClick={props.onToggleBookmark}
+      <span
+        aria-hidden="true"
+        data-part="rail"
+        style={{
+          position: 'absolute',
+          left: 4,
+          top: railTop,
+          bottom: 6,
+          width: 2,
+          borderRadius: 2,
+          background: railBackground,
+          opacity: railOpacity,
+          boxShadow: partial ? '0 0 8px rgba(45,212,191,0.35)' : 'none',
+        }}
+      />
+      {connected ? null : (
+        <div
+          data-part="header"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 6,
+            flexWrap: 'wrap',
+          }}
         >
-          {props.isBookmarked === true ? '★' : '☆'}
-        </button>
-      ) : null}
+          <span
+            style={{
+              fontFamily: 'var(--pp-font-numeric)',
+              fontSize: 9.5,
+              fontWeight: 500,
+              letterSpacing: '0.14em',
+              color: 'var(--pp-text-dim)',
+            }}
+          >
+            {label}
+          </span>
+          {props.time !== undefined && props.time !== '' ? (
+            <span
+              style={{
+                fontFamily: 'var(--pp-font-numeric)',
+                fontSize: 9.5,
+                fontWeight: 500,
+                color: 'var(--pp-text-dim)',
+                opacity: 0.7,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {props.time}
+            </span>
+          ) : null}
+          {hasContext ? (
+            <span
+              data-part="context-badge"
+              title="文脈ありで翻訳"
+              style={{
+                fontFamily: 'var(--pp-font-numeric)',
+                fontSize: 9,
+                fontWeight: 500,
+                color: 'var(--pp-accent-bright)',
+                padding: '1px 5px',
+                background: 'rgba(45,212,191,0.10)',
+                border: '1px solid rgba(45,212,191,0.18)',
+                borderRadius: 3,
+                letterSpacing: '0.06em',
+              }}
+            >
+              ·CTX
+            </span>
+          ) : null}
+          {partial ? (
+            <span
+              data-part="listening"
+              style={{
+                fontFamily: 'var(--pp-font-numeric)',
+                fontSize: 9,
+                fontWeight: 500,
+                color: 'var(--pp-accent)',
+                letterSpacing: '0.10em',
+              }}
+            >
+              LISTENING…
+            </span>
+          ) : null}
+          {props.isFinal && props.onToggleBookmark !== undefined ? (
+            <button
+              type="button"
+              data-part="bookmark"
+              data-active={props.isBookmarked === true ? 'true' : 'false'}
+              aria-label={props.isBookmarked === true ? 'ブックマークを外す' : 'ブックマークに追加'}
+              aria-pressed={props.isBookmarked === true}
+              onClick={props.onToggleBookmark}
+              style={{
+                marginLeft: 'auto',
+                background: 'transparent',
+                border: 'none',
+                color: props.isBookmarked === true ? 'var(--pp-accent)' : 'var(--pp-text-muted)',
+                cursor: 'pointer',
+                fontSize: 13,
+                padding: 2,
+                lineHeight: 1,
+              }}
+            >
+              {props.isBookmarked === true ? '★' : '☆'}
+            </button>
+          ) : null}
+        </div>
+      )}
       {original.length > 0 ? (
-        <p className="original" data-partial={partial}>
+        <p
+          data-part="original"
+          style={{
+            margin: 0,
+            fontFamily: 'var(--pp-font-body)',
+            fontSize: 13,
+            lineHeight: 1.55,
+            fontWeight: 400,
+            color: partial ? 'rgba(125,138,156,0.65)' : 'var(--pp-text-muted)',
+            fontStyle: partial ? 'italic' : 'normal',
+            textWrap: 'pretty',
+          }}
+        >
           {original}
+          {partial && translation.length === 0 ? <CursorBlink inline /> : null}
         </p>
       ) : null}
       {translation.length > 0 ? (
-        <p className="translation" data-partial={partial} data-context={contextHint}>
-          {props.hasTranslationContext === true ? (
-            <span className="contextHint" aria-label="context from preceding segments">
-              ·{' '}
-            </span>
-          ) : null}
+        <p
+          data-part="translation"
+          style={{
+            margin: '5px 0 0',
+            fontFamily: 'var(--pp-font-body)',
+            fontSize: compact ? 14.5 : 16,
+            lineHeight: 1.5,
+            fontWeight: props.isFinal ? 600 : 500,
+            color: partial ? 'rgba(241,245,249,0.78)' : 'var(--pp-text-primary)',
+            fontStyle: partial ? 'italic' : 'normal',
+            letterSpacing: '0.005em',
+            textWrap: 'pretty',
+          }}
+        >
           {translation}
+          {partial ? <CursorBlink inline /> : null}
         </p>
       ) : null}
     </div>

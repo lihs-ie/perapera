@@ -1,4 +1,5 @@
 @import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/keyframes.css');
 @import url('../../presentation/styles/fonts.css');
 
 * {
@@ -10,14 +11,16 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  background: var(--pp-bg);
+  color-scheme: dark;
 }
 
 body {
-  font-family: var(--font-family-body);
-  font-size: var(--font-size-small);
-  line-height: var(--line-height-body);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
+  font-family: var(--pp-font-body);
+  font-size: var(--pp-fs-13);
+  line-height: var(--pp-lh-normal);
+  color: var(--pp-text-primary);
+  background: var(--pp-bg);
 }
 
 #root {
@@ -26,12 +29,16 @@ body {
   flex-direction: column;
 }
 
-.container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
+/* ===== Layout primitives ===== */
+
+/*
+ * NOTE: `.container` グローバルルールは削除済み。CLAUDE.md ルールで全
+ * component の root が `className="container"` を持つため、ここで `display: flex`
+ * + `flex-direction: column` を当てると atom (Waveform / StatusPill 等) の
+ * inline `display: flex` (row) を column が上書きしてレイアウトが破綻する。
+ * MainWindowTemplate / SettingsView / SessionHistoryView は自身の root inline
+ * style で flex column を明示する。
+ */
 
 .header {
   display: flex;
@@ -39,8 +46,9 @@ body {
   justify-content: space-between;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-bottom: 1px solid var(--pp-border);
+  background: linear-gradient(180deg, rgba(26, 33, 46, 0.7) 0%, rgba(19, 25, 36, 0.95) 100%);
+  flex-shrink: 0;
 }
 
 .info {
@@ -52,53 +60,62 @@ body {
 }
 
 .title {
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-h3);
+  font-size: var(--pp-fs-15);
+  font-weight: 600;
   margin: 0;
+  color: var(--pp-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
 
-.info > .title {
-  flex: 1 1 auto;
-  display: block;
-}
-
-.info > .badge {
-  flex: 0 0 auto;
+.subtitle {
+  font-size: var(--pp-fs-14);
+  font-weight: 600;
+  color: var(--pp-text-primary);
+  margin: 0 0 var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .actions {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs, 4px);
+  gap: var(--space-xs);
   flex: 0 0 auto;
 }
 
+/* Legacy .iconButton (settings-view / templates から残るもの)。
+   atom IconButton は className=container で inline 完結するため衝突しない。 */
 .iconButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  border: 0;
-  border-radius: 4px;
+  border: 1px solid var(--pp-border);
+  border-radius: 7px;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--pp-text-muted);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
+  transition:
+    background 120ms,
+    color 120ms,
+    border-color 120ms;
 }
 
 .iconButton:hover:not(:disabled) {
-  background: var(--color-surface-muted, rgba(0, 0, 0, 0.05));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--pp-text-primary);
 }
 
 .iconButton[data-variant='danger'] {
-  color: var(--color-danger);
+  color: var(--pp-err);
 }
 
 .iconButton:disabled {
@@ -106,65 +123,58 @@ body {
   cursor: not-allowed;
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  font-family: var(--font-family-numeric);
-  font-size: var(--font-size-small);
-  font-weight: var(--font-weight-numeric);
-  color: var(--color-text-inverse);
-  background: var(--color-state-neutral);
-}
-
-.badge[data-variant='active'] {
-  background: var(--color-active);
-}
-.badge[data-variant='pending'] {
-  background: var(--color-pending);
-}
-.badge[data-variant='degraded'] {
-  background: var(--color-degraded);
-}
-.badge[data-variant='error'] {
-  background: var(--color-error);
-}
-.badge[data-variant='stopped'] {
-  background: var(--color-stopped);
-}
-.badge[data-variant='neutral'] {
-  background: var(--color-neutral);
-}
-
 .body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
   min-height: 0;
 }
 
-/*
- * stream variant: 自身が scroll container として動作する (TranscriptPairStream
- * が onScroll で stick-to-bottom を判定するため、scroll は本 element で発火)。
- * display: flex / flex-direction: column で empty 時に placeholder を中央寄せ、
- * 通常時は .list が積まれた content が自然に縦に並ぶ。
- */
 .body[data-variant='stream'] {
   padding: var(--space-sm) var(--space-md);
   display: flex;
   flex-direction: column;
 }
 
-.body[data-variant='stream'] > .empty {
-  flex: 1;
+/* ===== Settings sections ===== */
+
+.section {
+  margin-bottom: var(--space-2xl);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--pp-border);
 }
 
-.form {
+.section:last-child {
+  border-bottom: none;
+}
+
+.section .actions {
+  margin-top: var(--space-md);
+  justify-content: flex-end;
+}
+
+.toggle {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: inherit;
+  font-weight: inherit;
+  font-family: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.advanced {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-md);
+  margin-top: var(--space-md);
 }
+
+/* ===== Form fields & messages ===== */
 
 .field {
   display: flex;
@@ -172,135 +182,33 @@ body {
   gap: 4px;
 }
 
-.label {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.input,
-.select {
-  padding: 6px 8px;
-  font-size: 13px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-}
-
-.input:focus,
-.select:focus {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-}
-
-.button {
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-}
-
-.button[data-variant='secondary'] {
-  background: transparent;
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-}
-
-.button[data-variant='danger'] {
-  background: var(--color-danger);
-  color: var(--color-danger-fg);
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.selector > .field {
-  flex: 1 1 45%;
-  min-width: 140px;
-}
-
-.option {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-}
-
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-bg);
-}
-
-.label[data-variant='speaker'] {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-}
-
-.original {
-  font-size: 13px;
-  color: var(--color-text-muted);
+.hint {
+  margin: 4px 0 0;
+  font-size: var(--pp-fs-11-5);
+  color: var(--pp-text-dim);
   line-height: 1.5;
-}
-
-.translation {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  line-height: 1.5;
-}
-
-.original[data-partial='true'] {
-  opacity: 0.7;
-  font-style: italic;
-}
-
-.translation[data-partial='true'] {
-  opacity: 0.7;
 }
 
 .message {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--pp-fs-11-5);
+  color: var(--pp-text-muted);
   margin: 0;
-  padding: var(--space-sm);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.03);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  line-height: 1.5;
 }
 
 .message[role='alert'] {
-  color: var(--color-danger);
-  background: rgba(220, 38, 38, 0.06);
+  color: var(--pp-err);
+  background: var(--pp-err-soft);
+  border: 1px solid rgba(248, 113, 113, 0.25);
 }
 
 .message[data-variant='success'] {
-  color: #065f46;
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--pp-ok);
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
 }
 
 .empty {
@@ -310,6 +218,148 @@ body {
   justify-content: center;
   gap: var(--space-sm);
   padding: var(--space-lg) var(--space-md);
-  color: var(--color-text-muted);
+  color: var(--pp-text-muted);
   text-align: center;
+}
+
+/* ===== Auxiliary buttons ===== */
+
+.historyButton {
+  margin: var(--space-sm) auto var(--space-lg);
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--pp-border);
+  color: var(--pp-text-muted);
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--pp-font-body);
+  cursor: pointer;
+  transition:
+    background 120ms,
+    color 120ms;
+}
+
+.historyButton:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--pp-text-primary);
+}
+
+/* ===== Lists & badges (used by glossary editor / history view) ===== */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list .item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: 6px;
+}
+
+.arrow {
+  color: var(--pp-text-dim);
+  font-size: 11.5px;
+}
+
+.source,
+.target {
+  font-size: 12.5px;
+  color: var(--pp-text-primary);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--pp-radius-pill);
+  font-family: var(--pp-font-numeric);
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--pp-text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--pp-border);
+  letter-spacing: 0.1em;
+}
+
+.badge[data-variant='active'] {
+  color: var(--pp-accent);
+  border-color: rgba(45, 212, 191, 0.33);
+  background: var(--pp-accent-soft);
+}
+
+.badge[data-variant='pending'] {
+  color: var(--pp-warn);
+  border-color: rgba(245, 158, 11, 0.33);
+  background: var(--pp-warn-soft);
+}
+
+.badge[data-variant='degraded'] {
+  color: var(--pp-warn);
+  border-color: rgba(245, 158, 11, 0.33);
+  background: var(--pp-warn-soft);
+}
+
+.badge[data-variant='error'] {
+  color: var(--pp-err);
+  border-color: rgba(248, 113, 113, 0.33);
+  background: var(--pp-err-soft);
+}
+
+.badge[data-variant='stopped'] {
+  color: var(--pp-text-dim);
+}
+
+.badge[data-variant='neutral'] {
+  color: var(--pp-text-muted);
+}
+
+/* CSV import label that wraps a hidden file input */
+.import-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 14px;
+  background: transparent;
+  border: 1px solid var(--pp-border);
+  color: var(--pp-text-primary);
+  border-radius: 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  font-family: var(--pp-font-body);
+}
+
+.import-label input[type='file'] {
+  display: none;
+}
+
+/* History view: detail panel grid */
+.detail {
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: 9px;
+  padding: var(--space-md);
+}
+
+.original {
+  font-size: 13px;
+  color: var(--pp-text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.translation {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pp-text-primary);
+  line-height: 1.5;
+  margin: 4px 0 0;
 }

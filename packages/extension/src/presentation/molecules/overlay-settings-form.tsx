@@ -1,5 +1,6 @@
 import { Checkbox } from '../atoms/checkbox';
 import { Label } from '../atoms/label';
+import { RangeSlider } from '../atoms/range-slider';
 
 /**
  * positionPreset は含まない編集可能フィールド。main window は overlay を
@@ -23,15 +24,11 @@ const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
 
 /**
- * OverlaySettingsForm molecule。
+ * OverlaySettingsForm molecule (perapera-scenes.jsx SettingsScene 移植)。
  *
- * 既定オーバーレイ設定の編集 UI。opacity (0-1 slider)、maxLines (1-10)、
- * fontScale (0.75-2.0)、showOriginalText / showTranslatedText のチェックを持つ。
- * 親 (`SettingsView`) が値を保持し、各変更で `onChange` が呼ばれる。
- *
- * `showOriginalText` と `showTranslatedText` が両方 false になると
- * OverlaySettings の不変条件に違反する。本 molecule では両方 false への遷移を
- * 防ぐため、片方を off にしようとしてもう片方が既に off なら変更を無視する。
+ * 透明度 / フォント倍率は RangeSlider、最大行数は number input、
+ * showOriginalText / showTranslatedText は Checkbox。両方 off 遷移は
+ * OverlaySettings の不変条件で禁止のため UI でも無視する。
  */
 export function OverlaySettingsForm(props: Props) {
   const disabled = props.disabled === true;
@@ -44,32 +41,32 @@ export function OverlaySettingsForm(props: Props) {
   };
 
   return (
-    <div className="form" aria-label="オーバーレイ設定">
-      <div className="field">
+    <div
+      className="container"
+      data-component="overlay-settings-form"
+      aria-label="オーバーレイ設定"
+      style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+    >
+      <div data-part="field">
         <Label htmlFor="overlay-opacity">
           透明度 ({Math.round(props.values.opacity * 100).toString()}%)
         </Label>
-        <input
+        <RangeSlider
           id="overlay-opacity"
-          className="slider"
-          type="range"
+          ariaLabel="透明度"
+          value={props.values.opacity}
           min={0}
           max={1}
           step={0.05}
-          value={props.values.opacity}
           disabled={disabled}
-          onChange={(event) => {
-            const next = clamp(Number.parseFloat(event.target.value), 0, 1);
-            updateField('opacity', next);
-          }}
+          onChange={(next) => updateField('opacity', clamp(next, 0, 1))}
         />
       </div>
 
-      <div className="field">
+      <div data-part="field">
         <Label htmlFor="overlay-max-lines">最大行数</Label>
         <input
           id="overlay-max-lines"
-          className="input"
           type="number"
           min={1}
           max={10}
@@ -80,64 +77,62 @@ export function OverlaySettingsForm(props: Props) {
             const next = clamp(Number.parseInt(event.target.value, 10) || 1, 1, 10);
             updateField('maxLines', next);
           }}
-        />
-      </div>
-
-      <div className="field">
-        <Label htmlFor="overlay-font-scale">
-          フォント倍率 ({props.values.fontScale.toFixed(2)}×)
-        </Label>
-        <input
-          id="overlay-font-scale"
-          className="slider"
-          type="range"
-          min={0.75}
-          max={2}
-          step={0.05}
-          value={props.values.fontScale}
-          disabled={disabled}
-          onChange={(event) => {
-            const next = clamp(Number.parseFloat(event.target.value), 0.75, 2);
-            updateField('fontScale', next);
+          style={{
+            width: 80,
+            padding: '7px 9px',
+            background: 'var(--pp-surface)',
+            border: '1px solid var(--pp-border)',
+            borderRadius: 6,
+            color: 'var(--pp-text-primary)',
+            fontFamily: 'var(--pp-font-numeric)',
+            fontSize: 12.5,
+            outline: 'none',
           }}
         />
       </div>
 
-      <div className="field">
-        <Label htmlFor="overlay-show-original">
-          <Checkbox
-            id="overlay-show-original"
-            ariaLabel="原文を表示する"
-            checked={props.values.showOriginalText}
-            disabled={disabled}
-            onChange={(checked) => {
-              if (!checked && !props.values.showTranslatedText) {
-                // 両方 off に遷移しようとしている — 不変条件で不可
-                return;
-              }
-              updateField('showOriginalText', checked);
-            }}
-          />
-          原文を表示する
+      <div data-part="field">
+        <Label htmlFor="overlay-font-scale">
+          フォント倍率 ({props.values.fontScale.toFixed(2)}×)
         </Label>
+        <RangeSlider
+          id="overlay-font-scale"
+          ariaLabel="フォント倍率"
+          value={props.values.fontScale}
+          min={0.75}
+          max={2}
+          step={0.05}
+          disabled={disabled}
+          onChange={(next) => updateField('fontScale', clamp(next, 0.75, 2))}
+        />
       </div>
 
-      <div className="field">
-        <Label htmlFor="overlay-show-translation">
-          <Checkbox
-            id="overlay-show-translation"
-            ariaLabel="翻訳を表示する"
-            checked={props.values.showTranslatedText}
-            disabled={disabled}
-            onChange={(checked) => {
-              if (!checked && !props.values.showOriginalText) {
-                return;
-              }
-              updateField('showTranslatedText', checked);
-            }}
-          />
-          翻訳を表示する
-        </Label>
+      <div data-part="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Checkbox
+          id="overlay-show-original"
+          ariaLabel="原文を表示する"
+          checked={props.values.showOriginalText}
+          disabled={disabled}
+          onChange={(checked) => {
+            if (!checked && !props.values.showTranslatedText) return;
+            updateField('showOriginalText', checked);
+          }}
+        />
+        <Label htmlFor="overlay-show-original">原文を表示する</Label>
+      </div>
+
+      <div data-part="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Checkbox
+          id="overlay-show-translation"
+          ariaLabel="翻訳を表示する"
+          checked={props.values.showTranslatedText}
+          disabled={disabled}
+          onChange={(checked) => {
+            if (!checked && !props.values.showOriginalText) return;
+            updateField('showTranslatedText', checked);
+          }}
+        />
+        <Label htmlFor="overlay-show-translation">翻訳を表示する</Label>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { type StartSourceSessionInput } from '../../application/dto/start-source-session-dto';
 import { type SourceType } from '../../domain/session/source-type';
 import { Button } from '../atoms/button';
@@ -21,8 +21,6 @@ import { SourceTypeSelector } from '../molecules/source-type-selector';
  *    `chrome.action.onClicked` listener が記録した、activeTab granted 元)
  * 2. `chrome.tabs.query({ active: true, lastFocusedWindow: true })` (main
  *    window 以前に focus していた window の active tab)
- *
- * test では fake (vi.fn(() => Promise.resolve(42))) を注入可能。
  */
 export type ActiveTabResolver = () => Promise<number | null>;
 
@@ -40,9 +38,6 @@ const defaultActiveTabResolver: ActiveTabResolver = async () => {
     console.warn('[start-session-form] storage.session.get failed:', cause);
   }
   try {
-    // windowType: 'normal' で main window (popup type) を除外。main window が
-    // lastFocusedWindow だと自身の main.html tab を誤って拾って tab capture が
-    // 空になる問題を防ぐ。
     const tabs = await chrome.tabs.query({
       active: true,
       lastFocusedWindow: true,
@@ -65,7 +60,6 @@ export type Props = Readonly<{
   client: BackgroundClient;
   onStarted?: (result: StartSourceSessionResult, input: StartSourceSessionInput) => void;
   resolveActiveTabId?: ActiveTabResolver;
-  /** 初期値。SettingsStore から取得した既定言語ペアを適用するため */
   initialSourceLanguage?: string | undefined;
   initialTargetLanguage?: string | undefined;
 }>;
@@ -75,15 +69,11 @@ const DEFAULT_TARGET_LANGUAGE = 'ja-JP';
 const DEFAULT_MONITOR_PAGE_ID = 'monitor';
 
 /**
- * IMPL-540 StartSessionForm organism。
+ * StartSessionForm organism (perapera-scenes.jsx StartSessionForm 移植)。
  *
- * SourceTypeSelector + LanguagePairSelector + displayName/autoDetect の入力 +
- * Start ボタンを統合するフォーム。submit で `BackgroundClient.startSourceSession`
- * を呼び、結果を Popup 側の `onStarted` callback に渡す。
- *
- * state 管理:
- * - form state: sourceType / displayName / autoDetect / language pair
- * - command state: useBackgroundCommand で idle/pending/success/error
+ * SourceTypeSelector + 表示名 + LanguagePairSelector + 自動判定 Checkbox +
+ * Start ボタンを縦に並べる。outer は flex column padding 20×18 gap 16。
+ * Start ボタンは accent + glow shadow (Button variant=primary)。
  */
 export function StartSessionForm(props: Props) {
   const [sourceType, setSourceType] = useState<SourceType>('tab');
@@ -97,14 +87,14 @@ export function StartSessionForm(props: Props) {
   );
 
   const command = useBackgroundCommand(props.client.startSourceSession);
+  const isPending = command.state.status === 'pending';
 
   const samePair = sourceLanguage === targetLanguage;
-  const canSubmit =
-    displayName.trim().length > 0 && !samePair && command.state.status !== 'pending';
+  const canSubmit = displayName.trim().length > 0 && !samePair && !isPending;
 
   const resolveActiveTabId = props.resolveActiveTabId ?? defaultActiveTabResolver;
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const baseInput: Omit<StartSourceSessionInput, 'overlayTarget'> = {
       sourceType,
@@ -114,10 +104,6 @@ export function StartSessionForm(props: Props) {
       targetLanguage,
     };
     const buildOverlayTarget = async (): Promise<StartSourceSessionInput['overlayTarget']> => {
-      // tab source: 現在 active な tab を capture + overlay 先に使う。
-      // id 解決失敗時は monitor fallback (現状 tab capture は動かないが、
-      // 少なくとも UseCase の validation で `sourceType='tab'` 時に
-      // captureTabId 必須ロジックが入るまでの fail-soft)。
       if (sourceType === 'tab') {
         const tabId = await resolveActiveTabId();
         if (typeof tabId === 'number') {
@@ -140,25 +126,35 @@ export function StartSessionForm(props: Props) {
   };
 
   return (
-    <form className="form" onSubmit={handleSubmit}>
-      <div className="field">
-        <Label>ソース種別</Label>
-        <SourceTypeSelector
-          value={sourceType}
-          onChange={setSourceType}
-          disabled={command.state.status === 'pending'}
-        />
+    <form
+      className="container"
+      data-component="start-session-form"
+      onSubmit={handleSubmit}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        padding: '20px 18px',
+        flex: 1,
+        overflow: 'auto',
+      }}
+    >
+      <div>
+        <Label variant="field">ソース種別</Label>
+        <SourceTypeSelector value={sourceType} onChange={setSourceType} disabled={isPending} />
       </div>
 
-      <div className="field">
-        <Label htmlFor="display-name">表示名</Label>
+      <div>
+        <Label variant="field" htmlFor="display-name">
+          表示名
+        </Label>
         <TextInput
           id="display-name"
           ariaLabel="表示名"
           value={displayName}
           onChange={setDisplayName}
           placeholder="例: YouTube Live"
-          disabled={command.state.status === 'pending'}
+          disabled={isPending}
           maxLength={64}
         />
       </div>
@@ -170,43 +166,84 @@ export function StartSessionForm(props: Props) {
           setSourceLanguage(pair.sourceLanguage);
           setTargetLanguage(pair.targetLanguage);
         }}
-        disabled={command.state.status === 'pending' || autoDetect}
+        disabled={isPending || autoDetect}
       />
 
-      <div className="field">
-        <Label htmlFor="auto-detect">
-          <Checkbox
-            id="auto-detect"
-            ariaLabel="入力言語を自動判定"
-            checked={autoDetect}
-            onChange={setAutoDetect}
-            disabled={command.state.status === 'pending'}
-          />
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <Checkbox
+          ariaLabel="入力言語を自動判定"
+          checked={autoDetect}
+          onChange={setAutoDetect}
+          disabled={isPending}
+        />
+        <span style={{ fontSize: 12.5, color: 'var(--pp-text-primary)' }}>
           入力言語を自動判定する
-        </Label>
-      </div>
+        </span>
+      </label>
 
       {samePair ? (
-        <p className="message" role="alert">
+        <p
+          role="alert"
+          style={{
+            margin: 0,
+            fontSize: 11.5,
+            color: 'var(--pp-warn)',
+            background: 'var(--pp-warn-soft)',
+            padding: '8px 12px',
+            borderRadius: 6,
+            border: '1px solid rgba(245,158,11,0.25)',
+          }}
+        >
           入力言語と翻訳先言語は異なるものを選んでください。
         </p>
       ) : null}
 
       {command.state.status === 'error' ? (
-        <p className="message" role="alert">
+        <p
+          role="alert"
+          style={{
+            margin: 0,
+            fontSize: 11.5,
+            color: 'var(--pp-err)',
+            background: 'var(--pp-err-soft)',
+            padding: '8px 12px',
+            borderRadius: 6,
+            border: '1px solid rgba(248,113,113,0.25)',
+          }}
+        >
           {command.state.error.message}
         </p>
       ) : null}
 
       {command.state.status === 'success' ? (
-        <p className="message" data-variant="success">
+        <p
+          style={{
+            margin: 0,
+            fontSize: 11.5,
+            color: 'var(--pp-ok)',
+            background: 'rgba(52,211,153,0.10)',
+            padding: '8px 12px',
+            borderRadius: 6,
+            border: '1px solid rgba(52,211,153,0.25)',
+          }}
+        >
           セッションを開始しました。
         </p>
       ) : null}
 
-      <Button type="submit" disabled={!canSubmit}>
-        {command.state.status === 'pending' ? '開始中…' : '開始'}
-      </Button>
+      <div style={{ marginTop: 'auto' }}>
+        <Button type="submit" disabled={!canSubmit} variant="primary">
+          {isPending ? 'セッション開始中…' : 'セッションを開始'}
+        </Button>
+      </div>
     </form>
   );
 }

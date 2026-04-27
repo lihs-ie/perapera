@@ -374,9 +374,15 @@ export function SettingsView(props: Props) {
     );
   }, []);
 
+  const rootStyle = {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
+  } as const;
   if (query.state.status === 'idle' || query.state.status === 'pending') {
     return (
-      <div className="container" role="dialog" aria-label="設定">
+      <div className="container" role="dialog" aria-label="設定" style={rootStyle}>
         <header className="header">
           <h2 className="title">設定</h2>
           <Button variant="secondary" onClick={props.onClose}>
@@ -391,7 +397,7 @@ export function SettingsView(props: Props) {
   }
 
   return (
-    <div className="container" role="dialog" aria-label="設定">
+    <div className="container" role="dialog" aria-label="設定" style={rootStyle}>
       <header className="header">
         <h2 className="title">設定</h2>
         <Button variant="secondary" disabled={isSavingDefaults} onClick={props.onClose}>

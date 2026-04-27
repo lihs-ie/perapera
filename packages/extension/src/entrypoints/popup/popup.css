@@ -1,0 +1,21 @@
+@import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/keyframes.css');
+@import url('../../presentation/styles/fonts.css');
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--pp-bg);
+  color-scheme: dark;
+  font-family: var(--pp-font-body);
+  color: var(--pp-text-primary);
+  /* Chrome popup is 340×420; let content control sizing */
+  width: 340px;
+  height: 420px;
+  overflow: hidden;
+}

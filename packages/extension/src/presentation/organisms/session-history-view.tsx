@@ -105,7 +105,12 @@ export function SessionHistoryView(props: Props) {
   );
 
   return (
-    <div className="container" role="dialog" aria-label="セッション履歴">
+    <div
+      className="container"
+      role="dialog"
+      aria-label="セッション履歴"
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+    >
       <header className="header">
         <h2 className="title">セッション履歴</h2>
         <Button variant="secondary" onClick={props.onClose}>
