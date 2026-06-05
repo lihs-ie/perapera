@@ -64,7 +64,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
       }),
     );
     render(<StartSessionForm client={client} />);
-    expect(screen.getByRole('radio', { name: 'ブラウザタブ' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'タブ' })).toBeChecked();
     expect(screen.getByRole('textbox', { name: '表示名' })).toHaveValue('');
     expect(screen.getByRole('combobox', { name: '入力言語' })).toHaveValue('en-US');
     expect(screen.getByRole('combobox', { name: '翻訳先言語' })).toHaveValue('ja-JP');
@@ -78,7 +78,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
       }),
     );
     render(<StartSessionForm client={client} />);
-    expect(screen.getByRole('button', { name: '開始' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'セッションを開始' })).toBeDisabled();
   });
 
   it('submits startSourceSession with collected input on submit', async () => {
@@ -98,7 +98,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
       />,
     );
     await userEvent.type(screen.getByRole('textbox', { name: '表示名' }), 'YouTube Live');
-    await userEvent.click(screen.getByRole('button', { name: '開始' }));
+    await userEvent.click(screen.getByRole('button', { name: 'セッションを開始' }));
     await waitFor(() => expect(startFn).toHaveBeenCalledOnce());
     expect(startFn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -127,7 +127,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
     try {
       render(<StartSessionForm client={client} resolveActiveTabId={() => Promise.resolve(null)} />);
       await userEvent.type(screen.getByRole('textbox', { name: '表示名' }), 'Fallback');
-      await userEvent.click(screen.getByRole('button', { name: '開始' }));
+      await userEvent.click(screen.getByRole('button', { name: 'セッションを開始' }));
       await waitFor(() => expect(startFn).toHaveBeenCalledOnce());
       expect(startFn).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -151,7 +151,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
     render(<StartSessionForm client={client} />);
     await userEvent.type(screen.getByRole('textbox', { name: '表示名' }), 'test');
     await userEvent.click(screen.getByRole('checkbox', { name: '入力言語を自動判定' }));
-    await userEvent.click(screen.getByRole('button', { name: '開始' }));
+    await userEvent.click(screen.getByRole('button', { name: 'セッションを開始' }));
     await waitFor(() => expect(startFn).toHaveBeenCalledOnce());
     expect(startFn).toHaveBeenCalledWith(
       expect.objectContaining({ sourceLanguage: null, autoDetectLanguage: true }),
@@ -172,7 +172,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
     );
     render(<StartSessionForm client={client} />);
     await userEvent.type(screen.getByRole('textbox', { name: '表示名' }), 'test');
-    await userEvent.click(screen.getByRole('button', { name: '開始' }));
+    await userEvent.click(screen.getByRole('button', { name: 'セッションを開始' }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('タブ音声取得が拒否されました'),
     );
@@ -191,7 +191,7 @@ describe('StartSessionForm organism (IMPL-540)', () => {
       screen.getByRole('combobox', { name: '翻訳先言語' }),
       '英語 (米国)',
     );
-    expect(screen.getByRole('button', { name: '開始' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'セッションを開始' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('異なるものを選んでください');
   });
 });

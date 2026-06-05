@@ -1,28 +1,36 @@
 import { useState } from 'react';
 import { Button } from '../atoms/button';
-import { StatusBadge } from '../atoms/status-badge';
-import { VuMeter } from '../atoms/vu-meter';
+import { ExportIcon } from '../atoms/icons/export-icon';
+import { SettingsIcon } from '../atoms/icons/settings-icon';
+import { IconButton } from '../atoms/icon-button';
+import { StatusPill } from '../atoms/status-pill';
 import { useBackgroundCommand } from '../hooks/use-background-command';
 import { type BackgroundClient } from '../infrastructure/background-client';
 import { ExportControls } from '../molecules/export-controls';
+import { LanguagePairDisplay } from '../molecules/language-pair-display';
+import {
+  mapSessionStateToStatusPill,
+  mapSessionStateToWaveformMode,
+} from '../molecules/session-state-mapper';
+import { ToolbarErrorBanner } from '../molecules/toolbar-error-banner';
+import { ToolbarSilentBanner } from '../molecules/toolbar-silent-banner';
+import { ToolbarWaveformRow } from '../molecules/toolbar-waveform-row';
 
 export type ActiveSession = Readonly<{
   sessionId: string;
   displayName: string;
   state: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
 }>;
 
 export type Props = Readonly<{
   client: BackgroundClient;
   session: ActiveSession;
-  /** Issue #108: Relay が `session.state.changed` に付与した補足理由 (degraded / error 時の banner で表示) */
   stateReason?: string | null;
-  /** Issue #110: 最新の音声レベル (RMS 0-1)。既定 0 (未取得) */
   audioLevel?: number;
-  /** Issue #110: 1 秒以上無音の場合 true。既定 false */
   audioIsSilent?: boolean;
   onStopped: () => void;
-  /** `⚙` ボタン押下で設定画面を開く。未指定時は非表示 */
   onOpenSettings?: () => void;
 }>;
 
@@ -41,20 +49,28 @@ const stateBannerMessage = (state: string, reason: string | null | undefined): s
     : base;
 };
 
+const stateBannerVariant = (state: string): 'error' | 'warn' =>
+  state === 'error' ? 'error' : 'warn';
+
 /**
- * SessionToolbar organism。
+ * SessionToolbar organism (perapera-toolbar.jsx Toolbar 移植)。
  *
- * Main window 上段の toolbar。左側に `displayName` と `StatusBadge`、
- * 右側に停止ボタンを配置する。停止ボタン押下で
- * `BackgroundClient.stopSourceSession` を呼び、成功時に親の `onStopped` を
- * 呼んで idle 状態に戻す。
+ * gradient 背景 (rgba(26,33,46,0.7) → rgba(19,25,36,0.95)) の上に、
+ * 上段: displayName + StatusPill + IconButton(設定/エクスポート) + 停止ボタン、
+ * 中段: LanguagePairDisplay (オプション)、
+ * 下段: ToolbarWaveformRow (LIVE/Waveform/dB)、
+ * 必要に応じて ToolbarErrorBanner (degraded/error/reconnecting) と
+ * ToolbarSilentBanner (audioIsSilent) を重ねる。
  */
 export function SessionToolbar(props: Props) {
   const stopCommand = useBackgroundCommand(props.client.stopSourceSession);
   const isPending = stopCommand.state.status === 'pending';
-  const [exportOpen, setExportOpen] = useState<boolean>(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const banner = stateBannerMessage(props.session.state, props.stateReason);
-
+  const audioLevel = props.audioLevel ?? 0;
+  const audioIsSilent = props.audioIsSilent === true;
+  const waveformMode = mapSessionStateToWaveformMode(props.session.state, audioIsSilent);
+  const pillState = mapSessionStateToStatusPill(props.session.state);
   const handleStop = async (): Promise<void> => {
     const response = await stopCommand.execute({ sessionId: props.session.sessionId });
     if (response.ok) {
@@ -63,70 +79,91 @@ export function SessionToolbar(props: Props) {
   };
 
   return (
-    <header className="header">
-      <div className="info">
-        <span className="title" title={props.session.displayName}>
-          {props.session.displayName}
-        </span>
-        <StatusBadge state={props.session.state} />
-        <VuMeter rms={props.audioLevel ?? 0} />
-      </div>
-      <div className="actions">
-        {props.onOpenSettings !== undefined ? (
-          <button
-            type="button"
-            className="iconButton"
-            aria-label="設定を開く"
-            onClick={props.onOpenSettings}
+    <header
+      className="container"
+      data-component="session-toolbar"
+      style={{
+        flexShrink: 0,
+        borderBottom: '1px solid var(--pp-border)',
+        background: 'linear-gradient(180deg, rgba(26,33,46,0.7) 0%, rgba(19,25,36,0.95) 100%)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '11px 16px 7px',
+        }}
+      >
+        <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span
+              title={props.session.displayName}
+              style={{
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: 'var(--pp-text-primary)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 200,
+              }}
+            >
+              {props.session.displayName}
+            </span>
+            <StatusPill state={pillState} />
+          </div>
+          {props.session.sourceLanguage !== undefined &&
+          props.session.targetLanguage !== undefined ? (
+            <LanguagePairDisplay
+              source={props.session.sourceLanguage}
+              target={props.session.targetLanguage}
+            />
+          ) : null}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {props.onOpenSettings !== undefined ? (
+            <IconButton label="設定を開く" onClick={props.onOpenSettings}>
+              <SettingsIcon size={14} />
+            </IconButton>
+          ) : null}
+          <IconButton label="エクスポートを開く" onClick={() => setExportOpen((prev) => !prev)}>
+            <ExportIcon size={14} />
+          </IconButton>
+          <Button
+            variant="danger"
+            disabled={isPending}
+            ariaLabel="セッションを停止"
+            onClick={() => {
+              void handleStop();
+            }}
           >
-            ⚙
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="iconButton"
-          aria-label="エクスポートを開く"
-          aria-expanded={exportOpen}
-          onClick={() => {
-            setExportOpen((prev) => !prev);
-          }}
-        >
-          {exportOpen ? '▾' : '↧'}
-        </button>
-        <Button
-          variant="danger"
-          disabled={isPending}
-          ariaLabel="セッションを停止"
-          onClick={() => {
-            void handleStop();
-          }}
-        >
-          {isPending ? '停止中…' : '停止'}
-        </Button>
+            {isPending ? '停止中…' : '停止'}
+          </Button>
+        </div>
       </div>
-      {exportOpen ? (
-        <div className="panel" data-testid="export-panel">
-          <ExportControls client={props.client} sessionId={props.session.sessionId} />
-        </div>
-      ) : null}
+      <ToolbarWaveformRow mode={waveformMode} audioLevel={audioLevel} />
       {banner !== null ? (
-        <div
-          className="banner"
-          role="alert"
-          data-testid="session-state-banner"
-          data-state={props.session.state}
-        >
-          {banner}
+        <div data-testid="session-state-banner" data-state={props.session.state}>
+          <ToolbarErrorBanner variant={stateBannerVariant(props.session.state)} message={banner} />
         </div>
       ) : null}
-      {props.audioIsSilent === true ? (
+      {audioIsSilent && banner === null ? (
+        <div data-testid="audio-silent-banner" data-variant="silence">
+          <ToolbarSilentBanner />
+        </div>
+      ) : null}
+      {exportOpen ? (
         <div
-          className="banner"
-          role="alert"
-          data-testid="audio-silent-banner"
-          data-variant="silence"
+          data-testid="export-panel"
+          style={{
+            padding: '12px 16px',
+            borderTop: '1px solid var(--pp-border)',
+            background: 'var(--pp-bg-soft)',
+          }}
         >
-          音声を検出できません。入力デバイス / タブ音量を確認してください。
+          <ExportControls client={props.client} sessionId={props.session.sessionId} />
         </div>
       ) : null}
     </header>

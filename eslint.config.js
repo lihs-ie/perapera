@@ -174,6 +174,14 @@ export default tseslint.config(
       ...vitestPlugin.configs.recommended.rules,
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/unbound-method': 'off',
+      // テストでは DOM narrowing / mock factory のために type assertion や
+      // 空 arrow を許容する。本番コードの厳格さは別 config 区画で維持される。
+      '@typescript-eslint/consistent-type-assertions': 'off',
+      '@typescript-eslint/non-nullable-type-assertion-style': 'off',
+      '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/array-type': 'off',
     },
   },
 

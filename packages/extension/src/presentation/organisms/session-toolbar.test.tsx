@@ -52,10 +52,10 @@ describe('SessionToolbar organism', () => {
     vi.clearAllMocks();
   });
 
-  it('renders displayName and status badge', () => {
+  it('renders displayName and status pill', () => {
     render(<SessionToolbar client={buildClient()} session={session} onStopped={() => undefined} />);
     expect(screen.getByText('YouTube')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('capturing');
+    expect(screen.getByRole('status')).toHaveTextContent('CAPTURING');
   });
 
   it('invokes stopSourceSession with sessionId on click', async () => {

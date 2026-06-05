@@ -125,6 +125,73 @@ export default defineBackground(() => {
     boundsStore: mainWindowBoundsStore,
   });
   mainWindowLifecycle.registerBoundsListener();
+
+  // Popup / SidePanel から送られる window 制御コマンド。
+  // 既存 dispatcher の listener と並列で動き、当該 type のみ async sendResponse。
+  //
+  // **重要**: action.default_popup を有効化したため `chrome.action.onClicked` が
+  // 発火しなくなった。tab capture 元の `lastActiveTabId` を popup から
+  // `window.open-main` (または `popup.context`) に乗せて受信し、storage.session
+  // に保存する。これが無いと StartSessionForm が tab を解決できず、
+  // start-source-session UseCase 内で `tab-stream-id chain skipped` 警告が出て
+  // Deepgram に音声が流れず WS が NET-0001 timeout で閉じる。
+  const persistActiveTabIdFromMessage = (message: unknown): void => {
+    if (typeof message !== 'object' || message === null) return;
+    const candidate: unknown = Reflect.get(message, 'activeTabId');
+    if (typeof candidate !== 'number') return;
+    void chrome.storage.session
+      ?.set({ lastActiveTabId: candidate })
+      .then(() => {
+        console.log('[perapera] storage.session.lastActiveTabId =', candidate, '(via popup)');
+      })
+      .catch((cause: unknown) => {
+        console.warn('[perapera] storage.session.set(lastActiveTabId) failed:', cause);
+      });
+  };
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (typeof message !== 'object' || message === null || !('type' in message)) return false;
+    const type = String(Reflect.get(message, 'type'));
+    if (type === 'popup.context') {
+      // popup mount 直後の preload。activeTabId のみ受け取って保存し ack する。
+      persistActiveTabIdFromMessage(message);
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (type === 'window.open-main') {
+      // popup から「タブを追加」等で送られる。activeTabId が同梱されていれば
+      // storage に保存してから main window を起動する。
+      persistActiveTabIdFromMessage(message);
+      void mainWindowLifecycle.openOrFocus().then(
+        () => sendResponse({ ok: true }),
+        (cause: unknown) => sendResponse({ ok: false, error: { message: String(cause) } }),
+      );
+      return true;
+    }
+    if (type === 'window.open-sidepanel') {
+      const tabId = sender.tab?.id;
+      const open = (id: number): Promise<void> =>
+        chrome.sidePanel.open({ tabId: id }).then(() => undefined);
+      const resolve = (): Promise<number> => {
+        if (typeof tabId === 'number') return Promise.resolve(tabId);
+        return chrome.tabs
+          .query({ active: true, lastFocusedWindow: true, windowType: 'normal' })
+          .then(([tab]) => {
+            if (typeof tab?.id !== 'number') throw new Error('no active tab to attach side panel');
+            return tab.id;
+          });
+      };
+      void resolve()
+        .then(open)
+        .then(
+          () => sendResponse({ ok: true }),
+          (cause: unknown) => sendResponse({ ok: false, error: { message: String(cause) } }),
+        );
+      return true;
+    }
+    return false;
+  });
+
   chrome.action.onClicked.addListener((tab) => {
     // action icon クリックは activeTab permission を「クリック時にアクティブだった
     // tab」に対してのみ grant する。main window は独立 window として開くため、

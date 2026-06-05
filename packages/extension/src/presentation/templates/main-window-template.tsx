@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react';
+import { IconButton } from '../atoms/icon-button';
+import { SettingsIcon } from '../atoms/icons/settings-icon';
+import { PPMark } from '../atoms/pp-mark';
 
 export type Props = Readonly<{
   isActive: boolean;
@@ -13,47 +16,81 @@ export type Props = Readonly<{
 }>;
 
 /**
- * MainWindowTemplate。独立 floating window (480×720 想定) のレイアウト。
+ * MainWindowTemplate (perapera-ui.jsx PPWindow 移植)。
  *
- * - `isActive === false`: 未開始状態。上部は簡素な header、body に form を配置
- * - `isActive === true`: アクティブ状態。toolbar (displayName + state + 停止) と
- *   transcript stream を縦に積む
- *
- * CLAUDE.md §React ルール準拠:
- * - root className は `container`
- * - 単一単語 className
- * - props は `props.xxx` アクセス
+ * - `isActive === false`: 上部に macOS-like chrome (PPMark + title + 設定 button)、
+ *   body に StartSessionForm を配置
+ * - `isActive === true`: SessionToolbar が自身で gradient header を描画するため、
+ *   template 側は包むだけ (chrome を出さない)。stream は scroll container を兼ねる
  */
 export function MainWindowTemplate(props: Props) {
+  const rootStyle = {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
+  } as const;
   if (props.isActive) {
-    // active 時は streamSlot 自身が scroll container (TranscriptPairStream
-    // が `.body` を root として render する)。template 側でさらに body を
-    // 包むと flex chain / overflow の二重化で高さが破綻するため直接配置する。
     return (
-      <div className="container">
+      <div
+        className="container"
+        data-component="main-window-template"
+        data-mode="active"
+        style={rootStyle}
+      >
         {props.toolbarSlot}
         {props.streamSlot}
       </div>
     );
   }
   return (
-    <div className="container">
-      <header className="header">
-        <h1 className="title">perapera</h1>
+    <div
+      className="container"
+      data-component="main-window-template"
+      data-mode="idle"
+      style={rootStyle}
+    >
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '11px 16px',
+          borderBottom: '1px solid var(--pp-border)',
+          background: 'linear-gradient(180deg, rgba(26,33,46,0.7) 0%, rgba(19,25,36,0.95) 100%)',
+          flexShrink: 0,
+        }}
+      >
+        <PPMark size={18} />
+        <h1
+          style={{
+            margin: 0,
+            flex: 1,
+            fontSize: 14,
+            fontWeight: 600,
+            color: 'var(--pp-text-primary)',
+            letterSpacing: '0.02em',
+          }}
+        >
+          perapera
+        </h1>
         {props.onOpenSettings !== undefined ? (
-          <div className="actions">
-            <button
-              type="button"
-              className="iconButton"
-              aria-label="設定を開く"
-              onClick={props.onOpenSettings}
-            >
-              ⚙
-            </button>
-          </div>
+          <IconButton label="設定を開く" onClick={props.onOpenSettings}>
+            <SettingsIcon size={14} />
+          </IconButton>
         ) : null}
       </header>
-      <div className="body">{props.formSlot}</div>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        {props.formSlot}
+      </div>
     </div>
   );
 }

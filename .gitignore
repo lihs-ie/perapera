@@ -45,3 +45,4 @@ _build/
 
 # Claude Code local permissions (個人環境依存)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock

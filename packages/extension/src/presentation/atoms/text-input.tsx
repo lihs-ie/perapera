@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 export type Props = Readonly<{
   id?: string;
   value: string;
@@ -6,34 +8,53 @@ export type Props = Readonly<{
   disabled?: boolean;
   ariaLabel?: string;
   maxLength?: number;
-  /** default 'text'。secret 入力用に 'password'、数値入力用に 'number' を指定できる */
   type?: 'text' | 'password' | 'number';
-  /** type='number' 用の範囲指定 */
   min?: number;
   max?: number;
   step?: number;
 }>;
 
 /**
- * IMPL-522 TextInput atom。
- * `<input>`。`onChange` は値だけを返す。`type` prop で text / password を切替。
+ * TextInput atom (perapera-scenes.jsx の表示名 input 移植)。
+ *
+ * 背景 `--pp-surface`、border `--pp-border`、focus 時に 1.5px accent outline。
  */
 export function TextInput(props: Props) {
+  const disabled = props.disabled === true;
+  const [focused, setFocused] = useState(false);
   return (
     <input
       id={props.id}
-      className="input"
+      className="container"
+      data-component="text-input"
+      data-focused={focused ? 'true' : 'false'}
       type={props.type ?? 'text'}
       value={props.value}
       placeholder={props.placeholder}
-      disabled={props.disabled === true}
+      disabled={disabled}
       aria-label={props.ariaLabel}
       maxLength={props.maxLength}
       min={props.min}
       max={props.max}
       step={props.step}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       onChange={(event) => {
         props.onChange(event.target.value);
+      }}
+      style={{
+        width: '100%',
+        boxSizing: 'border-box',
+        padding: '9px 11px',
+        background: 'var(--pp-surface)',
+        border: focused ? '1.5px solid var(--pp-accent)' : '1px solid var(--pp-border)',
+        borderRadius: 6,
+        color: 'var(--pp-text-primary)',
+        fontFamily: 'var(--pp-font-body)',
+        fontSize: 13,
+        outline: 'none',
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : 'text',
       }}
     />
   );

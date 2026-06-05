@@ -1,3 +1,4 @@
+import { ArrowIcon } from '../atoms/icons/arrow-icon';
 import { Label } from '../atoms/label';
 import { Select } from '../atoms/select';
 import { LANGUAGE_OPTIONS } from './language-options';
@@ -10,35 +11,61 @@ export type Props = Readonly<{
 }>;
 
 /**
- * IMPL-531 LanguagePairSelector molecule。
+ * LanguagePairSelector molecule (perapera-scenes.jsx StartSessionForm 移植)。
  *
- * source / target の 2 つの Select を並べる。片方を変えると `onChange` で
- * ペア全体を返す (caller 側で language-pair の同一判定を行う)。
+ * `gridTemplateColumns: '1fr auto 1fr'` で source/arrow/target を等幅レイアウト。
+ * 中央の arrow icon は `--pp-text-dim` 色、source / target は FieldLabel +
+ * Select の縦並び。
  */
 export function LanguagePairSelector(props: Props) {
+  const disabled = props.disabled === true;
   return (
-    <div className="selector">
-      <div className="field">
-        <Label htmlFor="source-language">入力言語</Label>
+    <div
+      className="container"
+      data-component="language-pair-selector"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
+        gap: 8,
+        alignItems: 'end',
+      }}
+    >
+      <div>
+        <Label htmlFor="source-language" variant="field">
+          入力言語
+        </Label>
         <Select
           id="source-language"
           ariaLabel="入力言語"
           value={props.sourceLanguage}
           options={LANGUAGE_OPTIONS}
-          disabled={props.disabled === true}
+          disabled={disabled}
           onChange={(value) => {
             props.onChange({ sourceLanguage: value, targetLanguage: props.targetLanguage });
           }}
         />
       </div>
-      <div className="field">
-        <Label htmlFor="target-language">翻訳先言語</Label>
+      <div
+        aria-hidden="true"
+        style={{
+          paddingBottom: 11,
+          color: 'var(--pp-text-dim)',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <ArrowIcon size={10} />
+      </div>
+      <div>
+        <Label htmlFor="target-language" variant="field">
+          翻訳先言語
+        </Label>
         <Select
           id="target-language"
           ariaLabel="翻訳先言語"
           value={props.targetLanguage}
           options={LANGUAGE_OPTIONS}
-          disabled={props.disabled === true}
+          disabled={disabled}
           onChange={(value) => {
             props.onChange({ sourceLanguage: props.sourceLanguage, targetLanguage: value });
           }}

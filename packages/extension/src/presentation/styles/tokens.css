@@ -1,84 +1,85 @@
 /*
- * IMPL-590 Design system tokens (ui-ux-design.md §3 準拠)。
+ * PP design system tokens — `~/Downloads/PeraPera/perapera-ui.jsx` の
+ * `PP` / `PP_FONTS` オブジェクトを CSS 変数として 1:1 で複写したもの。
  *
- * Popup / SidePanel / Monitor / Content script overlay が共通利用する CSS
- * 変数の単一 source of truth。各 stylesheet は本ファイルを `@import` して
- * `var(--xxx)` で参照する。
+ * Popup / SidePanel / Main / Content script overlay の全 stylesheet が
+ * 本ファイルを `@import` し、`var(--pp-*)` で参照する。
+ * 値は `pp-tokens.ts` (TypeScript 定数) と完全一致し、`tokens.test.ts` が
+ * contract として検査する。
  *
- * **CLAUDE.md §React ルール準拠** (単一単語 className、container root):
- * 本ファイルは class 定義を持たず、tokens (カスタムプロパティ) のみを
- * 宣言する。実際の style セレクタは popup.css / sidepanel.css / monitor.css
- * 側で定義し、値は必ず tokens を参照する。
+ * Legacy `--color-*` / `--font-size-*` alias は Phase D/F で各 atom を直接
+ * `--pp-*` に切り替えるまでの暫定。Phase I で完全削除する。
  */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* ---------- Color palette (ui-ux-design.md §3.1) ---------- */
-  --color-primary: #0f766e;
-  --color-primary-fg: #ffffff;
-  --color-secondary: #475569;
-  --color-secondary-fg: #ffffff;
+  /* ===== PP design tokens ===== */
 
-  --color-success: #16a34a;
-  --color-warning: #ea580c;
-  --color-error: #dc2626;
-  --color-error-fg: #ffffff;
+  /* Surfaces */
+  --pp-bg: #0a0e14;
+  --pp-bg-soft: #0e131b;
+  --pp-surface: #131924;
+  --pp-surface-raised: #1a212e;
+  --pp-surface-hi: #222b3b;
 
-  --color-background: #f5f1e8;
-  --color-surface: #ffffff;
-  --color-surface-strong: #0f172a;
+  /* Borders */
+  --pp-border: rgba(255, 255, 255, 0.06);
+  --pp-border-strong: rgba(255, 255, 255, 0.13);
 
-  --color-text-primary: #111827;
-  --color-text-inverse: #f8fafc;
-  --color-text-muted: #6b7280;
+  /* Text */
+  --pp-text-primary: #f1f5f9;
+  --pp-text-secondary: #cbd5e1;
+  --pp-text-muted: #7d8a9c;
+  --pp-text-dim: #4d5867;
 
-  --color-border: #e5e7eb;
-  --color-border-strong: #9ca3af;
+  /* Accent (teal) */
+  --pp-accent: #2dd4bf;
+  --pp-accent-bright: #5eead4;
+  --pp-accent-dim: #0d9488;
+  --pp-accent-soft: rgba(45, 212, 191, 0.14);
+  --pp-accent-glow: rgba(45, 212, 191, 0.35);
+  --pp-accent-fg: #062b27;
 
-  /* Session state pill palette (StatusBadge data-variant) */
-  --color-state-active: var(--color-success);
-  --color-state-pending: var(--color-warning);
-  --color-state-degraded: #c2410c;
-  --color-state-error: var(--color-error);
-  --color-state-stopped: #6b7280;
-  --color-state-neutral: #9ca3af;
+  /* States */
+  --pp-warn: #f59e0b;
+  --pp-warn-soft: rgba(245, 158, 11, 0.14);
+  --pp-err: #f87171;
+  --pp-err-soft: rgba(248, 113, 113, 0.14);
+  --pp-ok: #34d399;
 
-  /* Legacy alias — 既存 stylesheet からの移行猶予として維持 */
-  --color-accent: var(--color-primary);
-  --color-accent-fg: var(--color-primary-fg);
-  --color-danger: var(--color-error);
-  --color-danger-fg: var(--color-error-fg);
-  --color-muted: var(--color-text-muted);
-  --color-bg: var(--color-surface);
-  --color-text: var(--color-text-primary);
-  --color-active: var(--color-state-active);
-  --color-pending: var(--color-state-pending);
-  --color-degraded: var(--color-state-degraded);
-  --color-stopped: var(--color-state-stopped);
-  --color-neutral: var(--color-state-neutral);
+  /* Typography (PP_FONTS) */
+  --pp-font-body: 'IBM Plex Sans JP', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pp-font-numeric: 'Space Grotesk', 'IBM Plex Sans JP', system-ui, sans-serif;
 
-  /* ---------- Typography (ui-ux-design.md §3.2) ---------- */
-  --font-family-body:
-    'IBM Plex Sans JP', system-ui, -apple-system, 'Segoe UI', Roboto, 'Hiragino Sans',
-    'Yu Gothic UI', sans-serif;
-  --font-family-numeric: 'Space Grotesk', 'IBM Plex Sans JP', system-ui, -apple-system, sans-serif;
+  /* Font size scale (perapera-ui / scenes / transcript の実測値) */
+  --pp-fs-9-5: 9.5px;
+  --pp-fs-10-5: 10.5px;
+  --pp-fs-11-5: 11.5px;
+  --pp-fs-12: 12px;
+  --pp-fs-12-5: 12.5px;
+  --pp-fs-13: 13px;
+  --pp-fs-13-5: 13.5px;
+  --pp-fs-14: 14px;
+  --pp-fs-15: 15px;
+  --pp-fs-16: 16px;
+  --pp-fs-28: 28px;
 
-  --font-size-h1: 28px;
-  --font-size-h2: 22px;
-  --font-size-h3: 18px;
-  --font-size-body: 14px;
-  --font-size-small: 12px;
+  /* Line heights */
+  --pp-lh-tight: 1.3;
+  --pp-lh-cozy: 1.45;
+  --pp-lh-normal: 1.5;
+  --pp-lh-relaxed: 1.55;
+  --pp-lh-loose: 1.6;
 
-  --font-weight-body: 400;
-  --font-weight-numeric: 500;
-  --font-weight-h3: 600;
-  --font-weight-heading: 700;
+  /* Letter spacing */
+  --pp-ls-tight: 0.04em;
+  --pp-ls-numeric: 0.06em;
+  --pp-ls-pill: 0.1em;
+  --pp-ls-label: 0.12em;
+  --pp-ls-uppercase: 0.14em;
 
-  --line-height-heading: 1.3;
-  --line-height-body: 1.5;
-
-  /* ---------- Spacing (ui-ux-design.md §3.3) ---------- */
+  /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
@@ -86,26 +87,22 @@
   --space-xl: 24px;
   --space-2xl: 32px;
 
-  /* ---------- Radius / elevation ---------- */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-pill: 999px;
-}
+  /* Radius */
+  --pp-radius-xs: 2px;
+  --pp-radius-sm: 4px;
+  --pp-radius-md: 6px;
+  --pp-radius-lg: 8px;
+  --pp-radius-xl: 12px;
+  --pp-radius-pill: 999px;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --color-background: #0b1220;
-    --color-surface: #111827;
-    --color-surface-strong: #1e293b;
-    --color-text-primary: #f5f5f5;
-    --color-text-inverse: #0f172a;
-    --color-text-muted: #94a3b8;
-    --color-border: #1f2937;
-    --color-border-strong: #64748b;
+  /* Shadows */
+  --pp-shadow-window:
+    0 0 0 0.5px rgba(255, 255, 255, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 24px 60px rgba(0, 0, 0, 0.55), 0 8px 18px rgba(0, 0, 0, 0.35);
+  --pp-shadow-accent-glow: 0 0 24px rgba(45, 212, 191, 0.25);
+  --pp-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.06);
 
-    --color-bg: var(--color-surface);
-    --color-text: var(--color-text-primary);
-    --color-muted: var(--color-text-muted);
-  }
+  /* Transitions */
+  --pp-transition-fast: 120ms;
+  --pp-transition-base: 200ms ease;
 }

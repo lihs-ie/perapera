@@ -1,0 +1,18 @@
+@import url('../../presentation/styles/tokens.css');
+@import url('../../presentation/styles/keyframes.css');
+
+* {
+  box-sizing: border-box;
+}
+
+#perapera-overlay-react-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--pp-font-body);
+  color: var(--pp-text-primary);
+}
+
+#perapera-overlay-react-root > div {
+  pointer-events: auto;
+}
